@@ -1,0 +1,157 @@
+// One contract, both stores. The Postgres half runs when TEST_DATABASE_URL is set.
+import { randomUUID } from "node:crypto";
+import { DEFAULT_POLICY, type Receipt } from "@hoax/core";
+import pg from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { MemoryStore, PgStore, migrate, type NewAction, type Store } from "../src/index.ts";
+
+const OWNER = "0xAbC0000000000000000000000000000000000001";
+const KEY = "0xdef0000000000000000000000000000000000002";
+
+function action(accountId: string, over: Partial<NewAction> = {}): NewAction {
+  const receipt = { version: 1, account: OWNER, outcome: "pending" } as unknown as Receipt;
+  return {
+    id: randomUUID(),
+    accountId,
+    owner: OWNER,
+    market: "ETH-PERP",
+    pool: "0xd6cb1dd58580b84d76068ac21594219ce03aeddf",
+    side: "long",
+    block: 10n,
+    txHash: "0x01",
+    sizeBefore: 10n ** 18n,
+    sizeRequested: 25n * 10n ** 16n,
+    sizeFilled: 25n * 10n ** 16n,
+    sizeAfter: 75n * 10n ** 16n,
+    avgPrice: 2399n * 10n ** 18n,
+    mark: 2400n * 10n ** 18n,
+    cost: 25n * 10n ** 16n,
+    estCloseCost: 25n * 10n ** 16n,
+    estLiqCost: 30n * 10n ** 18n,
+    forcedSlippage: 10n * 10n ** 18n,
+    equityBefore: 72n * 10n ** 18n,
+    mmReqBefore: 60n * 10n ** 18n,
+    healthBefore: 1.2,
+    healthAfter: 1.6,
+    liqPriceBefore: 2350n * 10n ** 18n,
+    liqPriceAfter: 2300n * 10n ** 18n,
+    builderFee1k: 0n,
+    outcome: "pending",
+    reason: null,
+    receipt,
+    receiptHash: "0xhash",
+    signature: "0xsig",
+    ...over,
+  };
+}
+
+function contract(name: string, make: () => Promise<Store>) {
+  describe(name, () => {
+    let store: Store;
+    beforeAll(async () => {
+      store = await make();
+    });
+    afterAll(async () => {
+      await store.close();
+    });
+
+    it("walks an account from registration to active", async () => {
+      const id = randomUUID();
+      const a = await store.createAccount({ id, owner: OWNER, manageTokenHash: "h" });
+      expect(a.status).toBe("pending_key");
+      expect(a.owner).toBe(OWNER.toLowerCase());
+      await store.setHoaxKey(id, KEY);
+      expect((await store.getAccount(id))?.status).toBe("pending_link");
+      await store.setStatus(id, "active");
+      const active = await store.getAccountByOwner(OWNER);
+      expect(active?.id).toBe(id);
+      expect(active?.linkedAt).not.toBeNull();
+      expect((await store.listAccounts("active")).map((x) => x.id)).toContain(id);
+      await store.setPaused(id, true);
+      await store.setBuilderApproval(id, 10_000n);
+      const after = await store.getAccount(id);
+      expect(after?.paused).toBe(true);
+      expect(after?.builderApproval1k).toBe(10_000n);
+    });
+
+    it("stores policies, ticks, actions, counterfactuals, alerts and stats", async () => {
+      const id = randomUUID();
+      await store.createAccount({ id, owner: "0x00000000000000000000000000000000000000aa", manageTokenHash: "h" });
+      await store.setStatus(id, "active");
+
+      await store.upsertPolicy(id, "ETH-PERP", { ...DEFAULT_POLICY, floorSize: 4n * 10n ** 15n });
+      await store.upsertPolicy(id, "ETH-PERP", { ...DEFAULT_POLICY, triggerHealth: 1.3 });
+      const policies = await store.listPolicies(id);
+      expect(policies).toHaveLength(1);
+      expect(policies[0].triggerHealth).toBe(1.3);
+      expect(policies[0].floorSize).toBeNull();
+
+      const tick = {
+        accountId: id,
+        market: "ETH-PERP",
+        block: 1n,
+        health: 1.5,
+        equity: 90n * 10n ** 18n,
+        mmReq: 60n * 10n ** 18n,
+        mark: 2400n * 10n ** 18n,
+        markOk: true,
+        size: 10n ** 18n,
+        liqPrice: 2300n * 10n ** 18n,
+      };
+      await store.insertHealthTicks([tick]);
+      await new Promise((r) => setTimeout(r, 5));
+      await store.insertHealthTicks([{ ...tick, block: 2n, health: null }]);
+      const latest = await store.latestHealth(id);
+      expect(latest).toHaveLength(1);
+      expect(latest[0].block).toBe(2n);
+      expect(latest[0].health).toBeNull();
+
+      const a = await store.insertAction(action(id));
+      expect(a.sizeFilled).toBe(25n * 10n ** 16n);
+      expect((await store.listPendingActions()).some((x) => x.id === a.id)).toBe(true);
+      expect(await store.lastActionAt(id, "ETH-PERP")).not.toBeNull();
+
+      const before = await store.stats();
+      await store.updateActionOutcome(a.id, "saved");
+      await store.upsertCounterfactual({
+        actionId: a.id,
+        originalLiqPrice: 2350n * 10n ** 18n,
+        reachedAtBlock: 5n,
+        equityAtReach: 50n * 10n ** 18n,
+        equityIfLiquidated: 20n * 10n ** 18n,
+        preserved: 30n * 10n ** 18n,
+        finalOutcome: "saved",
+        resolvedAt: new Date(),
+      });
+      const after = await store.stats();
+      expect(after.saves).toBe(before.saves + 1);
+      expect(after.savedEquity - before.savedEquity).toBe(30n * 10n ** 18n);
+      expect((await store.getCounterfactual(a.id))?.preserved).toBe(30n * 10n ** 18n);
+
+      const nn = await store.insertAction(action(id, { outcome: "not-needed", cost: 2n * 10n ** 18n }));
+      expect((await store.getAction(nn.id))?.outcome).toBe("not-needed");
+      expect((await store.stats()).insuranceCost - after.insuranceCost).toBe(2n * 10n ** 18n);
+
+      await store.insertAlert({ accountId: id, kind: "stale", message: "mark stale for 60 s" });
+      expect((await store.listAlerts(id, 5))[0].kind).toBe("stale");
+
+      await store.recordDrip(KEY, 5n * 10n ** 16n, "0xd");
+      expect(await store.dripsSince(new Date(Date.now() - 60_000), KEY)).toBeGreaterThanOrEqual(5n * 10n ** 16n);
+      expect((await store.listActions({ owner: OWNER, limit: 10 })).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+}
+
+contract("MemoryStore", async () => new MemoryStore());
+
+const url = process.env.TEST_DATABASE_URL;
+if (url) {
+  contract("PgStore", async () => {
+    const admin = new pg.Client({ connectionString: url });
+    await admin.connect();
+    await admin.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+    await admin.end();
+    await migrate(url);
+    return new PgStore(url);
+  });
+}

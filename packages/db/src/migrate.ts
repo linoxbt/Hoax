@@ -1,0 +1,34 @@
+// Apply every migration in order. Each file is idempotent (IF NOT EXISTS), so
+// running this twice is safe.
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+
+export async function migrate(connectionString: string): Promise<string[]> {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
+  const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    for (const f of files) await client.query(readFileSync(join(dir, f), "utf8"));
+  } finally {
+    await client.end();
+  }
+  return files;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.error("DATABASE_URL is not set");
+    process.exit(1);
+  }
+  migrate(url).then(
+    (files) => console.log(`applied ${files.join(", ")}`),
+    (err) => {
+      console.error(err);
+      process.exit(1);
+    },
+  );
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@hoax/chain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@hoax/core": "*",
+    "@somnia-chain/markets-sdk": "0.32.1",
+    "viem": "^2.21.0"
+  }
+}
