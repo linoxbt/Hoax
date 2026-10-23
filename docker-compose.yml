@@ -1,0 +1,44 @@
+# Hoax watcher + Postgres on one machine (a VPS). Secrets come from .env
+# (deploy/vps-setup.sh writes it). The web app on Netlify connects to this
+# Postgres over the public port with the same password.
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: hoax
+      POSTGRES_DB: hoax
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "${POSTGRES_PUBLIC_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hoax -d hoax"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  watcher:
+    build: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://hoax:${POSTGRES_PASSWORD}@db:5432/hoax
+      HOAX_KEYSTORE_SECRET: ${HOAX_KEYSTORE_SECRET:?set HOAX_KEYSTORE_SECRET in .env}
+      KEYSTORE_DIR: /data/keystore
+      GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY:-}
+      HOAX_BUILDER_ADDRESS: ${HOAX_BUILDER_ADDRESS:-}
+      HOAX_BUILDER_FEE_BPS_1K: ${HOAX_BUILDER_FEE_BPS_1K:-0}
+      DRY_RUN: ${DRY_RUN:-false}
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - keystore:/data
+
+volumes:
+  pgdata:
+  keystore:

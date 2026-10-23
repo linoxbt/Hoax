@@ -1,12 +1,11 @@
-# The Hoax watcher (Railway). The web app deploys to Vercel from apps/web.
+# The Hoax watcher. The web app deploys to Netlify from apps/web.
 FROM node:22-slim
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages ./packages
 COPY services ./services
 COPY apps/web/package.json ./apps/web/package.json
-RUN npm ci --omit=dev --ignore-scripts --workspaces --include-workspace-root \
-  && npm install --no-save tsx@4.19.2
+RUN npm ci --ignore-scripts --no-audit --no-fund
 ENV NODE_ENV=production
 # Mount a volume here: it holds the encrypted per-account Hoax keys.
 ENV KEYSTORE_DIR=/data/keystore
