@@ -8,13 +8,13 @@
     "apps/*"
   ],
   "scripts": {
-    "typecheck": "tsc -p packages/core && tsc -p packages/chain && tsc -p packages/db && tsc -p services/watcher && tsc -p demo",
+    "typecheck": "tsc -p packages/core && tsc -p packages/chain && tsc -p packages/db && tsc -p services/watcher && tsc -p spike && tsc -p demo && tsc --noEmit -p apps/web",
     "test": "vitest run",
     "watcher": "npm run start -w @hoax/watcher",
     "web": "npm run dev -w @hoax/web",
     "db:migrate": "npm run migrate -w @hoax/db",
     "replay": "tsx demo/replay.ts",
-    "spike:health": "tsx spike/01-health-read.ts"
+    "spike": "node -e \"const n=process.argv[1];require('child_process').execFileSync('npx',['tsx','spike/'+n+'.ts'],{stdio:'inherit'})\""
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

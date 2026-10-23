@@ -32,6 +32,17 @@ export interface SimMarketState {
   levelStepBps: number;
   /** Raw base units resting at each level. */
   levelSize: bigint;
+  /**
+   * A real book's shape, as offsets from the mark: when set it replaces the
+   * uniform levels above, so the simulation trades against recorded depth.
+   */
+  shape?: { bids: BookShapeLevel[]; asks: BookShapeLevel[] };
+}
+
+export interface BookShapeLevel {
+  /** Distance from the mark, bps (positive = away from the mark). */
+  offsetBps: number;
+  quantity: bigint;
 }
 
 interface SimPosition {
@@ -130,6 +141,18 @@ export class SimVenue implements Venue {
   }
 
   private book(m: SimMarketState): { bids: BookLevel[]; asks: BookLevel[] } {
+    const tickSize = m.info.tickSize;
+    if (m.shape) {
+      const at = (offsetBps: number, up: boolean) => {
+        const off = BigInt(Math.round(offsetBps * 100));
+        const raw = up ? (m.mark * (1_000_000n + off)) / 1_000_000n : (m.mark * (1_000_000n - off)) / 1_000_000n;
+        return up ? ((raw + tickSize - 1n) / tickSize) * tickSize : (raw / tickSize) * tickSize;
+      };
+      return {
+        bids: m.shape.bids.map((l) => ({ price: at(l.offsetBps, false), quantity: l.quantity })),
+        asks: m.shape.asks.map((l) => ({ price: at(l.offsetBps, true), quantity: l.quantity })),
+      };
+    }
     const bids: BookLevel[] = [];
     const asks: BookLevel[] = [];
     for (let i = 0; i < m.levels; i++) {

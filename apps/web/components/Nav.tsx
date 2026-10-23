@@ -16,6 +16,9 @@ export function Nav() {
         <Link href="/stats" className="link">
           Stats
         </Link>
+        <Link href="/replay" className="link">
+          Replay
+        </Link>
         <Link href="/start" className="link">
           Start
         </Link>

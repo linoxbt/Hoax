@@ -1,0 +1,29 @@
+{
+  "spike": "07-subscription",
+  "sdk": "@somnia-chain/markets-sdk@0.32.1",
+  "network": {
+    "chainId": 50383,
+    "rpc": "https://api.hideki2.infra.testnet.somnia.network"
+  },
+  "startedAt": "2026-10-23T09:59:34.267Z",
+  "finishedAt": "2026-10-23T09:59:35.420Z",
+  "finishedAtBlock": "30975190",
+  "result": {
+    "pass": null,
+    "summary": "subscription reads answer on Hideki; creating and funding one needs a funded owner key, so v1 uses the off-chain watcher",
+    "readsWork": true
+  },
+  "entries": [
+    {
+      "at": "2026-10-23T09:59:34.793Z",
+      "event": "precompile 0x0100",
+      "codeBytes": 0
+    },
+    {
+      "at": "2026-10-23T09:59:35.256Z",
+      "event": "subscriptions",
+      "owner": "0x0000000000000000000000000000000000000001",
+      "ids": []
+    }
+  ]
+}

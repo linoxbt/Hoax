@@ -1,25 +1,133 @@
 # Hoax
 
-Hoax watches a dreamDEX perp account on Somnia Tokyo testnet (Hideki, chain id 50383). When the account gets close to liquidation, Hoax closes just enough of the position to bring health back to a safe level. It acts only when that close costs less than the liquidation it prevents. It runs as a linked trade-only bot, so it can place and cancel orders but never withdraw, and every save gets an on-chain receipt.
+Hoax cuts a dreamDEX perp position down to safe size before the liquidation engine can take it, and proves every save with an on-chain receipt.
 
-Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dreamdex-perps-bounty/detail), MVP track.
+Liquidation is the worst exit in perps: a 1% penalty, a forced close at whatever the book pays, and no say in the exit. Hoax gives traders a cheaper one, automatically, without ever touching their funds. A trader links Hoax to a dreamDEX wallet as a trade-only bot and sets a trigger health and a target health. When health falls to the trigger, Hoax closes the smallest slice that restores the target, but only when that close costs less than the liquidation it prevents.
 
-## Status
+Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dreamdex-perps-bounty/detail), MVP track (bots and agents, trader tools). Runs on Somnia Tokyo testnet (Hideki, chain 50383).
 
-Spike tests: checking what the dreamDEX perps API and `@somnia-chain/markets-sdk` support before writing product code.
+**Who it is for:** anyone holding a leveraged dreamDEX perp position who isn't watching it every minute. Mark price and hourly funding move health on an idle position, and a stop-loss closes everything at a fixed price. Hoax closes just enough, only when it is cheaper than liquidation.
 
-| Spike | What it checks | Status |
-| --- | --- | --- |
-| 01 health read | List perp markets, mark feed status, account health and liquidation price | Works on testnet |
+## What it does
 
-## Run
+1. **Opt in.** Enter your dreamDEX wallet on `/start`. The watcher makes a key just for that wallet; you add its address in dreamDEX with **Link a bot**, Perps ticked. Hoax notices the link on chain.
+2. **Watch.** Every second (and immediately on `PositionUpdated` / `PositionLiquidated`) the watcher reads account health: equity over maintenance margin, where 1.0 is liquidation. It never acts on a mark the pool calls stale.
+3. **Size.** At the trigger it solves for the smallest close that restores the target, using the cross-margin form of the spec's formula:
 
-Needs Node 20 or later.
+   `n = (H_target × M − E) / (H_target × m − c)`
+
+   where E is equity, M the account's maintenance requirement, m the market's maintenance rate and c the close's cost per unit of notional (read from the live book). The size is rounded up to the lot, raised to the market minimum, capped at the policy's max close per action, and turned into a full close only when a partial one would leave less than the floor.
+4. **Gate.** It acts only when `C_close ≤ λ × C_liq`, where `C_liq = penalty × N + forced-close slippage`. Both are read from chain: the LiquidationEngine's 100 bps penalty and 50 bps minimum spread, and the book's depth.
+5. **Close.** One immediate-or-cancel `placeOrderFor` from the linked key, priced at mark ∓ max slippage, sized from a fresh read. The builder fee is attached only when the trader's on-chain approval covers it.
+6. **Reconcile.** It re-reads the position after the fill. dreamDEX has no reduce-only flag, so if a race flipped the position, Hoax flattens the flipped amount at once and pauses the account until the trader confirms.
+7. **Prove.** Every action gets a receipt: health before and after, size closed, average fill, cost paid, estimated liquidation cost, liquidation price before and after, and tx links. It is signed (EIP-191) by the account's Hoax key. For 24 hours Hoax watches the mark: if it reaches the old liquidation price while the reduced position survives, the action becomes **saved** with the equity preserved. Otherwise it is **not needed** and its cost is shown as the price of insurance. Misses (liquidations Hoax could not prevent) are recorded and shown too.
+
+## Repo layout
+
+```
+apps/web/            Next.js app: landing, onboarding, positions, receipts, stats, replay + HTTP API
+services/watcher/    health loop, executor, reconciler, counterfactual tracker, link detection, gas drips, keystore
+packages/core/       sizing, cost gate, flip guard, decisions, receipts, counterfactual (pure, unit-tested)
+packages/chain/      Venue interface; DreamDexVenue (Hideki, SDK reads, placeOrderFor via viem); SimVenue
+packages/db/         Store interface; Postgres and in-memory backends; schema in migrations/
+spike/               proof scripts for the spec's spike tests, with logged evidence in spike/evidence/
+feedback/            Feedback-track items in the bounty format
+demo/                replay harness and path recorder
+```
+
+Stack: TypeScript, Next.js 15, viem 2, `@somnia-chain/markets-sdk@0.32.1`, Postgres, Vitest.
+
+## Run it
+
+Needs Node 22 and, for persistence, Postgres.
 
 ```sh
 npm install
-npm run spike:health                       # markets and mark feeds
-ACCOUNT=0xYourAddress npm run spike:health # plus that account's health
+cp .env.example .env            # set HOAX_KEYSTORE_SECRET (32+ chars) and DATABASE_URL
+
+npm run db:migrate              # create the tables
+npm run watcher                 # the watcher; health at http://localhost:8080/healthz
+npm run web                     # the app at http://localhost:3000
 ```
 
-Spike 01 is read-only: it needs no private key and signs nothing.
+`DRY_RUN=true` makes the watcher decide and log without sending orders. `HOAX_DEMO=1 npm run web` runs the web app on sample data with no database or chain access; every page says so.
+
+To protect a wallet: open `/start`, enter the dreamDEX wallet, copy the Hoax key address, then in the [dreamDEX app](https://app.testnet.dreamdex.io) open the wallet, choose **Link a bot**, paste it, keep **Perps** ticked and **Send it … for gas** on, and press **Add bot**. Then set a policy and turn Hoax on. Use a wallet that holds only what you want protected, such as Wallet 2.
+
+### Tests and checks
+
+```sh
+npm test                                         # 41 unit and end-to-end tests
+TEST_DATABASE_URL=postgres://… npm test          # also runs the store contract against Postgres
+npm run typecheck
+npm run build -w @hoax/web
+```
+
+The watcher's end-to-end tests drive the real engine against `SimVenue`: onboarding and link detection, a save confirmed by the counterfactual tracker, a close marked not-needed after 24 hours, a flip under a race (flattened, account paused), a stale mark, a pause, a price gap straight through to liquidation (one missed receipt per episode), a book with nothing inside max slippage, and the gas-drip caps.
+
+## Deploy
+
+- **Watcher on Railway.** `railway.toml` builds the root `Dockerfile`. Set `DATABASE_URL` (a Railway Postgres), `HOAX_KEYSTORE_SECRET`, optionally `GAS_WALLET_PRIVATE_KEY`, `HOAX_BUILDER_ADDRESS` and `HOAX_BUILDER_FEE_BPS_1K`, and mount a volume at `/data` for the keystore. It runs the migrations on start.
+- **Web on Vercel.** Root directory `apps/web` (`vercel.json` installs from the repo root). Set the same `DATABASE_URL`, plus `HOAX_BUILDER_ADDRESS` and `HOAX_BUILDER_FEE_BPS_1K` if a fee is charged.
+
+## Spike tests
+
+Each script writes block numbers, the SDK version and every tx hash to `spike/evidence/`. See [spike/README.md](spike/README.md).
+
+| # | Test | Result |
+|---|------|--------|
+| 0 | Read everything a decision needs | **Pass.** 21 perp markets, all with a live mark. LiquidationEngine penalty 100 bps, min spread 50 bps. Builder fee cap 10 bps. ETH: maintenance 2.5%, close-out 1.25%, taker fee 0 |
+| 1 | Operator can trade (`placeOrderFor` for the owner) | Script ready (`02-operator-close`); needs a linked wallet |
+| 1b | Contract as operator | Not attempted: v1 uses the off-chain watcher with a bot key, the spec's fallback |
+| 2 | Partial close raises health as the formula predicts (within 5%) | Script ready (`02-operator-close`); needs a linked wallet |
+| 3 | Watcher catches idle drift within 2 s | **Pass.** 62/62 mark moves showed in health within 2 s, median 478 ms (polling at 250 ms). No funding settlement fell in the 2-minute window |
+| 4 | No flip under races (50 runs) | Script ready (`04-race`); needs two keys linked to one wallet. The simulated race passes in the test suite |
+| 5 | Latency, trigger to close | Script ready (`05-latency`); reads the watcher's records after live closes |
+| 6 | Does book trading move the liquidation mark? | **Mark follows the index feed** (71 of 86 mark moves came with an index move), so the demo comparison runs as a replay |
+| 7 | On-chain reactivity subscription on Hideki | Subscription reads answer; creating one needs a funded owner. v1 stays off-chain |
+
+## Demo
+
+`npm run replay` runs the controlled comparison: two identical accounts, the same position, the same mark path, one protected. The real Hoax engine runs against `SimVenue`, seeded with dreamDEX's market and liquidation parameters and the ETH order book shape read live from Hideki. The result shows at `/replay`, labelled as a replay. On a 4.5% drop from today's ETH mark:
+
+- Without Hoax: liquidated in 7 steps, ending with 59.45 USDso.
+- With Hoax: two closes (0.24 ETH, then 0.20 ETH after the cooldown) for 0.85 USDso in total. It survived with 85.35 USDso, **25.90 USDso more**. The first receipt resolved as saved.
+
+`npx tsx demo/record.ts` records a real mark path and book for `PATH_FILE=… npm run replay`. The live segment of the demo is a real testnet account set near its trigger. See [demo/README.md](demo/README.md).
+
+## Security and trust
+
+- Hoax can never move a trader's funds. A linked key can only place, cancel and reduce orders for the wallet, and every fill settles to the wallet. The worst a leaked key can do is trade badly; the trader revokes it by unlinking the bot in dreamDEX.
+- One key per account, generated by the watcher and stored AES-256-GCM-encrypted in its keystore volume. Keys are never in the database and never shared between accounts.
+- Every order is IOC, sized from a fresh read, capped per action, and inside max slippage. A flip is flattened and the account paused.
+- Hoax fails closed: no order on a stale mark or after a read error. Repeated read failures alert the trader.
+- Fees come only from the on-chain approval and the pool's cap, and are shown on every receipt. Paper USDso accounts are never charged.
+- Gas drips go only to keys with a confirmed link, under per-key and daily caps.
+- Management: registering a wallet returns a manage token (stored hashed). A registration only becomes active when its owner links the Hoax key in dreamDEX, which nobody else can do.
+- Vulnerabilities found in dreamDEX contracts go privately to security@dreamdex.io, not into this repo.
+
+## Where v1 differs from the spec
+
+- **Plain SQL over `pg` instead of Prisma.** It is the same tables; the store is an interface with Postgres and in-memory backends, so tests and the replay run without a database.
+- **No on-chain `HoaxHandler`.** Spike 1b and 7 were not passed, so the spec's fallback applies: an off-chain watcher with a bot key.
+- **Event push uses `eth_subscribe` logs** for `PositionUpdated` and `PositionLiquidated`, with the 1-second clock as the backbone.
+- **Management uses a token, not wallet signatures.** dreamDEX wallets are app-managed Somnia Accounts that a browser wallet usually cannot sign for. Linking the key is the proof of control.
+- **Equity preserved does not subtract the close cost a second time.** The cost was already paid out of the equity being compared.
+
+## Feedback track
+
+Five verified items are in [feedback/](feedback/):
+
+1. The SDK docs give Hideki 10 ms blocks; the chain runs 100 ms blocks.
+2. The Hideki Multicall3 address in `CHAINS.md` contradicts the chain and the SDK.
+3. `PERPS.md`'s testnet pool count is stale (10 pools with 4 restricted, versus 21 with none).
+4. The RPC caps `eth_getLogs` at a 1000-block span, undocumented, with a generic `-1` error.
+5. The SDK has no perp writes for a linked bot.
+
+## X posts
+
+- _to add: 2–3 posts tagging @DreamDEXSomnia_
+
+## License
+
+MIT
