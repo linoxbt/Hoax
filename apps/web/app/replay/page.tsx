@@ -53,22 +53,22 @@ export default function ReplayPage() {
 
   if (missing)
     return (
-      <section className="sec char">
+      <section className="sec alt">
         <div className="wrap pad copy">No replay yet. Run npm run replay and reload.</div>
       </section>
     );
-  if (!r) return <section className="sec char" style={{ minHeight: "60vh" }} />;
+  if (!r) return <section className="sec alt" style={{ minHeight: "60vh" }} />;
   const events = r.frames.flatMap((f, i) => f.events.map((e) => ({ t: Math.round((f.t - r.frames[0].t) / 1000), mark: f.mark, e, i })));
   const saved = r.receipts.find((x) => x.outcome === "saved");
   const sides = [
-    { key: "without" as const, title: "Without Hoax", res: r.result.withoutHoax, cls: "sand" },
-    { key: "with" as const, title: "With Hoax", res: r.result.withHoax, cls: "char" },
+    { key: "without" as const, title: "Without Hoax", res: r.result.withoutHoax, cls: "" },
+    { key: "with" as const, title: "With Hoax", res: r.result.withHoax, cls: "alt" },
   ];
   return (
     <>
-      <section className="sec char">
+      <section className="sec alt">
         <div className="wrap pad" style={{ paddingBottom: 40 }}>
-          <Kicker left>Replay · not a live run</Kicker>
+          <Kicker>Replay · not a live run</Kicker>
           <h1>
             Same market, same moment,
             <br />
@@ -85,14 +85,14 @@ export default function ReplayPage() {
           <section key={s.key} className={`sec ${s.cls}`}>
             <div className="pad-s" style={{ padding: "48px var(--gutter)" }}>
               <div className="cap soft">{s.title}</div>
-              <div className="num" style={{ marginTop: 12 }}>
+              <div className={`num${s.key === "with" ? " accent" : ""}`} style={{ marginTop: 12 }}>
                 {s.res.finalEquity.toFixed(2)}
                 <small>USDso</small>
               </div>
               <div className="cap" style={{ marginTop: 12 }}>
                 {s.res.liquidated ? "liquidated" : "survived"} · {s.res.finalSize.toFixed(4)} left
               </div>
-              <div style={{ marginTop: 32 }}>
+              <div style={{ marginTop: 32, color: s.key === "with" ? "var(--indigo)" : "var(--ink-soft)" }}>
                 <Field frames={r.frames} pick={(f) => f[s.key].health} trigger={r.params.policy.trigger} target={r.params.policy.target} label={`Health of the account ${s.title.toLowerCase()} over the replay`} />
                 <div className="spread cap soft" style={{ marginTop: 6 }}>
                   <span>start</span>
@@ -104,11 +104,11 @@ export default function ReplayPage() {
           </section>
         ))}
       </div>
-      <section className="sec sand">
+      <section className="sec">
         <div className="wrap pad">
           <div className="grid g-aside" style={{ gap: 48 }}>
             <div>
-              <Kicker left>Difference</Kicker>
+              <Kicker>Difference</Kicker>
               <div className="num">
                 +{r.result.equityDifference.toFixed(2)}
                 <small>USDso</small>

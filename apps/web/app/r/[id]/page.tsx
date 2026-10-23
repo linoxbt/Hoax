@@ -21,9 +21,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <section className="sec sand">
+      <section className="sec">
         <div className="wrap pad" style={{ paddingBottom: 56 }}>
-          <Kicker left>Receipt</Kicker>
+          <Kicker>Receipt</Kicker>
           <div className="spread">
             <h1>
               {r.market}
@@ -118,12 +118,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         </div>
       </section>
 
-      <section className="sec char">
-        <Edge color="sand" seed={8} />
+      <section className="sec alt">
+        <Edge seed={8} opacity={0.5} />
         <div className="wrap pad" style={{ paddingTop: 40 }}>
           <div className="grid g-aside" style={{ gap: 48 }}>
             <div>
-              <Kicker left>Counterfactual</Kicker>
+              <Kicker>Counterfactual</Kicker>
               <h2>Was it needed?</h2>
             </div>
             <div>
@@ -175,12 +175,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         </div>
       </section>
 
-      <section className="sec sand">
-        <Edge color="char" seed={13} />
+      <section className="sec">
+        <Edge seed={13} opacity={0.5} />
         <div className="wrap pad" style={{ paddingTop: 40 }}>
           <div className="grid g-aside" style={{ gap: 48 }}>
             <div>
-              <Kicker left>Verification</Kicker>
+              <Kicker>Verification</Kicker>
               <h2>Check it yourself</h2>
               <div className="row" style={{ marginTop: 24 }}>
                 <CopyButton text={`/r/${r.id}`} label="Copy link to share" />

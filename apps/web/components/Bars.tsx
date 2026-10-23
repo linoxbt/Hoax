@@ -73,10 +73,10 @@ export function Bars({
   );
 }
 
-/** The torn edge where one section's colour bleeds into the next. */
-export function Edge({ color, seed = 3 }: { color: "sand" | "char"; seed?: number }) {
+/** A fringe of indigo bars that opens a section. */
+export function Edge({ seed = 3, opacity = 0.9 }: { seed?: number; opacity?: number }) {
   return (
-    <div style={{ color: color === "sand" ? "var(--sand)" : "var(--char)", lineHeight: 0 }}>
+    <div style={{ color: "var(--indigo)", opacity, lineHeight: 0 }}>
       <Bars n={220} shape="edge" seed={seed} hang className="edge" />
     </div>
   );

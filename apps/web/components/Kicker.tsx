@@ -1,5 +1,5 @@
-export function Kicker({ children, left = false }: { children: React.ReactNode; left?: boolean }) {
-  return <div className={`kicker${left ? " left" : ""}`}>{children}</div>;
+export function Kicker({ children, center = false }: { children: React.ReactNode; center?: boolean }) {
+  return <div className={`kicker${center ? " center" : ""}`}>{children}</div>;
 }
 
 export function Marquee({ text }: { text: string }) {
@@ -11,5 +11,20 @@ export function Marquee({ text }: { text: string }) {
         {items}
       </div>
     </div>
+  );
+}
+
+/** The title band every page opens with. */
+export function PageHead({ kicker, title, children, alt = false }: { kicker: string; title: React.ReactNode; children?: React.ReactNode; alt?: boolean }) {
+  return (
+    <section className={`sec${alt ? " alt" : ""}`}>
+      <div className="wrap pad" style={{ paddingBottom: 44 }}>
+        <Kicker>{kicker}</Kicker>
+        <div className="spread">
+          <h1>{title}</h1>
+          {children}
+        </div>
+      </div>
+    </section>
   );
 }

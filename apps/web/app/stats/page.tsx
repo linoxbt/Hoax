@@ -13,9 +13,9 @@ export default async function StatsPage() {
   const rows = JSON.parse(JSON.stringify(actions, (_k, v) => (typeof v === "bigint" ? v.toString() : v))) as ActionJson[];
   return (
     <>
-      <section className="sec char">
+      <section className="sec alt">
         <div className="wrap pad">
-          <Kicker left>The record</Kicker>
+          <Kicker>The record</Kicker>
           <h1>
             Saved, paid,
             <br />
@@ -42,8 +42,8 @@ export default async function StatsPage() {
           </div>
         </div>
       </section>
-      <section className="sec sand">
-        <Edge color="char" seed={6} />
+      <section className="sec">
+        <Edge seed={6} opacity={0.5} />
         <div className="wrap" style={{ paddingTop: 24 }}>
           <Marquee text="Latest receipts, misses included" />
         </div>
