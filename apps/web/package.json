@@ -13,9 +13,9 @@
     "@hoax/chain": "*",
     "@hoax/core": "*",
     "@hoax/db": "*",
-    "next": "15.5.4",
-    "react": "19.1.1",
-    "react-dom": "19.1.1",
+    "next": "15.5.28",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
     "server-only": "^0.0.1",
     "viem": "^2.21.0"
   },
