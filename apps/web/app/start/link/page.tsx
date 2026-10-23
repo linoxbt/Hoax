@@ -22,8 +22,7 @@ export default function LinkStep() {
       <div>
         <h2>Link the Hoax key</h2>
         <p className="copy soft" style={{ marginTop: 20 }}>
-          The key can place, cancel and reduce orders for this wallet in dreamDEX. It cannot withdraw or send funds, and every
-          fill settles to your wallet.
+          Trade-only. Fills always settle to your wallet.
         </p>
       </div>
       <div>
@@ -38,7 +37,7 @@ export default function LinkStep() {
             </div>
           ) : (
             <p className="copy" style={{ marginTop: 8 }}>
-              Making a key just for this wallet…
+              Generating key…
             </p>
           )}
         </div>
@@ -46,17 +45,16 @@ export default function LinkStep() {
           <div className="r text">
             <span>One</span>
             <span>
-              Open <a href={DREAMDEX_APP} className="accent">dreamDEX ↗</a>, pick this wallet and choose Link a bot at the
-              bottom of the wallet list
+              Open <a href={DREAMDEX_APP} className="accent">dreamDEX ↗</a> → wallet → Link a bot
             </span>
           </div>
           <div className="r text">
             <span>Two</span>
-            <span>Paste the key, keep Perps ticked and leave Send it for gas on</span>
+            <span>Paste the key · Perps on · send gas</span>
           </div>
           <div className="r text">
             <span>Three</span>
-            <span>Press Add bot. Hoax notices the link within seconds</span>
+            <span>Add bot · detected in seconds</span>
           </div>
         </div>
         <p style={{ marginTop: 20 }}>

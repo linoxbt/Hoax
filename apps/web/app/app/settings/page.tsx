@@ -24,13 +24,13 @@ export default function Settings() {
 
   return (
     <>
-      <AppHead kicker="Settings" title="Control" />
+      <AppHead kicker="Account" title="Settings" />
       <div className="wrap pad-s">
         <div className="grid g2" style={{ gap: 24 }}>
           <div className="card">
             <div className="cap soft">Protection</div>
             <h3 style={{ margin: "10px 0" }}>{account?.paused ? "Paused" : "On"}</h3>
-            <p className="copy soft">Pausing stops every close at once. Hoax keeps reading health and writing receipts for misses.</p>
+            <p className="copy soft">Stops all closes instantly.</p>
             {account && (
               <button className={`pill${account.paused ? "" : " ghost"}`} style={{ marginTop: 16 }} onClick={() => setPaused(!account.paused)}>
                 {account.paused ? "Resume Hoax" : "Pause Hoax"}
@@ -40,7 +40,7 @@ export default function Settings() {
           <div className="card">
             <div className="cap soft">Revoke completely</div>
             <h3 style={{ margin: "10px 0" }}>Unlink the bot</h3>
-            <p className="copy soft">In dreamDEX open the wallet, Bots tab, and remove the Hoax key. It stops working straight away.</p>
+            <p className="copy soft">Remove the key in dreamDEX → Bots. Instant.</p>
             <a href={DREAMDEX_APP} className="pill ghost" style={{ marginTop: 16 }}>
               Open dreamDEX ↗
             </a>
@@ -75,7 +75,7 @@ export default function Settings() {
         <div className="panel">
           <div className="spread" style={{ alignItems: "center" }}>
             <div>
-              <div className="cap soft">Kept in this browser only. Save it to manage Hoax from another device.</div>
+              <div className="cap soft">Stored in this browser only</div>
               <code className="mono" style={{ fontSize: 14 }}>
                 {session.token}
               </code>

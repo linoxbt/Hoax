@@ -14,11 +14,11 @@ export default function MyReceipts() {
   }, [session.owner, setErr]);
   return (
     <>
-      <AppHead kicker="Receipts" title="Every action, signed" />
+      <AppHead kicker="Receipts" title="Receipts" />
       <div className="wrap pad-s">
         {actions && <ReceiptTable actions={actions} />}
         <p className="cap soft" style={{ marginTop: 24 }}>
-          Every receipt is public and signed by this wallet&apos;s Hoax key. Open one to see its counterfactual and check the signature.
+          Public · signed by this wallet&apos;s Hoax key
         </p>
       </div>
     </>

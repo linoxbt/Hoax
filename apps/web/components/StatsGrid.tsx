@@ -4,10 +4,10 @@ import type { Stats } from "@hoax/db";
 /** Saved equity beside the price of insurance, and the misses beside them. */
 export function StatsGrid({ stats }: { stats: Stats }) {
   const cells: Array<[string, string, string]> = [
-    [usd(stats.savedEquity), "USDso", `equity saved · ${stats.saves} saves`],
-    [usd(stats.insuranceCost), "USDso", "paid for closes that turned out not needed"],
+    [usd(stats.savedEquity), "USDso", `saved · ${stats.saves} saves`],
+    [usd(stats.insuranceCost), "USDso", "insurance cost"],
     [String(stats.accountsProtected), "", "wallets protected"],
-    [String(stats.misses), "", "misses · liquidated anyway"],
+    [String(stats.misses), "", "misses"],
   ];
   return (
     <div className="grid g4" style={{ gap: 0 }}>

@@ -19,9 +19,13 @@ export function PageHead({ kicker, title, children, alt = false }: { kicker: str
   return (
     <section className={`sec${alt ? " alt" : ""}`}>
       <div className="wrap pad" style={{ paddingBottom: 44 }}>
-        <Kicker>{kicker}</Kicker>
+        <div className="hero-in" style={{ ["--d" as string]: "0.05s" }}>
+          <Kicker>{kicker}</Kicker>
+        </div>
         <div className="spread">
-          <h1>{title}</h1>
+          <h1 className="hero-in" style={{ ["--d" as string]: "0.15s" }}>
+            {title}
+          </h1>
           {children}
         </div>
       </div>

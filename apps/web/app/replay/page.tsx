@@ -69,18 +69,14 @@ export default function ReplayPage() {
       <section className="sec alt">
         <div className="wrap pad" style={{ paddingBottom: 40 }}>
           <Kicker>Replay · not a live run</Kicker>
-          <h1>
-            Same market, same moment,
-            <br />
-            two outcomes
-          </h1>
-          <p className="copy soft" style={{ marginTop: 24, maxWidth: 760 }}>
-            {r.label}. {r.note} Two accounts, each {r.start.size} {r.market.replace("-PERP", "")} long from {r.start.mark.toFixed(2)} on{" "}
-            {r.start.collateral} USDso. Hoax protects one (act at {r.params.policy.trigger}, restore {r.params.policy.target}).
+          <h1 className="hero-in">Same crash. Two outcomes.</h1>
+          <p className="lede hero-in" style={{ marginTop: 24, maxWidth: 680, ["--d" as string]: "0.3s" }}>
+            {r.start.size} {r.market.replace("-PERP", "")} long from {r.start.mark.toFixed(0)} on {r.start.collateral} USDso. Live dreamDEX
+            parameters, simulated venue.
           </p>
         </div>
       </section>
-      <div className="grid g2" style={{ gap: 0 }}>
+      <div className="grid g2" style={{ gap: 0 }} data-reveal>
         {sides.map((s) => (
           <section key={s.key} className={`sec ${s.cls}`}>
             <div className="pad-s" style={{ padding: "48px var(--gutter)" }}>
@@ -96,7 +92,7 @@ export default function ReplayPage() {
                 <Field frames={r.frames} pick={(f) => f[s.key].health} trigger={r.params.policy.trigger} target={r.params.policy.target} label={`Health of the account ${s.title.toLowerCase()} over the replay`} />
                 <div className="spread cap soft" style={{ marginTop: 6 }}>
                   <span>start</span>
-                  <span>health, one bar per second · lines at 1.0, trigger, target</span>
+                  <span>health · 1 bar / s</span>
                   <span>end</span>
                 </div>
               </div>
@@ -113,8 +109,8 @@ export default function ReplayPage() {
                 +{r.result.equityDifference.toFixed(2)}
                 <small>USDso</small>
               </div>
-              <p className="copy soft" style={{ marginTop: 20 }}>
-                Measured at the end of the path. {saved ? "The saved receipt's equity-preserved figure is the counterfactual the live receipts use, taken when the mark reached the old liquidation price." : ""}
+              <p className="cap soft" style={{ marginTop: 20 }}>
+                Equity kept vs. the unprotected account{saved ? " · receipt marked saved" : ""}
               </p>
             </div>
             <div>

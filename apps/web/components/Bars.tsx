@@ -67,7 +67,15 @@ export function Bars({
       aria-hidden={label ? undefined : true}
     >
       {hs.map((h, i) => (
-        <rect key={i} x={i * step} y={hang ? 0 : 100 - h * 100} width={1.7} height={h * 100} fill="currentColor" />
+        <rect
+          key={i}
+          x={i * step}
+          y={hang ? 0 : 100 - h * 100}
+          width={1.7}
+          height={h * 100}
+          fill="currentColor"
+          style={{ ["--d" as string]: `${Math.round((i / n) * 900)}ms` }}
+        />
       ))}
     </svg>
   );
@@ -76,7 +84,7 @@ export function Bars({
 /** A fringe of indigo bars that opens a section. */
 export function Edge({ seed = 3, opacity = 0.9 }: { seed?: number; opacity?: number }) {
   return (
-    <div style={{ color: "var(--indigo)", opacity, lineHeight: 0 }}>
+    <div style={{ color: "var(--indigo)", opacity, lineHeight: 0 }} data-reveal="bars">
       <Bars n={220} shape="edge" seed={seed} hang className="edge" />
     </div>
   );

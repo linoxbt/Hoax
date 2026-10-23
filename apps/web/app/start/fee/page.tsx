@@ -43,12 +43,12 @@ export default function FeeStep() {
       <div>
         <h2>Builder fee</h2>
         <p className="copy soft" style={{ marginTop: 20 }}>
-          Optional. Without an approval Hoax still protects you and charges nothing. Paper USDso accounts are never charged.
+          Optional. No approval, no fee.
         </p>
       </div>
       <div>
         {!feeOn ? (
-          <p className="copy">This Hoax deployment charges no builder fee. Nothing to do here.</p>
+          <p className="copy">No builder fee on this deployment.</p>
         ) : (
           <>
             <div className="num accent">

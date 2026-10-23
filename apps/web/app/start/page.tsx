@@ -49,8 +49,7 @@ export default function WalletStep() {
       <div>
         <h2>Your dreamDEX wallet</h2>
         <p className="copy soft" style={{ marginTop: 20 }}>
-          Use a wallet that holds only what you want protected, such as Wallet 2. Hoax will be able to trade it, never withdraw
-          from it.
+          Use a dedicated wallet. Hoax can trade it, never withdraw.
         </p>
       </div>
       <div>

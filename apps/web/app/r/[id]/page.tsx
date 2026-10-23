@@ -128,9 +128,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             </div>
             <div>
               {r.outcome === "pending" && (
-                <p className="copy" style={{ maxWidth: "none" }}>
-                  Hoax is watching the mark for 24 hours. If it reaches {usd(r.liqPriceBefore)}, the liquidation price before
-                  the close, while the reduced position survives, this becomes a save.
+                <p className="lede">
+                  Watching for 24 h. A save if the mark reaches {usd(r.liqPriceBefore)} and the position survives.
                 </p>
               )}
               {r.outcome === "saved" && cf && (
@@ -156,19 +155,13 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                 </>
               )}
               {r.outcome === "not-needed" && (
-                <p className="copy" style={{ maxWidth: "none" }}>
-                  The mark never reached the old liquidation price within 24 hours. The close cost was the price of insurance.
-                </p>
+                <p className="lede">Liquidation price not reached in 24 h. The close cost was insurance.</p>
               )}
               {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && (
-                <p className="copy" style={{ maxWidth: "none" }}>
-                  No counterfactual: {r.reason ?? r.outcome}.
-                </p>
+                <p className="lede">{r.reason ?? r.outcome}</p>
               )}
               <p className="cap soft" style={{ marginTop: 28 }}>
-                Equity preserved = equity held when the mark reached the old liquidation price, minus the equity left after a
-                liquidation there (maintenance margin at that price, less the 1% penalty and the forced-close slippage). The
-                close cost was already paid out of the first number, so it is not subtracted twice.
+                Preserved = equity at the old liquidation price − equity after a liquidation there.
               </p>
             </div>
           </div>
@@ -206,7 +199,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
               <p className="cap soft" style={{ marginTop: 20 }}>
-                The hash is keccak256 of the receipt JSON with keys sorted; the signature is EIP-191 over those 32 bytes.
+                keccak256 of sorted-key JSON · EIP-191 signature
               </p>
               <details style={{ marginTop: 16 }}>
                 <summary>Receipt JSON</summary>

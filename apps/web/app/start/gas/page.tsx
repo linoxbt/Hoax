@@ -13,7 +13,7 @@ export default function GasStep() {
       <div>
         <h2>Gas for Hoax&apos;s orders</h2>
         <p className="copy soft" style={{ marginTop: 20 }}>
-          Each close costs about 0.003 STT. Sending gas when you link the bot covers many of them.
+          ~0.003 STT per close.
         </p>
       </div>
       <div>
@@ -27,10 +27,10 @@ export default function GasStep() {
             </div>
             <p className="copy" style={{ marginTop: 20 }}>
               {gas === null
-                ? "The balance could not be read right now."
+                ? "Balance unavailable."
                 : low
-                  ? "That is low. Top it up from dreamDEX: Bots tab, Top up."
-                  : "That covers many closes."}
+                  ? "Low. Top up in dreamDEX → Bots."
+                  : "Ready."}
             </p>
           </>
         )}

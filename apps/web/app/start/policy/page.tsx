@@ -52,8 +52,7 @@ export default function PolicyStep() {
       <div>
         <h2>Your policy</h2>
         <p className="copy soft" style={{ marginTop: 20 }}>
-          Hoax acts when health, equity over maintenance margin, falls to the trigger, and closes just enough to get back to
-          the target. You can change this per position later.
+          Act at the trigger, restore to the target. Editable per position.
         </p>
       </div>
       <div>

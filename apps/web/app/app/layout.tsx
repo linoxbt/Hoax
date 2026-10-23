@@ -28,10 +28,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <section className="sec">
         <div className="wrap pad">
           <Kicker>App</Kicker>
-          <h1>Nothing here yet</h1>
-          <p className="copy soft" style={{ marginTop: 20 }}>
-            This browser is not managing a wallet. <Link href="/start" className="accent">Protect a wallet →</Link> or restore
-            with the manage token you saved.
+          <h1 className="hero-in">Connect a wallet</h1>
+          <p className="lede" style={{ marginTop: 20 }}>
+            <Link href="/start" className="accent">Get protected →</Link> or restore with your manage token.
           </p>
           <div className="card" style={{ marginTop: 40, maxWidth: 820 }}>
             <div className="grid g3" style={{ alignItems: "end" }}>

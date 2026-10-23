@@ -35,12 +35,12 @@ export default function Overview() {
       <div className="wrap pad-s">
         {account?.status === "pending_link" && (
           <p className="note" style={{ marginBottom: 24 }}>
-            The Hoax key is not linked yet. <Link href="/start/link" className="accent">Finish onboarding →</Link>
+            Key not linked. <Link href="/start/link" className="accent">Finish setup →</Link>
           </p>
         )}
         {account?.status === "unlinked" && (
           <p className="note bad" style={{ marginBottom: 24 }}>
-            The Hoax key was unlinked in dreamDEX, so Hoax is not protecting this wallet.
+            Key unlinked in dreamDEX. Protection is off.
           </p>
         )}
         <div className="grid g4">
@@ -84,7 +84,7 @@ export default function Overview() {
                 <h3 style={{ margin: "10px 0" }}>{p.market}</h3>
                 <div className="num s accent">{p.health === null ? "–" : p.health.toFixed(2)}</div>
                 <div className="cap soft" style={{ marginTop: 8 }}>
-                  health · acts at {policy?.triggerHealth ?? 1.25}
+                  health · trigger {policy?.triggerHealth ?? 1.25}
                 </div>
                 <div className="go" style={{ marginTop: 14 }}>
                   Open →
@@ -95,15 +95,15 @@ export default function Overview() {
         </div>
 
         <div className="spread" style={{ margin: "48px 0 16px" }}>
-          <h3>Latest receipts</h3>
+          <h3>Recent activity</h3>
           <Link href="/app/receipts" className="cap accent">
-            All receipts →
+            View all →
           </Link>
         </div>
         {recent && <ReceiptTable actions={recent} />}
         <p className="cap soft" style={{ marginTop: 24 }}>
-          Hoax key <span className="mono">{short(account?.hoaxKey)}</span> ·{" "}
-          {view && view.isOwner === false ? "read-only: manage token not accepted" : "manage token accepted"}
+          Key <span className="mono">{short(account?.hoaxKey)}</span>
+          {view && view.isOwner === false ? " · read-only" : ""}
         </p>
       </div>
     </>

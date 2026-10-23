@@ -7,12 +7,12 @@ import { useApp, DEFAULT_POLICY_JSON } from "@/lib/appContext";
 import { api } from "@/lib/session";
 
 const FIELDS = [
-  ["triggerHealth", "Trigger health", "0.05", "Hoax acts at or under this health."],
-  ["targetHealth", "Target health", "0.05", "The health a close restores."],
-  ["maxClosePct", "Max close per step %", "1", "The largest share of the position one close may take."],
-  ["maxSlippageBps", "Max slippage bps", "1", "The worst fill accepted, versus the mark."],
-  ["cooldownSec", "Cooldown s", "1", "Minimum time between two closes on this position."],
-  ["lambda", "Cost gate λ", "0.05", "Act only when the close costs at most λ times a liquidation."],
+  ["triggerHealth", "Trigger health", "0.05", "Act at or below."],
+  ["targetHealth", "Target health", "0.05", "Restore to."],
+  ["maxClosePct", "Max close per step %", "1", "Largest single close."],
+  ["maxSlippageBps", "Max slippage bps", "1", "Worst fill vs. mark."],
+  ["cooldownSec", "Cooldown s", "1", "Between closes."],
+  ["lambda", "Cost gate λ", "0.05", "Max cost vs. liquidation."],
 ] as const;
 
 export default function PolicyEditor() {
@@ -48,7 +48,7 @@ export default function PolicyEditor() {
 
   return (
     <>
-      <AppHead kicker={`Policy · ${symbol}`} title="When Hoax acts">
+      <AppHead kicker={`Policy · ${symbol}`} title="Policy">
         <Link href={`/app/positions/${symbol}`} className="pill ghost">
           ← Position
         </Link>
@@ -70,14 +70,14 @@ export default function PolicyEditor() {
             <span>Full close</span>
             <span className="row">
               <input type="checkbox" checked={form.allowFullClose} onChange={(e) => setForm({ ...form, allowFullClose: e.target.checked })} />
-              Close fully when a partial close would leave less than the market minimum
+              Allow full close below market minimum
             </span>
           </label>
           <label className="r text" style={{ cursor: "pointer" }}>
             <span>Protection</span>
             <span className="row">
               <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-              Hoax protects this position
+              Protection on
             </span>
           </label>
         </div>

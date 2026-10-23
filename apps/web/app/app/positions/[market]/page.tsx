@@ -42,7 +42,7 @@ export default function PositionDetail() {
               <div className="num accent">{p.health === null ? "–" : p.health.toFixed(3)}</div>
             </div>
             <div className="cap soft" style={{ textAlign: "right" }}>
-              {p.source === "chain" ? "read live from chain" : "from the watcher's last reading"}
+              {p.source === "chain" ? "live" : "last reading"}
             </div>
           </div>
           <HealthField health={p.health} trigger={policy.triggerHealth} target={policy.targetHealth} />

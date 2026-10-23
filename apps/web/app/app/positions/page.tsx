@@ -9,7 +9,7 @@ export default function Positions() {
   const { view } = useApp();
   return (
     <>
-      <AppHead kicker="Positions" title="Every open position" />
+      <AppHead kicker="Positions" title="Positions" />
       <div className="wrap pad-s">
         {view && view.positions.length === 0 && <p className="copy soft">No open perp positions on this wallet.</p>}
         <div style={{ display: "grid", gap: 20 }}>
@@ -31,7 +31,7 @@ export default function Positions() {
                 </div>
                 <HealthField health={p.health} trigger={policy.triggerHealth} target={policy.targetHealth} />
                 <div className="go" style={{ marginTop: 12 }}>
-                  Details and policy →
+                  Details →
                 </div>
               </Link>
             );

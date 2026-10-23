@@ -34,6 +34,7 @@ export function HealthField({ health, trigger, target }: { health: number | null
               width={live ? 2.6 : 1.6}
               height={h}
               fill="currentColor"
+              className={live ? "live" : undefined}
               opacity={live ? 1 : marker ? 0.9 : filled ? 0.85 : 0.22}
             />
           );

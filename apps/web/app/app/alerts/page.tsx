@@ -7,10 +7,10 @@ export default function Alerts() {
   const { view } = useApp();
   return (
     <>
-      <AppHead kicker="Alerts" title="What Hoax told you" />
+      <AppHead kicker="Alerts" title="Alerts" />
       <div className="wrap pad-s">
-        {view && view.isOwner === false && <p className="note">Alerts are only shown with a valid manage token.</p>}
-        {view && view.alerts.length === 0 && view.isOwner && <p className="copy soft">No alerts. Hoax writes one when it skips a close, misses a save, pauses, or runs low on gas.</p>}
+        {view && view.isOwner === false && <p className="note">Requires a valid manage token.</p>}
+        {view && view.alerts.length === 0 && view.isOwner && <p className="copy soft">No alerts.</p>}
         {view && view.alerts.length > 0 && (
           <div className="rows">
             {view.alerts.map((a) => (

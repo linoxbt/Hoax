@@ -26,8 +26,8 @@ export default function StartLayout({ children }: { children: React.ReactNode })
     <StartContext.Provider value={{ session, setSession, view, err, setErr, refresh, linked }}>
       <section className="sec">
         <div className="wrap pad" style={{ paddingBottom: 32 }}>
-          <Kicker>Onboarding · about two minutes</Kicker>
-          <h1>Protect your positions</h1>
+          <Kicker>Get protected · 2 min</Kicker>
+          <h1 className="hero-in">Get protected</h1>
         </div>
         <div className="wrap">
           <div className="rail">
