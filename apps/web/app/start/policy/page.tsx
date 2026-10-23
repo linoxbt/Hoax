@@ -48,10 +48,10 @@ export default function PolicyStep() {
   ] as const;
 
   return (
-    <div className="grid g-aside" style={{ gap: 48 }}>
+    <div className="grid g-aside" style={{ gap: "4.8rem" }}>
       <div>
         <h2>Your policy</h2>
-        <p className="copy soft" style={{ marginTop: 20 }}>
+        <p className="copy soft" style={{ marginTop: "2rem" }}>
           Act at the trigger, restore to the target. Editable per position.
         </p>
       </div>
@@ -61,7 +61,7 @@ export default function PolicyStep() {
         ) : (
           <>
             <div className="cap soft">Markets: {markets.join(", ")}</div>
-            <div className="grid g2" style={{ marginTop: 16 }}>
+            <div className="grid g2" style={{ marginTop: "1.6rem" }}>
               {fields.map(([k, label, step]) => (
                 <label className="field" key={k}>
                   <span>{label}</span>
@@ -69,7 +69,7 @@ export default function PolicyStep() {
                 </label>
               ))}
             </div>
-            <div className="row" style={{ marginTop: 28 }}>
+            <div className="row" style={{ marginTop: "2.8rem" }}>
               <button className="pill" disabled={busy} onClick={turnOn}>
                 Turn on Hoax
               </button>

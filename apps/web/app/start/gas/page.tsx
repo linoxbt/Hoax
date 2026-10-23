@@ -41,10 +41,10 @@ export default function GasStep() {
   }
 
   return (
-    <div className="grid g-aside" style={{ gap: 48 }}>
+    <div className="grid g-aside" style={{ gap: "4.8rem" }}>
       <div>
         <h2>Gas for Hoax&apos;s closes</h2>
-        <p className="copy soft" style={{ marginTop: 20 }}>
+        <p className="copy soft" style={{ marginTop: "2rem" }}>
           Each protective close is one transaction from your Hoax key.
         </p>
       </div>
@@ -57,10 +57,10 @@ export default function GasStep() {
               {gas !== null ? Number(formatEther(gas)).toFixed(4) : "–"}
               <small>STT on {short(key)}</small>
             </div>
-            <p className="copy" style={{ marginTop: 16 }}>
+            <p className="copy" style={{ marginTop: "1.6rem" }}>
               {gas === null ? "Balance unavailable." : low ? (sponsored ? "Low. Hoax's gas wallet tops it up automatically." : "Low. Send some to keep protection running.") : "Ready."}
             </p>
-            <div className="row" style={{ marginTop: 20 }}>
+            <div className="row" style={{ marginTop: "2rem" }}>
               <button className={`pill${low && !sponsored ? "" : " ghost"}`} disabled={busy || !hoax.wallet} onClick={fund}>
                 {busy ? "Sending…" : `Send ${AMOUNT} STT from my wallet`}
               </button>
@@ -71,7 +71,7 @@ export default function GasStep() {
               )}
             </div>
             {err && (
-              <p className="note bad" style={{ marginTop: 16 }}>
+              <p className="note bad" style={{ marginTop: "1.6rem" }}>
                 {err}
               </p>
             )}

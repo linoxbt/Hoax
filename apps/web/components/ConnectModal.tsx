@@ -86,13 +86,14 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
   return (
     <div className="modal-back" onClick={onClose} role="presentation">
       <div className="modal" role="dialog" aria-modal="true" aria-label="Connect a wallet" onClick={(e) => e.stopPropagation()}>
-        <div className="spread" style={{ alignItems: "center" }}>
-          <div className="cap accent">Connect</div>
+        <div className="modal-head">
+          <span>Connect · Somnia Hideki</span>
           <button className="x" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
-        <h3 style={{ margin: "10px 0 20px" }}>Your dreamDEX wallet</h3>
+        <div className="modal-body">
+        <h3 className="h4">Your dreamDEX wallet</h3>
 
         <ol className="checks">
           {steps.map((s, i) => (
@@ -112,13 +113,13 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
               <button key={c.uid} className="wallet" onClick={() => pick(c)} disabled={busy !== null}>
                 <WalletIcon c={c} />
                 <span>{c.name === "Injected" ? "Browser wallet" : c.name}</span>
-                <span className="cap soft">{busy === c.uid ? "Opening…" : "Detected"}</span>
+                <span className="mono-xs soft">{busy === c.uid ? "Opening…" : "Detected →"}</span>
               </button>
             ))}
             {list.length === 0 && (
               <div className="nowallet">
                 <p className="copy soft">No wallet found in this browser.</p>
-                <div className="row" style={{ marginTop: 12 }}>
+                <div className="row" style={{ marginTop: "1.2rem" }}>
                   {INSTALL.map(([name, href]) => (
                     <a key={name} className="pill ghost" href={href} target="_blank" rel="noreferrer">
                       {name} ↗
@@ -137,18 +138,18 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
             {busy === "sign" ? "Sign in your wallet…" : "Verify wallet"}
           </button>
         ) : (
-          <p className="note" style={{ textAlign: "center" }}>
+          <p className="note">
             Connected and verified.
           </p>
         )}
 
         {err && (
-          <p className="note bad" style={{ marginTop: 16 }}>
+          <p className="note bad" style={{ marginTop: "1.6rem" }}>
             {err}
           </p>
         )}
 
-        <p className="cap soft" style={{ marginTop: 22, textAlign: "center" }}>
+        <p className="mono-xs soft" style={{ marginTop: "2.4rem", textAlign: "center" }}>
           Hoax never asks for a seed phrase or a withdrawal.
         </p>
         {!address && process.env.NEXT_PUBLIC_HOAX_DEMO === "1" && (
@@ -156,6 +157,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
             No wallet? Explore with a sample account →
           </button>
         )}
+        </div>
       </div>
     </div>
   );

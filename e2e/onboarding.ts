@@ -125,8 +125,8 @@ async function main() {
   await page.waitForTimeout(1500);
   if (process.env.E2E_DEBUG) console.log("  buttons:", await page.locator("button").evaluateAll((bs) => bs.map((b) => `${b.textContent}${(b as HTMLButtonElement).disabled ? "(disabled)" : ""}`)));
   await page.locator(".checklist").getByRole("button", { name: "Connect wallet" }).click();
-  await page.getByRole("button", { name: /E2E Wallet/ }).click();
-  await page.getByRole("button", { name: "Verify wallet" }).click();
+  await page.locator(".modal").getByRole("button", { name: /E2E Wallet/ }).click();
+  await page.locator(".modal").getByRole("button", { name: "Verify wallet", exact: true }).click();
   await page.getByText("Connected and verified.").waitFor({ timeout: 20_000 });
   await snap(page, "verified");
   await page.waitForSelector(".modal", { state: "detached", timeout: 10_000 });

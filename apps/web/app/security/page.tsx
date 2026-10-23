@@ -1,5 +1,6 @@
-import { Edge } from "@/components/Bars";
-import { Kicker, PageHead } from "@/components/Kicker";
+import { PageHead, SectionHead } from "@/components/Kicker";
+
+export const metadata = { title: "Security" };
 
 const GRANT: Array<[string, string, boolean]> = [
   ["placeOrderFor", "Immediate-or-cancel closes", true],
@@ -20,72 +21,81 @@ const THREATS: Array<[string, string]> = [
   ["Gas drain", "Linked keys only, per-key and daily caps."],
 ];
 
+const KEYS: Array<[string, string]> = [
+  ["Keys", "AES-256-GCM, one per account, held by the engine and never in the database."],
+  ["Control", "Activation needs a transaction only your wallet can send to your own dreamDEX account."],
+  ["Off switch", "Pause in Settings. Revoke from Settings or from dreamDEX, instantly."],
+];
+
 export default function Security() {
   return (
     <>
-      <PageHead kicker="Security" title={<>Trades.<br />Never withdraws.</>}>
-        <p className="lede" style={{ maxWidth: 420 }}>
-          The worst case is a bad trade, not lost funds. Every control limits that.
-        </p>
-      </PageHead>
+      <PageHead
+        kicker="Security"
+        title="Trades. Never withdraws."
+        sub={
+          <>
+            The worst Hoax can do is trade badly, never move your funds. Every control on this page limits <b>a bad trade</b>.
+          </>
+        }
+        actions={[
+          { href: "/start", label: "Get protected" },
+          { href: "https://github.com/linoxbt/Hoax", label: "Read the code", ink: true, external: true },
+        ]}
+      />
+
+      <section className="sec cells c2">
+        <div className="p formula-cell">
+          <div className="mono-s ink">The link</div>
+          <div>
+            <h2 className="h2">One transaction. Less than dreamDEX asks.</h2>
+            <p className="txt" style={{ marginTop: "2.4rem", maxWidth: "52rem" }}>
+              dreamDEX&apos;s own Link a bot adds a registry-wide grant. Hoax grants per perp pool only, from your wallet to your dreamDEX Safe. Verified on a
+              fork of Hideki: 21 pools linked in one transaction, revoked in one, and refused from anyone but the owner.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <div className="grants" style={{ margin: 0, border: 0, borderTop: "var(--b) solid var(--line)" }}>
+            {GRANT.map(([fn, what, ok]) => (
+              <div key={fn} className={ok ? "" : "no"}>
+                <span className="dot">{ok ? "✓" : "×"}</span>
+                <b className="mono" style={{ fontWeight: 500, fontSize: "1.4rem" }}>
+                  {fn}
+                </b>
+                <small>{what}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="sec">
-        <div className="wrap pad" style={{ paddingBottom: 40 }}>
-          <div className="grid g-aside" style={{ gap: 48 }}>
-            <div>
-              <Kicker>The link</Kicker>
-              <h2>One transaction. Less than dreamDEX asks.</h2>
-              <p className="copy soft" style={{ marginTop: 20, maxWidth: 440 }}>
-                dreamDEX&apos;s own Link a bot adds a registry-wide grant. Hoax grants per perp pool only, from your wallet to your
-                dreamDEX Safe, verified end to end on a fork of Hideki: 21 pools linked in one transaction, revoked in one.
+        <SectionHead label="Threat model" title="What could go wrong" sub="Each threat, and the control that limits it." />
+        <div className="cells c4 bt threats">
+          {THREATS.map(([t, c], i) => (
+            <div key={t} className="p" data-reveal style={{ ["--d" as string]: `${(i % 4) * 0.05}s` }}>
+              <div className="mono-s muted">[{String(i + 1).padStart(2, "0")}]</div>
+              <div className="h5" style={{ marginTop: "3.2rem" }}>
+                {t}
+              </div>
+              <p className="txt" style={{ marginTop: "1.2rem" }}>
+                {c}
               </p>
             </div>
-            <div className="grants" style={{ marginTop: 0 }}>
-              {GRANT.map(([fn, what, ok]) => (
-                <div key={fn} className={ok ? "" : "no"}>
-                  <span className="dot">{ok ? "✓" : "×"}</span>
-                  <b className="mono" style={{ fontWeight: 500, fontSize: 13 }}>
-                    {fn}
-                  </b>
-                  <small>{what}</small>
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       </section>
-      <section className="sec alt">
-        <Edge seed={41} opacity={0.45} />
-        <div className="wrap pad" style={{ paddingTop: 40 }}>
-          <Kicker>Threat model</Kicker>
-          <div className="rows">
-            {THREATS.map(([t, c], i) => (
-              <div className="r text" key={t} data-reveal style={{ ["--d" as string]: `${i * 0.05}s` }}>
-                <span>{t}</span>
-                <span>{c}</span>
-              </div>
-            ))}
+
+      <section className="sec cells c3">
+        {KEYS.map(([t, d], i) => (
+          <div key={t} className="p stat-cell" data-reveal style={{ ["--d" as string]: `${i * 0.06}s` }}>
+            <div className="mono-s accent">{t}</div>
+            <p className="h5" style={{ fontWeight: 600 }}>
+              {d}
+            </p>
           </div>
-        </div>
-      </section>
-      <section className="sec">
-        <div className="wrap pad">
-          <div className="grid g3">
-            {(
-              [
-                ["Keys", "AES-256-GCM, per wallet, never in the database."],
-                ["Control", "Activation requires a transaction only your wallet can send."],
-                ["Off switch", "Pause in Settings. Revoke from Settings or dreamDEX, instantly."],
-              ] as const
-            ).map(([t, d], i) => (
-              <div key={t} className="card" data-reveal style={{ ["--d" as string]: `${i * 0.08}s` }}>
-                <div className="cap accent">{t}</div>
-                <p className="copy" style={{ marginTop: 12 }}>
-                  {d}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+        ))}
       </section>
     </>
   );

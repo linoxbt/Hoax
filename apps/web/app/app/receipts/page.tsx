@@ -17,7 +17,7 @@ export default function MyReceipts() {
       <AppHead kicker="Receipts" title="Receipts" />
       <div className="wrap pad-s">
         {actions && <ReceiptTable actions={actions} />}
-        <p className="cap soft" style={{ marginTop: 24 }}>
+        <p className="cap soft" style={{ marginTop: "2.4rem" }}>
           Public · signed by this wallet&apos;s Hoax key
         </p>
       </div>

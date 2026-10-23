@@ -2,7 +2,13 @@
 // the two-cell button, corner links and drawing furniture.
 import Link from "next/link";
 
-export function Arrow({ dir = "ne", className = "arrow" }: { dir?: "ne" | "e"; className?: string }) {
+export function Arrow({ dir = "ne", className = "arrow" }: { dir?: "ne" | "e" | "w"; className?: string }) {
+  if (dir === "w")
+    return (
+      <svg className={className} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden>
+        <path d="M13 7H1M6 2L1 7l5 5" />
+      </svg>
+    );
   return dir === "e" ? (
     <svg className={className} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden>
       <path d="M1 7h12M8 2l5 5-5 5" />
@@ -24,7 +30,7 @@ export function Roll({ children }: { children: string }) {
   );
 }
 
-type BtnProps = { children: string; fill?: boolean; sm?: boolean; wide?: boolean; arrow?: "ne" | "e" };
+type BtnProps = { children: string; fill?: boolean; sm?: boolean; wide?: boolean; arrow?: "ne" | "e" | "w" };
 
 /** The two-cell button: a rolling label and an arrow cell. Renders a Link, an anchor or a button. */
 export function Btn({ href, onClick, disabled, children, fill, sm, wide, arrow = "e", external, type }: BtnProps & { href?: string; onClick?: () => void; disabled?: boolean; external?: boolean; type?: "button" | "submit" }) {

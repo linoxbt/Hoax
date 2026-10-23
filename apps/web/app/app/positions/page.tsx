@@ -12,7 +12,7 @@ export default function Positions() {
       <AppHead kicker="Positions" title="Positions" />
       <div className="wrap pad-s">
         {view && view.positions.length === 0 && <p className="copy soft">No open perp positions on this wallet.</p>}
-        <div style={{ display: "grid", gap: 20 }}>
+        <div style={{ display: "grid", gap: "2rem" }}>
           {view?.positions.map((p) => {
             const policy = view.policies.find((x) => x.market === p.market) ?? { ...DEFAULT_POLICY_JSON, market: p.market };
             return (
@@ -22,7 +22,7 @@ export default function Positions() {
                     <div className="cap soft">
                       {p.side} · {units(p.size.replace("-", ""), p.baseDecimals)} {p.baseSymbol} · mark {usd(p.mark)}
                     </div>
-                    <h3 style={{ marginTop: 6 }}>{p.market}</h3>
+                    <h3 style={{ marginTop: "0.6rem" }}>{p.market}</h3>
                   </div>
                   <div className="row">
                     {policy.enabled ? <span className="tag saved">protected</span> : <span className="tag not-needed">not protected</span>}
@@ -30,7 +30,7 @@ export default function Positions() {
                   </div>
                 </div>
                 <HealthField health={p.health} trigger={policy.triggerHealth} target={policy.targetHealth} />
-                <div className="go" style={{ marginTop: 12 }}>
+                <div className="go" style={{ marginTop: "1.2rem" }}>
                   Details →
                 </div>
               </Link>

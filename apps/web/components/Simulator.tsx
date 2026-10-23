@@ -152,22 +152,22 @@ export function Simulator({ mark = 3000 }: { mark?: number }) {
       <div className="grid g2 sim-out">
         <div>
           <div className="cap soft">Without Hoax</div>
-          <div className="num m" style={{ marginTop: 8 }}>
+          <div className="num m" style={{ marginTop: "0.8rem" }}>
             {bare.equity.toFixed(2)}
             <small>USDso</small>
           </div>
-          <div className="cap" style={{ marginTop: 6, color: bare.liquidated ? "var(--bad)" : "var(--ink-soft)" }}>
+          <div className="cap" style={{ marginTop: "0.6rem", color: bare.liquidated ? "var(--bad)" : "var(--ink-soft)" }}>
             {bare.liquidated ? `liquidated · ${bare.exitCost.toFixed(2)} lost to penalty and spread` : "never liquidated"}
           </div>
           <Curve health={bare.health} color="#9b9ab3" label="Health without Hoax" />
         </div>
         <div>
           <div className="cap accent">With Hoax</div>
-          <div className="num m accent" style={{ marginTop: 8 }}>
+          <div className="num m accent" style={{ marginTop: "0.8rem" }}>
             {hoax.equity.toFixed(2)}
             <small>USDso</small>
           </div>
-          <div className="cap" style={{ marginTop: 6, color: hoax.liquidated ? "var(--bad)" : "var(--ok)" }}>
+          <div className="cap" style={{ marginTop: "0.6rem", color: hoax.liquidated ? "var(--bad)" : "var(--ok)" }}>
             {hoax.liquidated
               ? "liquidated"
               : hoax.closes > 0

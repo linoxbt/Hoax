@@ -64,7 +64,7 @@ export default function Overview() {
           <div className="cta-band">
             <div>
               <div className="cap accent">Not protected yet</div>
-              <p className="copy" style={{ marginTop: 6 }}>
+              <p className="copy" style={{ marginTop: "0.6rem" }}>
                 Link Hoax in one transaction and every position on this account is covered.
               </p>
             </div>
@@ -74,32 +74,32 @@ export default function Overview() {
           </div>
         )}
         {account?.status === "unlinked" && (
-          <p className="note bad" style={{ marginBottom: 24 }}>
+          <p className="note bad" style={{ marginBottom: "2.4rem" }}>
             Key unlinked in dreamDEX. Protection is off.
           </p>
         )}
         <div className="grid g4">
           <div className="card">
             <div className="cap soft">Lowest health</div>
-            <div className="num s accent" style={{ marginTop: 10 }}>
+            <div className="num s accent" style={{ marginTop: "1rem" }}>
               {lowest === null ? "–" : lowest.toFixed(2)}
             </div>
           </div>
           <div className="card">
             <div className="cap soft">Open positions</div>
-            <div className="num s" style={{ marginTop: 10 }}>
+            <div className="num s" style={{ marginTop: "1rem" }}>
               {view?.positions.length ?? "–"}
             </div>
           </div>
           <div className="card">
             <div className="cap soft">Protected</div>
-            <div className="num s" style={{ marginTop: 10 }}>
+            <div className="num s" style={{ marginTop: "1rem" }}>
               {view ? view.policies.filter((p) => p.enabled).length : "–"}
             </div>
           </div>
           <Link href="/app/alerts" className="card">
             <div className="cap soft">Alerts</div>
-            <div className="num s" style={{ marginTop: 10 }}>
+            <div className="num s" style={{ marginTop: "1rem" }}>
               {view?.alerts.length ?? "–"}
             </div>
           </Link>
@@ -119,7 +119,7 @@ export default function Overview() {
                 <h3 style={{ margin: "10px 0" }}>{p.market}</h3>
                 <div className="num s accent">{p.health === null ? "–" : p.health.toFixed(2)}</div>
                 <HealthField health={p.health} trigger={policy?.triggerHealth ?? 1.25} target={policy?.targetHealth ?? 1.6} />
-                <div className="go" style={{ marginTop: 14 }}>
+                <div className="go" style={{ marginTop: "1.4rem" }}>
                   Open →
                 </div>
               </Link>
@@ -134,7 +134,7 @@ export default function Overview() {
           </Link>
         </div>
         {recent && <ReceiptTable actions={recent} />}
-        <p className="cap soft" style={{ marginTop: 24 }}>
+        <p className="cap soft" style={{ marginTop: "2.4rem" }}>
           Key <span className="mono">{short(account?.hoaxKey)}</span>
           {view && view.isOwner === false ? " · read-only" : ""}
         </p>

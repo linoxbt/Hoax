@@ -59,13 +59,13 @@ export default function PolicyEditor() {
             <label className="field" key={k}>
               <span>{label}</span>
               <input type="number" step={step} value={form[k]} onChange={(e) => setForm({ ...form, [k]: Number(e.target.value) })} />
-              <span className="cap soft" style={{ marginTop: 6, textTransform: "none", letterSpacing: "0.04em" }}>
+              <span className="cap soft" style={{ marginTop: "0.6rem", textTransform: "none", letterSpacing: "0.04em" }}>
                 {help}
               </span>
             </label>
           ))}
         </div>
-        <div className="rows" style={{ marginTop: 36 }}>
+        <div className="rows" style={{ marginTop: "3.6rem" }}>
           <label className="r text" style={{ cursor: "pointer" }}>
             <span>Full close</span>
             <span className="row">
@@ -81,7 +81,7 @@ export default function PolicyEditor() {
             </span>
           </label>
         </div>
-        <div className="row" style={{ marginTop: 32 }}>
+        <div className="row" style={{ marginTop: "3.2rem" }}>
           <button className="pill" disabled={busy} onClick={save}>
             Save policy
           </button>

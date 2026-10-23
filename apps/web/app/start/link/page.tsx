@@ -55,10 +55,10 @@ export default function LinkStep() {
     tx.phase === "building" ? "Preparing…" : tx.phase === "confirm" ? "Confirm in your wallet…" : tx.phase === "mining" ? "Linking on chain…" : "Link Hoax · one transaction";
 
   return (
-    <div className="grid g-aside" style={{ gap: 48 }}>
+    <div className="grid g-aside" style={{ gap: "4.8rem" }}>
       <div>
         <h2>Link Hoax</h2>
-        <p className="copy soft" style={{ marginTop: 20 }}>
+        <p className="copy soft" style={{ marginTop: "2rem" }}>
           A dedicated key, trade-only, on every perp market. Revoke any time.
         </p>
       </div>
@@ -66,14 +66,14 @@ export default function LinkStep() {
         {offline ? (
           <div className="panel">
             <div className="cap soft">Engine offline</div>
-            <p className="copy" style={{ marginTop: 8 }}>
+            <p className="copy" style={{ marginTop: "0.8rem" }}>
               This deployment has no protection engine running, so it cannot issue keys yet. Your wallet and positions above are read live.
             </p>
           </div>
         ) : !key ? (
           <div className="panel">
             <div className="cap soft">Your Hoax key</div>
-            <p className="copy" style={{ marginTop: 8 }}>
+            <p className="copy" style={{ marginTop: "0.8rem" }}>
               {registering || account?.status === "pending_key" ? (
                 <>
                   <span className="spin" aria-hidden /> Issuing a dedicated key for {short(session.owner)}…
@@ -83,7 +83,7 @@ export default function LinkStep() {
               )}
             </p>
             {hoax.engine && !hoax.engine.online && (
-              <p className="cap soft" style={{ marginTop: 8 }}>
+              <p className="cap soft" style={{ marginTop: "0.8rem" }}>
                 The engine has not reported in. Keys are issued as soon as it does.
               </p>
             )}
@@ -94,7 +94,7 @@ export default function LinkStep() {
               <div className="spread" style={{ alignItems: "center" }}>
                 <div>
                   <div className="cap soft">Your Hoax key · one per account</div>
-                  <a className="mono" style={{ fontSize: 15 }} href={addressUrl(key)} target="_blank" rel="noreferrer">
+                  <a className="mono" style={{ fontSize: "1.5rem" }} href={addressUrl(key)} target="_blank" rel="noreferrer">
                     {key}
                   </a>
                 </div>
@@ -127,7 +127,7 @@ export default function LinkStep() {
               </label>
             )}
 
-            <div className="row" style={{ marginTop: 24 }}>
+            <div className="row" style={{ marginTop: "2.4rem" }}>
               {linked || (tx.phase === "done" && linkedMarkets > 0) ? (
                 <span className="tag saved">linked on {linkedMarkets} markets</span>
               ) : (
@@ -142,17 +142,17 @@ export default function LinkStep() {
               )}
             </div>
             {tx.err && (
-              <p className="note bad" style={{ marginTop: 16 }}>
+              <p className="note bad" style={{ marginTop: "1.6rem" }}>
                 {tx.err}
               </p>
             )}
             {tx.phase === "done" && !linked && (
-              <p className="cap soft" style={{ marginTop: 12 }}>
+              <p className="cap soft" style={{ marginTop: "1.2rem" }}>
                 <span className="spin" aria-hidden /> Linked on chain. Waiting for the engine to confirm…
               </p>
             )}
 
-            <div className="card" style={{ marginTop: 28 }}>
+            <div className="card" style={{ marginTop: "2.8rem" }}>
               <LinkGrid view={view} />
             </div>
 

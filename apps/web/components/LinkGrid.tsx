@@ -7,7 +7,7 @@ export function LinkGrid({ view }: { view: AccountJson | null }) {
   const linked = links ? view.markets.filter((m) => links[m.pool.toLowerCase()]).length : 0;
   return (
     <div>
-      <div className="spread cap soft" style={{ marginBottom: 10 }}>
+      <div className="spread cap soft" style={{ marginBottom: "1rem" }}>
         <span>Trade-only access by market</span>
         <span>
           {links ? `${linked} / ${view.markets.length}` : "–"}

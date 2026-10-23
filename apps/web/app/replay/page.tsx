@@ -4,7 +4,7 @@
 // demo/replay.ts, which runs the real Hoax engine on a simulated venue.
 
 import { useEffect, useState } from "react";
-import { Kicker } from "@/components/Kicker";
+import { PageHead } from "@/components/Kicker";
 
 interface Side { health: number | null; equity: number; size: number }
 interface Replay {
@@ -53,92 +53,87 @@ export default function ReplayPage() {
 
   if (missing)
     return (
-      <section className="sec alt">
-        <div className="wrap pad copy">No replay yet. Run npm run replay and reload.</div>
+      <section className="sec first">
+        <div className="pad txt">No replay yet. Run npm run replay and reload.</div>
       </section>
     );
-  if (!r) return <section className="sec alt" style={{ minHeight: "60vh" }} />;
+  if (!r) return <section className="sec first" style={{ minHeight: "60vh" }} />;
   const events = r.frames.flatMap((f, i) => f.events.map((e) => ({ t: Math.round((f.t - r.frames[0].t) / 1000), mark: f.mark, e, i })));
   const saved = r.receipts.find((x) => x.outcome === "saved");
   const sides = [
-    { key: "without" as const, title: "Without Hoax", res: r.result.withoutHoax, cls: "" },
-    { key: "with" as const, title: "With Hoax", res: r.result.withHoax, cls: "alt" },
+    { key: "without" as const, title: "Without Hoax", res: r.result.withoutHoax },
+    { key: "with" as const, title: "With Hoax", res: r.result.withHoax },
   ];
   return (
     <>
-      <section className="sec alt">
-        <div className="wrap pad" style={{ paddingBottom: 40 }}>
-          <Kicker>Replay · not a live run</Kicker>
-          <h1 className="hero-in">Same crash. Two outcomes.</h1>
-          <p className="lede hero-in" style={{ marginTop: 24, maxWidth: 680, ["--d" as string]: "0.3s" }}>
-            {r.start.size} {r.market.replace("-PERP", "")} long from {r.start.mark.toFixed(0)} on {r.start.collateral} USDso. Live dreamDEX
-            parameters, simulated venue.
-          </p>
-        </div>
-      </section>
-      <div className="grid g2" style={{ gap: 0 }} data-reveal>
+      <PageHead
+        kicker="Replay · not a live run"
+        title="Same crash. Two outcomes."
+        sub={
+          <>
+            {r.start.size} {r.market.replace("-PERP", "")} long from {r.start.mark.toFixed(0)} on {r.start.collateral} USDso, through the same mark path.
+            Live dreamDEX parameters, <b>the real Hoax engine</b>, a simulated venue.
+          </>
+        }
+        actions={[{ href: "/how-it-works", label: "How it works", ink: true }]}
+      />
+      <section className="sec cells c2" data-reveal>
         {sides.map((s) => (
-          <section key={s.key} className={`sec ${s.cls}`}>
-            <div className="pad-s" style={{ padding: "48px var(--gutter)" }}>
-              <div className="cap soft">{s.title}</div>
-              <div className={`num${s.key === "with" ? " accent" : ""}`} style={{ marginTop: 12 }}>
-                {s.res.finalEquity.toFixed(2)}
-                <small>USDso</small>
-              </div>
-              <div className="cap" style={{ marginTop: 12 }}>
-                {s.res.liquidated ? "liquidated" : "survived"} · {s.res.finalSize.toFixed(4)} left
-              </div>
-              <div style={{ marginTop: 32, color: s.key === "with" ? "var(--indigo)" : "var(--ink-soft)" }}>
-                <Field frames={r.frames} pick={(f) => f[s.key].health} trigger={r.params.policy.trigger} target={r.params.policy.target} label={`Health of the account ${s.title.toLowerCase()} over the replay`} />
-                <div className="spread cap soft" style={{ marginTop: 6 }}>
-                  <span>start</span>
-                  <span>health · 1 bar / s</span>
-                  <span>end</span>
-                </div>
-              </div>
+          <div key={s.key} className="p">
+            <div className={`mono-s ${s.key === "with" ? "accent" : "soft"}`}>{s.title}</div>
+            <div className={`num${s.key === "with" ? " accent" : ""}`} style={{ marginTop: "2.4rem" }}>
+              {s.res.finalEquity.toFixed(2)}
+              <small>USDso</small>
             </div>
-          </section>
-        ))}
-      </div>
-      <section className="sec">
-        <div className="wrap pad">
-          <div className="grid g-aside" style={{ gap: 48 }}>
-            <div>
-              <Kicker>Difference</Kicker>
-              <div className="num">
-                +{r.result.equityDifference.toFixed(2)}
-                <small>USDso</small>
-              </div>
-              <p className="cap soft" style={{ marginTop: 20 }}>
-                Equity kept vs. the unprotected account{saved ? " · receipt marked saved" : ""}
-              </p>
+            <div className="mono-s" style={{ marginTop: "1.2rem", color: s.res.liquidated ? "var(--bad)" : "var(--ok)" }}>
+              {s.res.liquidated ? "liquidated" : "survived"} · {s.res.finalSize.toFixed(4)} left
             </div>
-            <div>
-              <h3 style={{ marginBottom: 12 }}>What happened</h3>
-              <div className="rows">
-                {events.map((ev) => (
-                  <div className="r" key={`${ev.i}-${ev.e}`}>
-                    <span>
-                      t+{ev.t}s · {ev.mark.toFixed(2)}
-                    </span>
-                    <span style={{ fontSize: 12 }}>{ev.e}</span>
-                  </div>
-                ))}
-              </div>
-              <h3 style={{ margin: "36px 0 12px" }}>The receipts</h3>
-              <div className="rows">
-                {r.receipts.map((x, i) => (
-                  <div className="r" key={i}>
-                    <span className={`tag ${x.outcome}`}>{x.outcome}</span>
-                    <span style={{ fontSize: 12 }}>
-                      closed {x.closed.toFixed(4)} · health {x.healthBefore.toFixed(3)} → {x.healthAfter?.toFixed(3)} · cost {x.cost.toFixed(4)} USDso
-                      {x.preserved ? ` · preserved ${(Number(BigInt(x.preserved)) / 1e18).toFixed(2)} USDso` : ""}
-                    </span>
-                  </div>
-                ))}
+            <div style={{ marginTop: "3.2rem", color: s.key === "with" ? "var(--brand)" : "var(--ink-4)" }}>
+              <Field frames={r.frames} pick={(f) => f[s.key].health} trigger={r.params.policy.trigger} target={r.params.policy.target} label={`Health of the account ${s.title.toLowerCase()} over the replay`} />
+              <div className="between mono-xs soft" style={{ marginTop: "0.8rem" }}>
+                <span>start</span>
+                <span>health · 1 bar / s</span>
+                <span>end</span>
               </div>
             </div>
           </div>
+        ))}
+      </section>
+      <section className="sec cells c-why">
+        <div className="p">
+          <div className="mono-s ink">What happened</div>
+          <div className="rows" style={{ marginTop: "2.4rem" }}>
+            {events.map((ev) => (
+              <div className="r" key={`${ev.i}-${ev.e}`}>
+                <span>
+                  t+{ev.t}s · {ev.mark.toFixed(2)}
+                </span>
+                <span style={{ fontSize: "1.3rem" }}>{ev.e}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mono-s ink" style={{ marginTop: "4.8rem" }}>
+            The receipts
+          </div>
+          <div className="rows" style={{ marginTop: "2.4rem" }}>
+            {r.receipts.map((x, i) => (
+              <div className="r" key={i}>
+                <span className={`tag ${x.outcome}`}>{x.outcome}</span>
+                <span style={{ fontSize: "1.3rem" }}>
+                  closed {x.closed.toFixed(4)} · health {x.healthBefore.toFixed(3)} → {x.healthAfter?.toFixed(3)} · cost {x.cost.toFixed(4)} USDso
+                  {x.preserved ? ` · preserved ${(Number(BigInt(x.preserved)) / 1e18).toFixed(2)} USDso` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="p stat-cell" style={{ justifyContent: "flex-start", gap: "2.4rem" }}>
+          <div className="mono-s soft">Difference</div>
+          <div className="num accent">
+            +{r.result.equityDifference.toFixed(2)}
+            <small>USDso</small>
+          </div>
+          <p className="txt">Equity kept versus the unprotected account{saved ? ", and the receipt is marked saved" : ""}.</p>
         </div>
       </section>
     </>

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { EngineBadge } from "@/components/EngineBadge";
-import { Kicker } from "@/components/Kicker";
+import { Label } from "@/components/Ui";
 import { Avatar } from "@/components/WalletButton";
 import { AppContext } from "@/lib/appContext";
 import { DREAMDEX_APP, short } from "@/lib/format";
@@ -21,16 +21,16 @@ function Gate() {
   const hoax = useHoax();
   const noAccount = hoax.wallet && hoax.walletInfo && !hoax.walletInfo.primary;
   return (
-    <section className="sec">
-      <div className="wrap pad">
-        <Kicker>App</Kicker>
+    <section className="sec first">
+      <div className="pad" style={{ minHeight: "60vh", paddingTop: "9.6rem" }}>
+        <Label dot>Dashboard</Label>
         {noAccount ? (
           <>
-            <h1 className="hero-in">No dreamDEX account yet</h1>
-            <p className="lede" style={{ marginTop: 20, maxWidth: 620 }}>
+            <h1 className="h1" style={{ marginTop: "1.6rem" }}>No dreamDEX account yet</h1>
+            <p className="txt ink" style={{ marginTop: "2.4rem", maxWidth: "62rem" }}>
               {short(hoax.wallet)} has no dreamDEX trading account on Hideki. Open one in dreamDEX, then come back.
             </p>
-            <div className="row" style={{ marginTop: 32 }}>
+            <div className="row" style={{ marginTop: "3.2rem" }}>
               <a href={DREAMDEX_APP} className="pill" target="_blank" rel="noreferrer">
                 Open dreamDEX ↗
               </a>
@@ -41,18 +41,18 @@ function Gate() {
           </>
         ) : hoax.walletErr ? (
           <>
-            <h1 className="hero-in">Chain unreachable</h1>
-            <p className="note bad" style={{ marginTop: 24, maxWidth: 620 }}>
+            <h1 className="h1" style={{ marginTop: "1.6rem" }}>Chain unreachable</h1>
+            <p className="note bad" style={{ marginTop: "2.4rem", maxWidth: "62rem" }}>
               {hoax.walletErr}
             </p>
           </>
         ) : (
           <>
-            <h1 className="hero-in">Connect your wallet</h1>
-            <p className="lede" style={{ marginTop: 20, maxWidth: 620 }}>
+            <h1 className="h1" style={{ marginTop: "1.6rem" }}>Connect your wallet</h1>
+            <p className="txt ink" style={{ marginTop: "2.4rem", maxWidth: "62rem" }}>
               The wallet you trade dreamDEX perps with. Hoax finds your trading account and reads its positions live.
             </p>
-            <div className="row" style={{ marginTop: 32 }}>
+            <div className="row" style={{ marginTop: "3.2rem" }}>
               <button className="pill" onClick={hoax.openConnect}>
                 Connect wallet
               </button>
@@ -87,20 +87,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <aside className="side">
           <nav>
             <div className="who">
-              <div className="row" style={{ gap: 10, alignItems: "center" }}>
+              <div className="row" style={{ gap: "1.2rem", alignItems: "center" }}>
                 <Avatar address={session.owner} size={28} />
                 <div>
                   <div className="cap soft">{hoax.sample ? "Sample account" : "dreamDEX account"}</div>
-                  <div className="mono" style={{ color: "var(--ink)", fontSize: 13 }}>
+                  <div className="mono" style={{ color: "var(--ink)", fontSize: "1.4rem" }}>
                     {short(session.owner)}
                   </div>
                 </div>
               </div>
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: "1.6rem" }}>
                 <EngineBadge />
               </div>
               {!hoax.sample && !hoax.signedIn && (
-                <button className="pill ghost" style={{ marginTop: 14 }} onClick={hoax.openConnect}>
+                <button className="pill ghost" style={{ marginTop: "1.6rem", width: "100%" }} onClick={hoax.openConnect}>
                   Verify to manage
                 </button>
               )}
@@ -115,7 +115,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </aside>
         <div className="content">
           {err && (
-            <div className="wrap" style={{ paddingTop: 20 }}>
+            <div style={{ padding: "2rem var(--pad) 0" }}>
               <p className="note bad">{err}</p>
             </div>
           )}

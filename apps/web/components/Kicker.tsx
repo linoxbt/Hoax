@@ -1,34 +1,61 @@
+import { CornerLink, Label, Split } from "./Ui";
+
 export function Kicker({ children, center = false }: { children: React.ReactNode; center?: boolean }) {
   return <div className={`kicker${center ? " center" : ""}`}>{children}</div>;
 }
 
-export function Marquee({ text }: { text: string }) {
-  const items = Array.from({ length: 8 }, (_, i) => <span key={i}>{text}</span>);
+type Action = { href: string; label: string; ink?: boolean; external?: boolean };
+
+/**
+ * The title band inner pages open with: a label and a big heading in the wide
+ * cell, a short description and up to two corner links in the side cell.
+ */
+export function PageHead({ kicker, title, sub, actions = [], children }: { kicker: string; title: string; sub?: React.ReactNode; actions?: Action[]; children?: React.ReactNode }) {
   return (
-    <div className="marquee" aria-label={text}>
-      <div className="track" aria-hidden>
-        {items}
-        {items}
+    <section className="sec first phead">
+      <div className="phead-title">
+        <span className="plus tl" aria-hidden />
+        <Label dot>{kicker}</Label>
+        <Split as="h1" className="h1">
+          {title}
+        </Split>
       </div>
-    </div>
+      <div className="phead-side">
+        {sub && (
+          <div className="txt ink" style={{ padding: "var(--pad)" }} data-reveal>
+            {sub}
+          </div>
+        )}
+        {children}
+        {actions.length > 0 && (
+          <div className="actions" style={actions.length === 1 ? { gridTemplateColumns: "1fr" } : undefined}>
+            {actions.map((a) => (
+              <CornerLink key={a.href} href={a.href} ink={a.ink} external={a.external}>
+                {a.label}
+              </CornerLink>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
-/** The title band every page opens with. */
-export function PageHead({ kicker, title, children, alt = false }: { kicker: string; title: React.ReactNode; children?: React.ReactNode; alt?: boolean }) {
+/** A section head inside a page: label and heading on the left, a line of copy on the right. */
+export function SectionHead({ label, title, sub }: { label: string; title: string; sub?: React.ReactNode }) {
   return (
-    <section className={`sec${alt ? " alt" : ""}`}>
-      <div className="wrap pad" style={{ paddingBottom: 44 }}>
-        <div className="hero-in" style={{ ["--d" as string]: "0.05s" }}>
-          <Kicker>{kicker}</Kicker>
-        </div>
-        <div className="spread">
-          <h1 className="hero-in" style={{ ["--d" as string]: "0.15s" }}>
-            {title}
-          </h1>
-          {children}
-        </div>
+    <div className="between prob-head">
+      <div>
+        <Label>{label}</Label>
+        <Split className="h2" delay={0.05}>
+          {title}
+        </Split>
       </div>
-    </section>
+      {sub && (
+        <p className="txt prob-sub" data-reveal>
+          {sub}
+        </p>
+      )}
+    </div>
   );
 }

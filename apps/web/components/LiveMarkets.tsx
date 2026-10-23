@@ -50,7 +50,7 @@ export function useMarkets(everyMs = 5000) {
 /** A scrolling tape of every market's mark. */
 export function MarketTape() {
   const { rows, moves } = useMarkets();
-  if (!rows) return <div className="tape" aria-hidden style={{ height: 44 }} />;
+  if (!rows) return <div className="tape" aria-hidden style={{ height: "4.4rem" }} />;
   const items = [...rows, ...rows];
   return (
     <div className="tape" aria-label="Live dreamDEX perp marks">

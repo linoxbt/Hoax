@@ -43,7 +43,7 @@ export function HealthField({ health, trigger, target }: { health: number | null
       <div className="ends">
         <span>1.0 liquidation</span>
         <span>
-          health <b className="mono" style={{ fontSize: 12 }}>{label}</b>
+          health <b className="mono" style={{ fontSize: "1.2rem" }}>{label}</b>
         </span>
         <span>{max.toFixed(1)}+ safe</span>
       </div>

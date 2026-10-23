@@ -31,7 +31,7 @@ export default function Settings() {
     <>
       <AppHead kicker="Account" title="Settings" />
       <div className="wrap pad-s">
-        <div className="grid g2" style={{ gap: 24 }}>
+        <div className="grid g2" style={{ gap: "2.4rem" }}>
           <div className="card">
             <div className="cap soft">Protection</div>
             <h3 style={{ margin: "10px 0" }}>{!account ? "Not set up" : account.paused ? "Paused" : "On"}</h3>
@@ -39,7 +39,7 @@ export default function Settings() {
             {account && (
               <button
                 className={`pill${account.paused ? "" : " ghost"}`}
-                style={{ marginTop: 16 }}
+                style={{ marginTop: "1.6rem" }}
                 disabled={!canManage}
                 onClick={() => setPaused(!account.paused)}
               >
@@ -52,7 +52,7 @@ export default function Settings() {
             <h3 style={{ margin: "10px 0" }}>Unlink the Hoax key</h3>
             <p className="copy soft">One transaction from your wallet removes trade access on every market.</p>
             {revoke.phase === "done" ? (
-              <p className="note" style={{ marginTop: 16 }}>
+              <p className="note" style={{ marginTop: "1.6rem" }}>
                 Revoked.{" "}
                 {revoke.hash && (
                   <a className="accent" href={txUrl(revoke.hash)} target="_blank" rel="noreferrer">
@@ -63,7 +63,7 @@ export default function Settings() {
             ) : (
               <button
                 className="pill ghost"
-                style={{ marginTop: 16 }}
+                style={{ marginTop: "1.6rem" }}
                 disabled={hoax.sample || !account?.hoaxKey || !anyLinked || ["building", "confirm", "mining"].includes(revoke.phase)}
                 onClick={async () => {
                   if (await revoke.send({ approved: false, builderFee: true })) await refresh();
@@ -73,14 +73,14 @@ export default function Settings() {
               </button>
             )}
             {revoke.err && (
-              <p className="note bad" style={{ marginTop: 12 }}>
+              <p className="note bad" style={{ marginTop: "1.2rem" }}>
                 {revoke.err}
               </p>
             )}
           </div>
         </div>
 
-        <div className="card" style={{ marginTop: 24 }}>
+        <div className="card" style={{ marginTop: "2.4rem" }}>
           <LinkGrid view={view} />
         </div>
 
@@ -98,7 +98,7 @@ export default function Settings() {
           </div>
           <div className="r">
             <span>Hoax key</span>
-            <span className="row" style={{ gap: 10 }}>
+            <span className="row" style={{ gap: "1rem" }}>
               {account?.hoaxKey ? (
                 <>
                   <a className="mono" href={addressUrl(account.hoaxKey)} target="_blank" rel="noreferrer">
@@ -125,7 +125,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="row" style={{ marginTop: 40 }}>
+        <div className="row" style={{ marginTop: "4rem" }}>
           <button className="pill ghost" onClick={hoax.disconnect}>
             {hoax.sample ? "Leave the sample account" : "Disconnect wallet"}
           </button>

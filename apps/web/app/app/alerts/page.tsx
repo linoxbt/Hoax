@@ -16,7 +16,7 @@ export default function Alerts() {
             {view.alerts.map((a) => (
               <div className="r text" key={a.id}>
                 <span>
-                  <span className="tag pending" style={{ marginRight: 10 }}>
+                  <span className="tag pending" style={{ marginRight: "1rem" }}>
                     {a.kind}
                   </span>
                   {ago(a.createdAt)}
