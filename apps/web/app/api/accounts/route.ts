@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { error, getStore, hashToken, isAddress, json, newToken, rateLimited } from "@/lib/server";
+import { DEMO, error, getStore, hashToken, isAddress, json, newToken, rateLimited } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
  * links that key in dreamDEX, which nobody else can do.
  */
 export async function POST(req: Request) {
+  if (DEMO) return error(503, "This deployment runs on demo data with no watcher, so it cannot protect a wallet yet. Onboarding opens once the watcher is live.");
   if (rateLimited(req, 10, 60 * 60_000)) return error(429, "too many registrations from this address; try again later");
   const body = (await req.json().catch(() => null)) as { owner?: string } | null;
   const owner = body?.owner?.trim() ?? "";

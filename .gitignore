@@ -6,3 +6,4 @@ keystore/
 *.tsbuildinfo
 next-env.d.ts
 demo/out/
+.netlify

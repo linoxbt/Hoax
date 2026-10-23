@@ -1,0 +1,9 @@
+# The Hoax web app (apps/web) on Netlify. The watcher runs on Railway.
+[build]
+  base = "apps/web"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
