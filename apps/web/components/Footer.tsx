@@ -1,13 +1,17 @@
 import Link from "next/link";
+import { Logo } from "./Logo";
 
 export function Footer() {
   return (
     <footer className="foot sec deep">
       <div className="wrap pad-s">
         <div className="spread" style={{ alignItems: "flex-start" }}>
-          <p className="lede" style={{ maxWidth: 420 }}>
-            Liquidation protection for perpetual futures. Non-custodial. Provable on-chain.
-          </p>
+          <div>
+            <Logo size={36} />
+            <p className="lede" style={{ maxWidth: 420, marginTop: 20 }}>
+              Liquidation protection for perpetual futures. Non-custodial. Provable on-chain.
+            </p>
+          </div>
           <div className="row cap" style={{ gap: 28 }}>
             <Link href="/how-it-works">How it works</Link>
             <Link href="/security">Security</Link>

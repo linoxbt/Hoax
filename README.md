@@ -1,3 +1,5 @@
+<p><img src="apps/web/public/logo.svg" width="56" height="56" alt="Hoax logo"></p>
+
 # Hoax
 
 Hoax cuts a dreamDEX perp position down to safe size before the liquidation engine can take it, and proves every save with an on-chain receipt.

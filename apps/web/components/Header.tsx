@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Logo } from "./Logo";
 
 const PRIMARY = [
   ["/", "Home"],
@@ -46,8 +47,8 @@ export function Header() {
               </span>
               <span className="lbl">{open ? "Close" : "Menu"}</span>
             </button>
-            <Link href="/" className="mark striate" aria-label="Hoax home">
-              Hoax
+            <Link href="/" className="mark" aria-label="Hoax home">
+              <Logo />
             </Link>
             <div className="right">
               <Link href="/app" className="pill ghost">

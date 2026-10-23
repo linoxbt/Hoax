@@ -5,11 +5,12 @@ import { Motion } from "@/components/Motion";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hoax",
+  metadataBase: new URL(process.env.URL ?? "https://hoax-dreamdex.netlify.app"),
+  title: { default: "Hoax · Liquidation protection for dreamDEX perps", template: "%s · Hoax" },
   description: "Hoax cuts a dreamDEX perp position down to safe size before liquidation can take it, and proves every save with an on-chain receipt.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#2c2824" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#4338ca" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
