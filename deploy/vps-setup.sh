@@ -13,6 +13,7 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
 command -v git >/dev/null 2>&1 || (apt-get update -y && apt-get install -y git)
+command -v openssl >/dev/null 2>&1 || (apt-get update -y && apt-get install -y openssl)
 
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" fetch origin "$BRANCH" && git -C "$DIR" checkout "$BRANCH" && git -C "$DIR" reset --hard "origin/$BRANCH"
@@ -34,6 +35,16 @@ HOAX_BUILDER_FEE_BPS_1K=0
 DRY_RUN=false
 ENV
   echo "Wrote $DIR/.env with fresh secrets. Back it up: losing HOAX_KEYSTORE_SECRET loses the Hoax keys."
+fi
+
+# A self-signed certificate so Netlify reaches Postgres over TLS. The key must
+# belong to the container's postgres user (uid 999) and be private.
+if [ ! -f deploy/pg-certs/server.key ]; then
+  mkdir -p deploy/pg-certs
+  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -subj "/CN=hoax-db" \
+    -keyout deploy/pg-certs/server.key -out deploy/pg-certs/server.crt >/dev/null 2>&1
+  chown 999:999 deploy/pg-certs/server.key deploy/pg-certs/server.crt
+  chmod 600 deploy/pg-certs/server.key
 fi
 
 docker compose up -d --build
@@ -59,7 +70,10 @@ echo
 echo "Watcher health:  http://$IP:8080/healthz"
 [ -n "$GAS" ] && echo "Gas wallet:      $GAS   <- send it some STT; it tops up every linked Hoax key"
 echo
-echo "On Netlify (Site configuration > Environment variables):"
-echo "  1. DATABASE_URL = postgres://hoax:$PASS@$IP:$PORT/hoax   (mark it secret)"
-echo "  2. delete HOAX_DEMO"
-echo "  3. redeploy. The site's engine badge turns green within seconds."
+echo "On Netlify (Project configuration > Environment variables), add:"
+echo
+echo "  DATABASE_URL = postgres://hoax:$PASS@$IP:$PORT/hoax?sslmode=no-verify"
+echo
+echo "Mark it secret, scope it to Functions. Then turn off demo mode (delete HOAX_DEMO)"
+echo "and redeploy. The site's engine badge turns green within seconds."
+echo "Back up $DIR/.env somewhere safe: it holds the key that decrypts every Hoax key."
