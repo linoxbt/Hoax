@@ -248,6 +248,7 @@ html.js .logo-step { animation: logo-step 1.1s 0.35s cubic-bezier(0.6, 0, 0.2, 1
 .footer-mark { display: flex; align-items: center; justify-content: center; padding: 3.2rem; color: var(--ink); }
 .footer-word { position: relative; border-top: var(--b) solid var(--line); padding: 3.2rem 4.8rem 2.4rem; }
 .footer-word svg { width: 100%; height: auto; overflow: visible; }
+.footer.slim .footer-bar { border-top: 0; }
 .footer-bar { border-top: var(--b) solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 1.6rem; padding: 1.2rem 1.6rem; font-family: var(--mono); font-size: 1.2rem; text-transform: uppercase; color: var(--ink-3); }
 
 /* ---------- motion ---------- */

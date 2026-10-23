@@ -1,4 +1,6 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { EngineBadge } from "./EngineBadge";
 import { LogoMark } from "./Logo";
 
@@ -44,7 +46,23 @@ const COLS: Array<{ title: string; links: Array<[string, string, boolean?]> }> =
   { title: "Build", links: [["https://github.com/linoxbt/Hoax", "GitHub", true], ["https://app.testnet.dreamdex.io", "dreamDEX", true], ["https://x.com/DreamDEXSomnia", "X · @DreamDEXSomnia", true]] },
 ];
 
+function Bar() {
+  return (
+    <div className="footer-bar">
+      <span>©2026 Hoax. Liquidation protection for dreamDEX perps.</span>
+      <span>Testnet</span>
+    </div>
+  );
+}
+
+/** The full footer closes the landing page; every other page ends on the one-line bar. */
 export function Footer() {
+  if (usePathname() !== "/")
+    return (
+      <footer className="footer slim">
+        <Bar />
+      </footer>
+    );
   return (
     <footer className="footer">
       <div className="footer-main">
@@ -94,10 +112,7 @@ export function Footer() {
         <span className="plus br" aria-hidden />
         <Wordmark />
       </div>
-      <div className="footer-bar">
-        <span>©2026 Hoax. Liquidation protection for dreamDEX perps.</span>
-        <span>Testnet</span>
-      </div>
+      <Bar />
     </footer>
   );
 }
