@@ -20,6 +20,7 @@
     "viem": "^2.21.0"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.16.4",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0"
   }
