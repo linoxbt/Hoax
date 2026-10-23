@@ -92,6 +92,7 @@ export interface Venue {
   maxBuilderFee(market: MarketInfo): Promise<bigint>;
   /** Send an immediate-or-cancel order for `owner`, signed by the linked key. */
   placeIocFor(signer: TradingSigner, owner: Address, market: MarketInfo, order: IocOrder): Promise<PlaceResult>;
+  /** Liquidations of `owner` from `fromBlock` to the head. Implementations may bound how far back they look. */
   liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint): Promise<LiquidationEvent[]>;
   nativeBalance(address: Address): Promise<bigint>;
   sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex>;

@@ -38,10 +38,12 @@ export class CounterfactualTracker {
         }
         if (!feed.ok) continue; // judge nothing on a stale mark
 
-        const liquidations = action.block !== null
-          ? await this.venue.liquidationsSince(market.marginBank, getAddress(action.owner), action.block + 1n)
-          : [];
-        const liquidatedSince = liquidations.some((l) => l.pool.toLowerCase() === market.pool.toLowerCase());
+        // The engine writes a "missed" receipt for every liquidation of a
+        // protected account, so the store answers this without scanning logs.
+        const later = await this.store.listActions({ owner: action.owner, limit: 50 });
+        const liquidatedSince = later.some(
+          (a) => a.outcome === "missed" && a.market === action.market && a.createdAt > action.createdAt && a.id !== action.id,
+        );
         const verdict = evaluateTracking({
           side: action.side,
           originalLiquidationPrice: action.liqPriceBefore,

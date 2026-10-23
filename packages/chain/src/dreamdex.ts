@@ -70,6 +70,10 @@ const ORDER_GAS = 10_000_000n;
 const ORDER_TYPE_IOC = 2;
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const MARKET_TTL_MS = 5 * 60 * 1000;
+/** eth_getLogs block range the Hideki RPC accepts. */
+const LOG_WINDOW = 1000n;
+/** How far back a liquidation scan reaches: about 2 minutes of Hideki blocks. */
+const MAX_LOG_LOOKBACK = 12_000n;
 
 export interface DreamDexVenueOptions {
   rpcUrl?: string;
@@ -243,25 +247,35 @@ export class DreamDexVenue implements Venue {
 
   async liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint): Promise<LiquidationEvent[]> {
     const { engine } = await this.engineFor(marginBank);
-    const logs = await this.publicClient.getContractEvents({
-      address: engine,
-      abi: liquidationEngineEventsAbi,
-      eventName: "PositionLiquidated",
-      args: { account: owner },
-      fromBlock,
-      toBlock: "latest",
-    });
-    return logs.map((log) => {
-      const args = log.args as { account: Address; perpPool: Address; sizeDelta: bigint; markPrice: bigint };
-      return {
-        account: getAddress(args.account),
-        pool: getAddress(args.perpPool),
-        sizeDelta: args.sizeDelta,
-        markPrice: args.markPrice,
-        blockNumber: log.blockNumber ?? 0n,
-        txHash: (log.transactionHash ?? "0x") as Hex,
-      };
-    });
+    const head = await this.publicClient.getBlockNumber();
+    // The Hideki RPC refuses eth_getLogs over more than 1000 blocks (~10 s), so
+    // read in windows, and never further back than MAX_LOG_LOOKBACK.
+    let from = fromBlock > head - MAX_LOG_LOOKBACK ? fromBlock : head - MAX_LOG_LOOKBACK;
+    const out: LiquidationEvent[] = [];
+    while (from <= head) {
+      const to = from + LOG_WINDOW - 1n < head ? from + LOG_WINDOW - 1n : head;
+      const logs = await this.publicClient.getContractEvents({
+        address: engine,
+        abi: liquidationEngineEventsAbi,
+        eventName: "PositionLiquidated",
+        args: { account: owner },
+        fromBlock: from,
+        toBlock: to,
+      });
+      for (const log of logs) {
+        const args = log.args as { account: Address; perpPool: Address; sizeDelta: bigint; markPrice: bigint };
+        out.push({
+          account: getAddress(args.account),
+          pool: getAddress(args.perpPool),
+          sizeDelta: args.sizeDelta,
+          markPrice: args.markPrice,
+          blockNumber: log.blockNumber ?? 0n,
+          txHash: (log.transactionHash ?? "0x") as Hex,
+        });
+      }
+      from = to + 1n;
+    }
+    return out;
   }
 
   async nativeBalance(address: Address): Promise<bigint> {
