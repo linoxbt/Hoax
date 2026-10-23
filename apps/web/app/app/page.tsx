@@ -4,7 +4,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { HealthBar } from "@/components/HealthBar";
+import { Edge } from "@/components/Bars";
+import { HealthField } from "@/components/HealthField";
+import { Kicker } from "@/components/Kicker";
 import { ago, short, units, usd } from "@/lib/format";
 import { api, clearSession, loadSession, saveSession, type Session } from "@/lib/session";
 import type { AccountJson, PolicyJson, PositionJson } from "@/lib/types";
@@ -77,107 +79,147 @@ export default function Positions() {
 
   if (!session) {
     return (
-      <div className="stack">
-        <h1>Positions</h1>
-        <p>
-          This browser is not managing a wallet yet. <Link href="/start">Start here</Link>, or restore with the manage token
-          you saved.
-        </p>
-        <div className="card stack">
-          <label className="field">
-            <span>dreamDEX wallet</span>
-            <input value={restore.owner} onChange={(e) => setRestore({ ...restore, owner: e.target.value })} placeholder="0x…" />
-          </label>
-          <label className="field">
-            <span>Manage token</span>
-            <input value={restore.token} onChange={(e) => setRestore({ ...restore, token: e.target.value })} />
-          </label>
-          <button
-            className="btn"
-            onClick={() => {
-              const s = { owner: restore.owner.trim().toLowerCase(), accountId: "", token: restore.token.trim() };
-              saveSession(s);
-              setSession(s);
-            }}
-          >
-            Restore
-          </button>
-        </div>
-      </div>
+      <>
+        <section className="sec char">
+          <div className="wrap pad">
+            <Kicker left>Positions</Kicker>
+            <h1>Nothing here yet</h1>
+            <p className="copy soft" style={{ marginTop: 20 }}>
+              This browser is not managing a wallet. <Link href="/start">Start here ↗</Link>, or restore with the manage token
+              you saved.
+            </p>
+          </div>
+        </section>
+        <section className="sec sand">
+          <Edge color="char" seed={15} />
+          <div className="wrap pad" style={{ paddingTop: 32 }}>
+            <div className="grid g3" style={{ alignItems: "end" }}>
+              <label className="field">
+                <span>dreamDEX wallet</span>
+                <input value={restore.owner} onChange={(e) => setRestore({ ...restore, owner: e.target.value })} placeholder="0x…" />
+              </label>
+              <label className="field">
+                <span>Manage token</span>
+                <input value={restore.token} onChange={(e) => setRestore({ ...restore, token: e.target.value })} />
+              </label>
+              <div>
+                <button
+                  className="pill"
+                  onClick={() => {
+                    const s = { owner: restore.owner.trim().toLowerCase(), accountId: "", token: restore.token.trim() };
+                    saveSession(s);
+                    setSession(s);
+                  }}
+                >
+                  Restore
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </>
     );
   }
 
   const account = view?.account;
   const policyFor = (m: string) => view?.policies.find((p) => p.market === m);
+  const state = account?.status === "active" ? (account.paused ? "paused" : "protecting") : account?.status?.replace("_", " ") ?? "loading";
 
   return (
-    <div className="stack">
-      <div className="spread">
-        <h1>Positions</h1>
-        <div className="row">
-          {account && (
-            <button className={`btn ${account.paused ? "primary" : ""}`} onClick={() => setPaused(!account.paused)}>
-              {account.paused ? "Resume Hoax" : "Pause Hoax"}
-            </button>
+    <>
+      <section className="sec char">
+        <div className="wrap pad" style={{ paddingBottom: 48 }}>
+          <Kicker left>Positions</Kicker>
+          <div className="spread">
+            <h1>{state}</h1>
+            <div className="row">
+              {account && (
+                <button className={`pill${account.paused ? "" : " ghost"}`} onClick={() => setPaused(!account.paused)}>
+                  {account.paused ? "Resume Hoax" : "Pause Hoax"}
+                </button>
+              )}
+              <Link className="pill ghost" href="/app/receipts">
+                Receipts
+              </Link>
+            </div>
+          </div>
+          <div className="grid g3 cap" style={{ marginTop: 40 }}>
+            <div>
+              <div className="soft">Wallet</div>
+              <span className="mono" style={{ fontSize: 13 }}>{short(session.owner)}</span>
+            </div>
+            <div>
+              <div className="soft">Hoax key</div>
+              <span className="mono" style={{ fontSize: 13 }}>{short(account?.hoaxKey)}</span>
+            </div>
+            <div>
+              <div className="soft">Access</div>
+              {view && view.isOwner === false ? "read-only · manage token not accepted" : "manage token accepted"}
+            </div>
+          </div>
+          {err && <p className="note bad" style={{ marginTop: 24 }}>{err}</p>}
+          {account?.status === "pending_link" && (
+            <p className="note" style={{ marginTop: 24 }}>
+              The Hoax key is not linked yet. <Link href="/start">Finish onboarding ↗</Link>
+            </p>
           )}
-          <Link className="btn" href="/app/receipts">
-            Receipts
-          </Link>
+          {account?.status === "unlinked" && (
+            <p className="note bad" style={{ marginTop: 24 }}>The Hoax key was unlinked in dreamDEX, so Hoax is not protecting this wallet.</p>
+          )}
         </div>
-      </div>
-      <p className="muted small">
-        Wallet <span className="mono">{short(session.owner)}</span> · Hoax key{" "}
-        <span className="mono">{short(account?.hoaxKey)}</span> ·{" "}
-        {account?.status === "active" ? (account.paused ? "paused" : "protecting") : account?.status ?? "loading"}
-        {view && view.isOwner === false && " · read-only (manage token not accepted)"}
-      </p>
-      {err && <div className="notice bad">{err}</div>}
-      {account?.status === "pending_link" && (
-        <div className="notice">
-          The Hoax key is not linked yet. <Link href="/start">Finish onboarding</Link>.
-        </div>
-      )}
-      {account?.status === "unlinked" && (
-        <div className="notice bad">The Hoax key was unlinked in dreamDEX, so Hoax is not protecting this wallet.</div>
-      )}
+      </section>
 
-      {view && view.positions.length === 0 && <p className="muted">No open perp positions on this wallet.</p>}
-      {view?.positions.map((p) => (
-        <PositionCard
-          key={p.market}
-          active={account?.status === "active" && !account.paused}
-          p={p}
-          policy={policyFor(p.market)}
-          editing={editing === p.market}
-          onEdit={() => setEditing(editing === p.market ? null : p.market)}
-          onSave={(pol) => savePolicy(p.market, pol)}
-        />
-      ))}
-
-      {view && view.alerts.length > 0 && (
-        <>
-          <h2>Alerts</h2>
-          <div className="card">
-            {view.alerts.map((a) => (
-              <p key={a.id} className="small">
-                <span className="muted">{ago(a.createdAt)}</span> {a.message}
-              </p>
+      <section className="sec sand">
+        <Edge color="char" seed={17} />
+        <div className="wrap pad" style={{ paddingTop: 32 }}>
+          {view && view.positions.length === 0 && <p className="copy soft">No open perp positions on this wallet.</p>}
+          <div className="stack" style={{ display: "grid", gap: 56 }}>
+            {view?.positions.map((p) => (
+              <PositionCard
+                key={p.market}
+                active={account?.status === "active" && !account.paused}
+                p={p}
+                policy={policyFor(p.market)}
+                editing={editing === p.market}
+                onEdit={() => setEditing(editing === p.market ? null : p.market)}
+                onSave={(pol) => savePolicy(p.market, pol)}
+              />
             ))}
           </div>
-        </>
+        </div>
+      </section>
+
+      {view && view.alerts.length > 0 && (
+        <section className="sec char">
+          <Edge color="sand" seed={19} />
+          <div className="wrap pad" style={{ paddingTop: 32 }}>
+            <Kicker left>Alerts</Kicker>
+            <div className="rows">
+              {view.alerts.map((a) => (
+                <div className="r" key={a.id}>
+                  <span>{ago(a.createdAt)}</span>
+                  <span style={{ fontFamily: "var(--label)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", textAlign: "left" }}>{a.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
-      <p className="small">
-        <button
-          className="btn"
-          onClick={() => {
-            clearSession();
-            setSession(null);
-          }}
-        >
-          Forget this wallet on this browser
-        </button>
-      </p>
-    </div>
+
+      <section className={`sec ${view && view.alerts.length > 0 ? "char" : "sand"}`}>
+        <div className="wrap" style={{ paddingBottom: 48 }}>
+          <button
+            className="pill ghost"
+            onClick={() => {
+              clearSession();
+              setSession(null);
+            }}
+          >
+            Forget this wallet on this browser
+          </button>
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -201,60 +243,83 @@ function PositionCard({
   useEffect(() => setForm(policy ?? { ...DEFAULTS, market: p.market }), [policy, p.market]);
 
   return (
-    <div className="card">
-      <div className="spread">
-        <strong>
-          {p.market} {p.side} {units(p.size.replace("-", ""), p.baseDecimals)} {p.baseSymbol}
-        </strong>
-        {policy?.enabled && active ? (
-          <span className="badge saved">protected</span>
-        ) : policy?.enabled ? (
-          <span className="badge skipped">policy on, Hoax inactive</span>
-        ) : (
-          <span className="badge not-needed">not protected</span>
-        )}
+    <article>
+      <div className="spread" style={{ borderBottom: "1px solid var(--char)", paddingBottom: 14 }}>
+        <div>
+          <div className="cap soft">
+            {p.side} · {units(p.size.replace("-", ""), p.baseDecimals)} {p.baseSymbol}
+          </div>
+          <h2>{p.market}</h2>
+        </div>
+        <div className="row" style={{ alignItems: "center" }}>
+          {policy?.enabled && active ? (
+            <span className="tag saved">protected</span>
+          ) : policy?.enabled ? (
+            <span className="tag skipped">policy on · Hoax inactive</span>
+          ) : (
+            <span className="tag not-needed">not protected</span>
+          )}
+          <div className="num m">{p.health === null ? "–" : p.health.toFixed(2)}</div>
+        </div>
       </div>
-      <HealthBar health={p.health} trigger={base.triggerHealth} target={base.targetHealth} />
-      <dl className="kv small">
-        <dt>Health</dt>
-        <dd className="mono">{p.health === null ? "–" : p.health.toFixed(3)}</dd>
-        <dt>Mark</dt>
-        <dd className="mono">
-          {usd(p.mark)} {p.markOk ? "" : "(stale: Hoax will not act)"}
-        </dd>
-        <dt>Liquidation price</dt>
-        <dd className="mono">{usd(p.liqPrice)}</dd>
-        <dt>Equity / maintenance</dt>
-        <dd className="mono">
-          {usd(p.equity)} / {usd(p.mmReq)} USDso
-        </dd>
-        <dt>Policy</dt>
-        <dd>
-          act at {base.triggerHealth}, restore {base.targetHealth}, ≤{base.maxClosePct}% per step, ≤{base.maxSlippageBps} bps
-          slippage
-        </dd>
-      </dl>
-      <div className="row" style={{ marginTop: 12 }}>
-        <button className="btn" onClick={onEdit}>
+      <HealthField health={p.health} trigger={base.triggerHealth} target={base.targetHealth} />
+      <div className="grid g2" style={{ marginTop: 24, gap: 40 }}>
+        <div className="rows">
+          <div className="r">
+            <span>Mark</span>
+            <span>
+              {usd(p.mark)} {p.markOk ? "" : "· stale, Hoax will not act"}
+            </span>
+          </div>
+          <div className="r">
+            <span>Liquidation price</span>
+            <span>{usd(p.liqPrice)}</span>
+          </div>
+          <div className="r">
+            <span>Equity / maintenance</span>
+            <span>
+              {usd(p.equity)} / {usd(p.mmReq)} USDso
+            </span>
+          </div>
+        </div>
+        <div className="rows">
+          <div className="r">
+            <span>Acts at</span>
+            <span>{base.triggerHealth}</span>
+          </div>
+          <div className="r">
+            <span>Restores</span>
+            <span>{base.targetHealth}</span>
+          </div>
+          <div className="r">
+            <span>Per step · slippage</span>
+            <span>
+              ≤{base.maxClosePct}% · ≤{base.maxSlippageBps} bps
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="row" style={{ marginTop: 20 }}>
+        <button className="pill ghost" onClick={onEdit}>
           {editing ? "Close" : "Edit policy"}
         </button>
         {!policy?.enabled && (
-          <button className="btn primary" onClick={() => onSave({ ...base, enabled: true })}>
+          <button className="pill" onClick={() => onSave({ ...base, enabled: true })}>
             Protect this position
           </button>
         )}
       </div>
       {editing && (
-        <div className="stack" style={{ marginTop: 12 }}>
-          <div className="grid cols-2">
+        <div className="panel" style={{ marginTop: 20 }}>
+          <div className="grid g3">
             {(
               [
                 ["triggerHealth", "Trigger health", "0.05"],
                 ["targetHealth", "Target health", "0.05"],
-                ["maxClosePct", "Max close per action (%)", "1"],
-                ["maxSlippageBps", "Max slippage (bps)", "1"],
-                ["cooldownSec", "Cooldown (s)", "1"],
-                ["lambda", "Act when close ≤ λ × liquidation cost", "0.05"],
+                ["maxClosePct", "Max close per step %", "1"],
+                ["maxSlippageBps", "Max slippage bps", "1"],
+                ["cooldownSec", "Cooldown s", "1"],
+                ["lambda", "Act when close ≤ λ × liquidation", "0.05"],
               ] as const
             ).map(([k, label, step]) => (
               <label className="field" key={k}>
@@ -263,21 +328,21 @@ function PositionCard({
               </label>
             ))}
           </div>
-          <label className="row small">
-            <input type="checkbox" style={{ width: "auto" }} checked={form.allowFullClose} onChange={(e) => setForm({ ...form, allowFullClose: e.target.checked })} />
+          <label className="row cap" style={{ marginTop: 20 }}>
+            <input type="checkbox" checked={form.allowFullClose} onChange={(e) => setForm({ ...form, allowFullClose: e.target.checked })} />
             Close fully when a partial close would leave less than the market minimum
           </label>
-          <label className="row small">
-            <input type="checkbox" style={{ width: "auto" }} checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+          <label className="row cap" style={{ marginTop: 8 }}>
+            <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
             Protect this position
           </label>
-          <div>
-            <button className="btn primary" onClick={() => onSave(form)}>
+          <div style={{ marginTop: 20 }}>
+            <button className="pill" onClick={() => onSave(form)}>
               Save policy
             </button>
           </div>
         </div>
       )}
-    </div>
+    </article>
   );
 }

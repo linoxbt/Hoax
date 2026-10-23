@@ -8,25 +8,23 @@ export function ReceiptRow({ a, decimals = 18 }: { a: ActionJson; decimals?: num
   return (
     <tr>
       <td>
-        <Link href={`/r/${a.id}`}>{ago(a.createdAt)}</Link>
+        <Link href={`/r/${a.id}`}>{ago(a.createdAt)} ↗</Link>
       </td>
       <td>{a.market}</td>
       <td>
         <OutcomeBadge outcome={a.outcome} />
       </td>
-      <td className="mono">
-        {a.sizeFilled !== "0" ? `${units(a.sizeFilled, decimals)} of ${units(a.sizeBefore, decimals)}` : a.reason ?? "–"}
-      </td>
-      <td className="mono">
+      <td>{a.sizeFilled !== "0" ? `${units(a.sizeFilled, decimals)} / ${units(a.sizeBefore, decimals)}` : a.reason ?? "–"}</td>
+      <td>
         {health(a.healthBefore)} → {health(a.healthAfter)}
       </td>
-      <td className="mono">{a.cost ? `${usd(a.cost)} USDso` : "–"}</td>
+      <td>{a.cost ? `${usd(a.cost)} USDso` : "–"}</td>
     </tr>
   );
 }
 
 export function ReceiptTable({ actions }: { actions: ActionJson[] }) {
-  if (actions.length === 0) return <p className="muted">No receipts yet.</p>;
+  if (actions.length === 0) return <p className="cap soft">No receipts yet.</p>;
   return (
     <div className="scroll-x">
       <table className="list">

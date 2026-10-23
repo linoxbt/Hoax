@@ -4,6 +4,7 @@
 // demo/replay.ts, which runs the real Hoax engine on a simulated venue.
 
 import { useEffect, useState } from "react";
+import { Kicker } from "@/components/Kicker";
 
 interface Side { health: number | null; equity: number; size: number }
 interface Replay {
@@ -21,28 +22,21 @@ interface Replay {
   frames: Array<{ t: number; mark: number; with: Side; without: Side; events: string[] }>;
 }
 
-const W = 600;
-const H = 180;
-
-function Chart({ r }: { r: Replay }) {
-  const n = r.frames.length;
-  const x = (i: number) => (i / Math.max(1, n - 1)) * W;
-  const maxH = Math.max(3, r.params.policy.target + 1);
-  const y = (h: number | null) => H - (Math.min(maxH, Math.max(0, h ?? maxH)) / maxH) * H;
-  const line = (pick: (f: Replay["frames"][number]) => number | null) => r.frames.map((f, i) => `${x(i).toFixed(1)},${y(pick(f)).toFixed(1)}`).join(" ");
-  const hline = (h: number, color: string, label: string) => (
-    <g>
-      <line x1={0} x2={W} y1={y(h)} y2={y(h)} stroke={color} strokeDasharray="4 4" strokeWidth={1} />
-      <text x={4} y={y(h) - 4} fontSize={11} fill="var(--muted)">{label}</text>
-    </g>
-  );
+function Field({ frames, pick, trigger, target, label }: { frames: Replay["frames"]; pick: (f: Replay["frames"][number]) => number | null; trigger: number; target: number; label: string }) {
+  const maxH = Math.max(3, target + 1);
+  const n = frames.length;
+  const step = 3;
+  const y = (h: number) => 100 - (Math.min(maxH, Math.max(0, h)) / maxH) * 100;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Health of both accounts over the replay">
-      {hline(1, "var(--missed)", "1.0 liquidation")}
-      {hline(r.params.policy.trigger, "var(--skipped)", `trigger ${r.params.policy.trigger}`)}
-      {hline(r.params.policy.target, "var(--saved)", `target ${r.params.policy.target}`)}
-      <polyline points={line((f) => f.without.health)} fill="none" stroke="var(--missed)" strokeWidth={2} />
-      <polyline points={line((f) => f.with.health)} fill="none" stroke="var(--saved)" strokeWidth={2.5} />
+    <svg viewBox={`0 0 ${n * step} 100`} preserveAspectRatio="none" style={{ display: "block", width: "100%", height: 200 }} role="img" aria-label={label}>
+      {frames.map((f, i) => {
+        const h = pick(f) ?? maxH;
+        const top = y(h);
+        return <rect key={i} x={i * step} y={top} width={1.7} height={100 - top} fill="currentColor" opacity={h < 1.05 ? 1 : 0.85} />;
+      })}
+      {[1, trigger, target].map((h) => (
+        <line key={h} x1={0} x2={n * step} y1={y(h)} y2={y(h)} stroke="currentColor" strokeWidth={0.4} strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+      ))}
     </svg>
   );
 }
@@ -57,62 +51,100 @@ export default function ReplayPage() {
     );
   }, []);
 
-  if (missing) return <p>No replay yet. Run <code>npm run replay</code> and reload.</p>;
-  if (!r) return null;
+  if (missing)
+    return (
+      <section className="sec char">
+        <div className="wrap pad copy">No replay yet. Run npm run replay and reload.</div>
+      </section>
+    );
+  if (!r) return <section className="sec char" style={{ minHeight: "60vh" }} />;
   const events = r.frames.flatMap((f, i) => f.events.map((e) => ({ t: Math.round((f.t - r.frames[0].t) / 1000), mark: f.mark, e, i })));
   const saved = r.receipts.find((x) => x.outcome === "saved");
+  const sides = [
+    { key: "without" as const, title: "Without Hoax", res: r.result.withoutHoax, cls: "sand" },
+    { key: "with" as const, title: "With Hoax", res: r.result.withHoax, cls: "char" },
+  ];
   return (
-    <div className="stack">
-      <div className="notice info">
-        <strong>Replay.</strong> {r.label}. {r.note}
-      </div>
-      <h1>Same market, same moment, two outcomes</h1>
-      <p className="muted">
-        Two accounts, each {r.start.size} {r.market.replace("-PERP", "")} long from {r.start.mark.toFixed(2)} on {r.start.collateral} USDso.
-        Hoax protects the green one (act at {r.params.policy.trigger}, restore {r.params.policy.target}).
-      </p>
-      <div className="grid cols-2">
-        <div className="card" style={{ borderColor: "var(--missed)" }}>
-          <h3>Without Hoax</h3>
-          <div className="stat">
-            <div className="value">{r.result.withoutHoax.finalEquity.toFixed(2)} USDso</div>
-            <div className="label">{r.result.withoutHoax.liquidated ? "liquidated" : "survived"} · {r.result.withoutHoax.finalSize.toFixed(4)} left</div>
-          </div>
-        </div>
-        <div className="card" style={{ borderColor: "var(--saved)" }}>
-          <h3>With Hoax</h3>
-          <div className="stat">
-            <div className="value">{r.result.withHoax.finalEquity.toFixed(2)} USDso</div>
-            <div className="label">{r.result.withHoax.liquidated ? "liquidated" : "survived"} · {r.result.withHoax.finalSize.toFixed(4)} left</div>
-          </div>
-        </div>
-      </div>
-      <div className="card">
-        <Chart r={r} />
-        <p className="small muted">Health (equity over maintenance margin). Red: without Hoax. Green: with Hoax.</p>
-      </div>
-      <div className="card">
-        <h3>What happened</h3>
-        {events.map((ev) => (
-          <p key={`${ev.i}-${ev.e}`} className="small mono">
-            t+{ev.t}s · mark {ev.mark.toFixed(2)} · {ev.e}
+    <>
+      <section className="sec char">
+        <div className="wrap pad" style={{ paddingBottom: 40 }}>
+          <Kicker left>Replay · not a live run</Kicker>
+          <h1>
+            Same market, same moment,
+            <br />
+            two outcomes
+          </h1>
+          <p className="copy soft" style={{ marginTop: 24, maxWidth: 760 }}>
+            {r.label}. {r.note} Two accounts, each {r.start.size} {r.market.replace("-PERP", "")} long from {r.start.mark.toFixed(2)} on{" "}
+            {r.start.collateral} USDso. Hoax protects one (act at {r.params.policy.trigger}, restore {r.params.policy.target}).
           </p>
+        </div>
+      </section>
+      <div className="grid g2" style={{ gap: 0 }}>
+        {sides.map((s) => (
+          <section key={s.key} className={`sec ${s.cls}`}>
+            <div className="pad-s" style={{ padding: "48px var(--gutter)" }}>
+              <div className="cap soft">{s.title}</div>
+              <div className="num" style={{ marginTop: 12 }}>
+                {s.res.finalEquity.toFixed(2)}
+                <small>USDso</small>
+              </div>
+              <div className="cap" style={{ marginTop: 12 }}>
+                {s.res.liquidated ? "liquidated" : "survived"} · {s.res.finalSize.toFixed(4)} left
+              </div>
+              <div style={{ marginTop: 32 }}>
+                <Field frames={r.frames} pick={(f) => f[s.key].health} trigger={r.params.policy.trigger} target={r.params.policy.target} label={`Health of the account ${s.title.toLowerCase()} over the replay`} />
+                <div className="spread cap soft" style={{ marginTop: 6 }}>
+                  <span>start</span>
+                  <span>health, one bar per second · lines at 1.0, trigger, target</span>
+                  <span>end</span>
+                </div>
+              </div>
+            </div>
+          </section>
         ))}
       </div>
-      <div className="card">
-        <h3>The receipts</h3>
-        {r.receipts.map((x, i) => (
-          <p key={i} className="small">
-            <span className={`badge ${x.outcome}`}>{x.outcome}</span> closed {x.closed.toFixed(4)}, health {x.healthBefore.toFixed(3)} →{" "}
-            {x.healthAfter?.toFixed(3)}, cost {x.cost.toFixed(4)} USDso
-            {x.preserved ? `, equity preserved ${(Number(BigInt(x.preserved)) / 1e18).toFixed(2)} USDso` : ""}
-          </p>
-        ))}
-        <p className="small muted">
-          Measured at the end of the path, the protected account holds {r.result.equityDifference.toFixed(2)} USDso more than
-          its twin. {saved ? "The receipt's equity-preserved figure is the counterfactual method the live receipts use, taken when the mark reached the old liquidation price." : ""}
-        </p>
-      </div>
-    </div>
+      <section className="sec sand">
+        <div className="wrap pad">
+          <div className="grid g-aside" style={{ gap: 48 }}>
+            <div>
+              <Kicker left>Difference</Kicker>
+              <div className="num">
+                +{r.result.equityDifference.toFixed(2)}
+                <small>USDso</small>
+              </div>
+              <p className="copy soft" style={{ marginTop: 20 }}>
+                Measured at the end of the path. {saved ? "The saved receipt's equity-preserved figure is the counterfactual the live receipts use, taken when the mark reached the old liquidation price." : ""}
+              </p>
+            </div>
+            <div>
+              <h3 style={{ marginBottom: 12 }}>What happened</h3>
+              <div className="rows">
+                {events.map((ev) => (
+                  <div className="r" key={`${ev.i}-${ev.e}`}>
+                    <span>
+                      t+{ev.t}s · {ev.mark.toFixed(2)}
+                    </span>
+                    <span style={{ fontSize: 12 }}>{ev.e}</span>
+                  </div>
+                ))}
+              </div>
+              <h3 style={{ margin: "36px 0 12px" }}>The receipts</h3>
+              <div className="rows">
+                {r.receipts.map((x, i) => (
+                  <div className="r" key={i}>
+                    <span className={`tag ${x.outcome}`}>{x.outcome}</span>
+                    <span style={{ fontSize: 12 }}>
+                      closed {x.closed.toFixed(4)} · health {x.healthBefore.toFixed(3)} → {x.healthAfter?.toFixed(3)} · cost {x.cost.toFixed(4)} USDso
+                      {x.preserved ? ` · preserved ${(Number(BigInt(x.preserved)) / 1e18).toFixed(2)} USDso` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }

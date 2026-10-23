@@ -1,5 +1,7 @@
-import { StatsGrid } from "@/components/StatsGrid";
+import { Edge } from "@/components/Bars";
+import { Kicker, Marquee } from "@/components/Kicker";
 import { ReceiptTable } from "@/components/ReceiptRow";
+import { StatsGrid } from "@/components/StatsGrid";
 import { getStore } from "@/lib/server";
 import type { ActionJson } from "@/lib/types";
 
@@ -10,25 +12,45 @@ export default async function StatsPage() {
   const [stats, actions] = await Promise.all([store.stats(), store.listActions({ limit: 25 })]);
   const rows = JSON.parse(JSON.stringify(actions, (_k, v) => (typeof v === "bigint" ? v.toString() : v))) as ActionJson[];
   return (
-    <div className="stack">
-      <h1>Stats</h1>
-      <StatsGrid stats={stats} />
-      <div className="grid cols-4">
-        <div className="card stat">
-          <div className="value">{stats.actionsTaken}</div>
-          <div className="label">closes sent</div>
+    <>
+      <section className="sec char">
+        <div className="wrap pad">
+          <Kicker left>The record</Kicker>
+          <h1>
+            Saved, paid,
+            <br />
+            and missed
+          </h1>
+          <div style={{ marginTop: 56 }}>
+            <StatsGrid stats={stats} />
+          </div>
+          <div className="grid g3" style={{ marginTop: 0, gap: 0 }}>
+            {(
+              [
+                [stats.actionsTaken, "closes sent"],
+                [stats.pending, "closes still in their 24 h window"],
+                [stats.conflicts, "conflicts, paused for the trader"],
+              ] as const
+            ).map(([v, l], i) => (
+              <div key={l} style={{ padding: "28px 20px 28px 0", borderTop: "1px solid var(--rule)", borderLeft: i ? "1px solid var(--rule)" : undefined, paddingLeft: i ? 20 : 0 }}>
+                <div className="num m">{v}</div>
+                <div className="cap soft" style={{ marginTop: 14 }}>
+                  {l}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="card stat">
-          <div className="value">{stats.pending}</div>
-          <div className="label">closes still in their 24 h window</div>
+      </section>
+      <section className="sec sand">
+        <Edge color="char" seed={6} />
+        <div className="wrap" style={{ paddingTop: 24 }}>
+          <Marquee text="Latest receipts, misses included" />
         </div>
-        <div className="card stat">
-          <div className="value">{stats.conflicts}</div>
-          <div className="label">conflicts (paused for the trader)</div>
+        <div className="wrap pad" style={{ paddingTop: 40 }}>
+          <ReceiptTable actions={rows} />
         </div>
-      </div>
-      <h2>Latest receipts, misses included</h2>
-      <ReceiptTable actions={rows} />
-    </div>
+      </section>
+    </>
   );
 }

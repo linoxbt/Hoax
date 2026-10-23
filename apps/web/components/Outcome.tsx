@@ -10,5 +10,5 @@ const LABEL: Record<Outcome, string> = {
 };
 
 export function OutcomeBadge({ outcome }: { outcome: Outcome }) {
-  return <span className={`badge ${outcome}`}>{LABEL[outcome]}</span>;
+  return <span className={`tag ${outcome}`}>{LABEL[outcome]}</span>;
 }

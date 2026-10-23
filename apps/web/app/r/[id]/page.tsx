@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { Edge } from "@/components/Bars";
 import { CopyButton } from "@/components/CopyButton";
+import { Kicker } from "@/components/Kicker";
 import { OutcomeBadge } from "@/components/Outcome";
 import { getStore } from "@/lib/server";
 import { receiptView } from "@/lib/views";
@@ -18,125 +20,202 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   const cf = r.counterfactual;
 
   return (
-    <div className="stack">
-      <div className="spread">
-        <h1>
-          {r.market} {r.side} receipt
-        </h1>
-        <OutcomeBadge outcome={r.outcome} />
-      </div>
-      {r.reason && <div className={`notice ${r.outcome === "missed" || r.outcome === "conflict" ? "bad" : ""}`}>{r.reason}</div>}
-
-      <div className="grid cols-2">
-        <div className="card">
-          <h3>What Hoax did</h3>
-          <dl className="kv">
-            <dt>Account</dt>
-            <dd className="mono">
-              <a href={addressUrl(r.owner)}>{r.owner}</a>
-            </dd>
-            <dt>Closed</dt>
-            <dd className="mono">
-              {units(r.sizeFilled, d)} of {units(r.sizeBefore, d)} (asked {units(r.sizeRequested, d)})
-            </dd>
-            <dt>Left open</dt>
-            <dd className="mono">{units(r.sizeAfter, d)}</dd>
-            <dt>Average fill</dt>
-            <dd className="mono">{usd(r.avgPrice)}</dd>
-            <dt>Mark at close</dt>
-            <dd className="mono">{usd(r.mark)}</dd>
-            <dt>Transaction</dt>
-            <dd className="mono">{r.txHash ? <a href={txUrl(r.txHash)}>{r.txHash.slice(0, 18)}…</a> : "none sent"}</dd>
-            <dt>Block</dt>
-            <dd className="mono">{r.block?.toString() ?? "–"}</dd>
-          </dl>
+    <>
+      <section className="sec sand">
+        <div className="wrap pad" style={{ paddingBottom: 56 }}>
+          <Kicker left>Receipt</Kicker>
+          <div className="spread">
+            <h1>
+              {r.market}
+              <br />
+              {r.side}
+            </h1>
+            <div style={{ textAlign: "right" }}>
+              <OutcomeBadge outcome={r.outcome} />
+              <div className="num m" style={{ marginTop: 16 }}>
+                {health(r.healthBefore)} <small>→</small> {health(r.healthAfter)}
+              </div>
+              <div className="cap soft" style={{ marginTop: 8 }}>
+                health before and after
+              </div>
+            </div>
+          </div>
+          {r.reason && (
+            <p className={`note ${r.outcome === "missed" || r.outcome === "conflict" ? "bad" : ""}`} style={{ marginTop: 32 }}>
+              {r.reason}
+            </p>
+          )}
         </div>
-        <div className="card">
-          <h3>Health and cost</h3>
-          <dl className="kv">
-            <dt>Health</dt>
-            <dd className="mono">
-              {health(r.healthBefore)} → {health(r.healthAfter)}
-            </dd>
-            <dt>Liquidation price</dt>
-            <dd className="mono">
-              {usd(r.liqPriceBefore)} → {usd(r.liqPriceAfter)}
-            </dd>
-            <dt>Close cost</dt>
-            <dd className="mono">{r.cost !== null ? `${usd(r.cost, 4)} USDso` : "–"}</dd>
-            <dt>Estimated beforehand</dt>
-            <dd className="mono">{r.estCloseCost !== null ? `${usd(r.estCloseCost, 4)} USDso` : "–"}</dd>
-            <dt>Liquidation would cost</dt>
-            <dd className="mono">{r.estLiqCost !== null ? `${usd(r.estLiqCost)} USDso` : "–"}</dd>
-            <dt>Builder fee</dt>
-            <dd className="mono">{Number(r.builderFee1k) / 1000} bps</dd>
-          </dl>
+        <div className="wrap" style={{ paddingBottom: 72 }}>
+          <div className="grid g2" style={{ gap: 48 }}>
+            <div>
+              <h3 style={{ marginBottom: 16 }}>What Hoax did</h3>
+              <div className="rows">
+                <div className="r">
+                  <span>Account</span>
+                  <a href={addressUrl(r.owner)}>{r.owner}</a>
+                </div>
+                <div className="r">
+                  <span>Closed</span>
+                  <span>
+                    {units(r.sizeFilled, d)} of {units(r.sizeBefore, d)}
+                  </span>
+                </div>
+                <div className="r">
+                  <span>Asked</span>
+                  <span>{units(r.sizeRequested, d)}</span>
+                </div>
+                <div className="r">
+                  <span>Left open</span>
+                  <span>{units(r.sizeAfter, d)}</span>
+                </div>
+                <div className="r">
+                  <span>Average fill</span>
+                  <span>{usd(r.avgPrice)}</span>
+                </div>
+                <div className="r">
+                  <span>Mark at close</span>
+                  <span>{usd(r.mark)}</span>
+                </div>
+                <div className="r">
+                  <span>Transaction</span>
+                  <span>{r.txHash ? <a href={txUrl(r.txHash)}>{r.txHash.slice(0, 18)}… ↗</a> : "none sent"}</span>
+                </div>
+                <div className="r">
+                  <span>Block</span>
+                  <span>{r.block?.toString() ?? "–"}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 style={{ marginBottom: 16 }}>Health and cost</h3>
+              <div className="rows">
+                <div className="r">
+                  <span>Liquidation price</span>
+                  <span>
+                    {usd(r.liqPriceBefore)} → {usd(r.liqPriceAfter)}
+                  </span>
+                </div>
+                <div className="r">
+                  <span>Close cost</span>
+                  <span>{r.cost !== null ? `${usd(r.cost, 4)} USDso` : "–"}</span>
+                </div>
+                <div className="r">
+                  <span>Estimated beforehand</span>
+                  <span>{r.estCloseCost !== null ? `${usd(r.estCloseCost, 4)} USDso` : "–"}</span>
+                </div>
+                <div className="r">
+                  <span>Liquidation would cost</span>
+                  <span>{r.estLiqCost !== null ? `${usd(r.estLiqCost)} USDso` : "–"}</span>
+                </div>
+                <div className="r">
+                  <span>Builder fee</span>
+                  <span>{Number(r.builderFee1k) / 1000} bps</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="card">
-        <h3>Was it needed?</h3>
-        {r.outcome === "pending" && (
-          <p>
-            Hoax is watching the mark for 24 hours. If it reaches {usd(r.liqPriceBefore)}, the liquidation price before the
-            close, while the reduced position survives, this becomes a save.
-          </p>
-        )}
-        {r.outcome === "saved" && cf && (
-          <dl className="kv">
-            <dt>Reached old liquidation price at block</dt>
-            <dd className="mono">{cf.reachedAtBlock?.toString()}</dd>
-            <dt>Equity held then</dt>
-            <dd className="mono">{usd(cf.equityAtReach)} USDso</dd>
-            <dt>Equity if liquidated</dt>
-            <dd className="mono">{usd(cf.equityIfLiquidated)} USDso</dd>
-            <dt>Equity preserved</dt>
-            <dd className="mono" style={{ color: "var(--saved)", fontWeight: 700 }}>
-              {usd(cf.preserved)} USDso
-            </dd>
-          </dl>
-        )}
-        {r.outcome === "not-needed" && (
-          <p>The mark never reached the old liquidation price within 24 hours. The close cost was the price of insurance.</p>
-        )}
-        {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && (
-          <p className="muted">No counterfactual: {r.reason ?? r.outcome}.</p>
-        )}
-        <p className="small muted">
-          Equity preserved = equity held when the mark reached the old liquidation price, minus the equity left after a
-          liquidation there (maintenance margin at that price, less the 1% penalty and the forced-close slippage). The close
-          cost was already paid out of the first number, so it is not subtracted twice.
-        </p>
-      </div>
+      <section className="sec char">
+        <Edge color="sand" seed={8} />
+        <div className="wrap pad" style={{ paddingTop: 40 }}>
+          <div className="grid g-aside" style={{ gap: 48 }}>
+            <div>
+              <Kicker left>Counterfactual</Kicker>
+              <h2>Was it needed?</h2>
+            </div>
+            <div>
+              {r.outcome === "pending" && (
+                <p className="copy" style={{ maxWidth: "none" }}>
+                  Hoax is watching the mark for 24 hours. If it reaches {usd(r.liqPriceBefore)}, the liquidation price before
+                  the close, while the reduced position survives, this becomes a save.
+                </p>
+              )}
+              {r.outcome === "saved" && cf && (
+                <>
+                  <div className="num">
+                    {usd(cf.preserved)}
+                    <small>USDso preserved</small>
+                  </div>
+                  <div className="rows" style={{ marginTop: 32 }}>
+                    <div className="r">
+                      <span>Old liquidation price reached at block</span>
+                      <span>{cf.reachedAtBlock?.toString()}</span>
+                    </div>
+                    <div className="r">
+                      <span>Equity held then</span>
+                      <span>{usd(cf.equityAtReach)} USDso</span>
+                    </div>
+                    <div className="r">
+                      <span>Equity if liquidated</span>
+                      <span>{usd(cf.equityIfLiquidated)} USDso</span>
+                    </div>
+                  </div>
+                </>
+              )}
+              {r.outcome === "not-needed" && (
+                <p className="copy" style={{ maxWidth: "none" }}>
+                  The mark never reached the old liquidation price within 24 hours. The close cost was the price of insurance.
+                </p>
+              )}
+              {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && (
+                <p className="copy" style={{ maxWidth: "none" }}>
+                  No counterfactual: {r.reason ?? r.outcome}.
+                </p>
+              )}
+              <p className="cap soft" style={{ marginTop: 28 }}>
+                Equity preserved = equity held when the mark reached the old liquidation price, minus the equity left after a
+                liquidation there (maintenance margin at that price, less the 1% penalty and the forced-close slippage). The
+                close cost was already paid out of the first number, so it is not subtracted twice.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div className="card">
-        <h3>Check it yourself</h3>
-        <dl className="kv">
-          <dt>Receipt hash</dt>
-          <dd className="mono">{r.receiptHash || "–"}</dd>
-          <dt>Signed by Hoax key</dt>
-          <dd className="mono">
-            <a href={addressUrl(String(r.receipt.hoaxKey))}>{String(r.receipt.hoaxKey)}</a>
-          </dd>
-          <dt>Signature</dt>
-          <dd>
-            {r.signatureValid === true && <span className="badge saved">valid</span>}
-            {r.signatureValid === false && <span className="badge missed">does not match</span>}
-            {r.signatureValid === null && <span className="muted">unsigned</span>}
-          </dd>
-        </dl>
-        <p className="small muted">
-          The hash is keccak256 of the receipt JSON with keys sorted; the signature is EIP-191 over those 32 bytes. Every
-          field can be re-derived from the transaction and reads at its block.
-        </p>
-        <details>
-          <summary className="small">Receipt JSON</summary>
-          <pre className="mono small" style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(r.receipt, null, 2)}</pre>
-        </details>
-      </div>
-      <div className="row">
-        <CopyButton text={`/r/${r.id}`} label="Copy link to share" />
-      </div>
-    </div>
+      <section className="sec sand">
+        <Edge color="char" seed={13} />
+        <div className="wrap pad" style={{ paddingTop: 40 }}>
+          <div className="grid g-aside" style={{ gap: 48 }}>
+            <div>
+              <Kicker left>Verification</Kicker>
+              <h2>Check it yourself</h2>
+              <div className="row" style={{ marginTop: 24 }}>
+                <CopyButton text={`/r/${r.id}`} label="Copy link to share" />
+              </div>
+            </div>
+            <div>
+              <div className="rows">
+                <div className="r">
+                  <span>Receipt hash</span>
+                  <span>{r.receiptHash || "–"}</span>
+                </div>
+                <div className="r">
+                  <span>Signed by Hoax key</span>
+                  <a href={addressUrl(String(r.receipt.hoaxKey))}>{String(r.receipt.hoaxKey)}</a>
+                </div>
+                <div className="r">
+                  <span>Signature</span>
+                  <span>
+                    {r.signatureValid === true && <span className="tag saved">valid</span>}
+                    {r.signatureValid === false && <span className="tag missed">does not match</span>}
+                    {r.signatureValid === null && "unsigned"}
+                  </span>
+                </div>
+              </div>
+              <p className="cap soft" style={{ marginTop: 20 }}>
+                The hash is keccak256 of the receipt JSON with keys sorted; the signature is EIP-191 over those 32 bytes.
+              </p>
+              <details style={{ marginTop: 16 }}>
+                <summary>Receipt JSON</summary>
+                <pre>{JSON.stringify(r.receipt, null, 2)}</pre>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }

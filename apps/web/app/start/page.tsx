@@ -5,7 +5,9 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { encodeFunctionData, formatEther, parseAbi } from "viem";
+import { Edge } from "@/components/Bars";
 import { CopyButton } from "@/components/CopyButton";
+import { Kicker } from "@/components/Kicker";
 import { DREAMDEX_APP, short } from "@/lib/format";
 import { api, loadSession, saveSession, type Session } from "@/lib/session";
 import type { AccountJson } from "@/lib/types";
@@ -143,147 +145,201 @@ export default function Start() {
   const stepClass = (done: boolean, active: boolean) => (done ? "done" : active ? "active" : "");
 
   return (
-    <div className="stack">
-      <h1>Protect your positions</h1>
-      <p className="lead">
-        Use a dreamDEX wallet that holds only what you want protected, for example Wallet 2. Hoax will be able to trade it,
-        never withdraw from it.
-      </p>
-      {err && <div className="notice bad">{err}</div>}
-
-      <ol className="steps">
-        <li className={stepClass(Boolean(session), !session)}>
-          <h3>Your dreamDEX wallet</h3>
-          {session ? (
-            <p className="mono">{session.owner}</p>
-          ) : (
-            <div className="stack">
-              <label className="field">
-                <span>The wallet address you trade perps from in dreamDEX</span>
-                <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="0x…" spellCheck={false} />
-              </label>
-              <div className="row">
-                <button className="btn primary" disabled={busy || !/^0x[0-9a-fA-F]{40}$/.test(owner.trim())} onClick={register}>
-                  Make my Hoax key
-                </button>
-                <button className="btn" onClick={connect}>
-                  Use connected wallet
-                </button>
-              </div>
-            </div>
-          )}
-        </li>
-
-        <li className={stepClass(linked, Boolean(session) && !linked)}>
-          <h3>Link the Hoax key in dreamDEX</h3>
-          {!session && <p className="muted">After step 1.</p>}
-          {session && !key && <p className="muted">Making a key just for this wallet…</p>}
-          {session && key && (
-            <div className="stack">
-              <div className="card">
-                <div className="small muted">Hoax key for {short(session.owner)}</div>
-                <div className="spread">
-                  <code style={{ wordBreak: "break-all" }}>{key}</code>
-                  <CopyButton text={key} />
-                </div>
-              </div>
-              <ol className="small">
-                <li>
-                  Open <a href={DREAMDEX_APP}>dreamDEX</a>, pick this wallet, and choose <b>Link a bot</b> at the bottom of
-                  the wallet list.
-                </li>
-                <li>
-                  Paste the address above. Keep <b>Perps</b> ticked and leave <b>Send it … for gas</b> on.
-                </li>
-                <li>
-                  Press <b>Add bot</b>. Hoax notices the link within a few seconds.
-                </li>
-              </ol>
-              <p>{linked ? <span className="badge saved">linked</span> : <span className="badge pending">waiting for the link…</span>}</p>
-            </div>
-          )}
-        </li>
-
-        <li className={stepClass(linked && gas !== null && !lowGas, linked && (gas === null || lowGas))}>
-          <h3>Gas for Hoax&apos;s orders</h3>
-          {!linked && <p className="muted">After the link.</p>}
-          {linked && (
-            <p>
-              The key holds {gas !== null ? `${Number(formatEther(gas)).toFixed(4)} STT` : "an unknown amount of STT"}.{" "}
-              {lowGas
-                ? "That is low: top it up from dreamDEX (Bots tab, Top up). Each close costs about 0.003 STT."
-                : "That covers many closes."}
+    <>
+      <section className="sec char">
+        <div className="wrap pad" style={{ paddingBottom: 56 }}>
+          <Kicker left>Onboarding · about two minutes</Kicker>
+          <div className="spread">
+            <h1>
+              Protect your
+              <br />
+              positions
+            </h1>
+            <p className="copy soft" style={{ maxWidth: 420 }}>
+              Use a dreamDEX wallet that holds only what you want protected, such as Wallet 2. Hoax will be able to trade it,
+              never withdraw from it.
+            </p>
+          </div>
+          {err && (
+            <p className="note bad" style={{ marginTop: 28 }}>
+              {err}
             </p>
           )}
-        </li>
-
-        <li className={stepClass(Boolean(approveTx) || (linked && !feeOn), linked && feeOn && !approveTx)}>
-          <h3>Builder fee (optional)</h3>
-          {!feeOn && <p className="muted">This Hoax deployment charges no builder fee.</p>}
-          {feeOn && view && (
-            <div className="stack">
-              <p>
-                Hoax charges {view.builder.feeBpsTimes1k / 1000} bps on each close, and only if you approve it. Without an
-                approval Hoax still protects you and charges nothing. Paper USDso accounts are never charged builder fees.
-              </p>
-              {ownerConnected ? (
-                <button className="btn" onClick={approveBuilder}>
-                  Approve {view.builder.feeBpsTimes1k / 1000} bps
-                </button>
-              ) : (
-                <p className="small muted">Connect this wallet in your browser to approve, or skip this step.</p>
-              )}
-              {approveTx && <p className="small mono">Sent {approveTx.slice(0, 18)}…</p>}
-            </div>
-          )}
-        </li>
-
-        <li className={stepClass(false, linked)}>
-          <h3>Policy</h3>
-          {!linked && <p className="muted">After the link.</p>}
-          {linked && (
-            <div className="stack">
-              <p className="small muted">
-                Markets: {markets.join(", ")}. Hoax acts when health (equity over maintenance margin) falls to the trigger,
-                and closes just enough to get back to the target.
-              </p>
-              <div className="grid cols-2">
-                <label className="field">
-                  <span>Trigger health</span>
-                  <input type="number" step="0.05" value={policy.triggerHealth} onChange={(e) => setPolicy({ ...policy, triggerHealth: Number(e.target.value) })} />
-                </label>
-                <label className="field">
-                  <span>Target health</span>
-                  <input type="number" step="0.05" value={policy.targetHealth} onChange={(e) => setPolicy({ ...policy, targetHealth: Number(e.target.value) })} />
-                </label>
-                <label className="field">
-                  <span>Max close per action (%)</span>
-                  <input type="number" value={policy.maxClosePct} onChange={(e) => setPolicy({ ...policy, maxClosePct: Number(e.target.value) })} />
-                </label>
-                <label className="field">
-                  <span>Max slippage (bps)</span>
-                  <input type="number" value={policy.maxSlippageBps} onChange={(e) => setPolicy({ ...policy, maxSlippageBps: Number(e.target.value) })} />
-                </label>
-              </div>
-              <button className="btn primary" disabled={busy} onClick={turnOn}>
-                Turn on Hoax
-              </button>
-            </div>
-          )}
-        </li>
-      </ol>
-
-      {session && (
-        <div className="card small">
-          <div className="spread">
-            <span>
-              This browser keeps your manage token. Save it to manage Hoax from another device:{" "}
-              <code>{session.token}</code>
-            </span>
-            <CopyButton text={session.token} />
-          </div>
         </div>
-      )}
-    </div>
+      </section>
+
+      <section className="sec sand">
+        <Edge color="char" seed={21} />
+        <div className="wrap pad" style={{ paddingTop: 32 }}>
+          <ol className="steps">
+            <li className={stepClass(Boolean(session), !session)}>
+              <span className="n">01</span>
+              <div className="stack">
+                <h3>Your dreamDEX wallet</h3>
+                {session ? (
+                  <p className="mono" style={{ fontSize: 14 }}>
+                    {session.owner}
+                  </p>
+                ) : (
+                  <>
+                    <label className="field" style={{ maxWidth: 560 }}>
+                      <span>The wallet address you trade perps from in dreamDEX</span>
+                      <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="0x…" spellCheck={false} />
+                    </label>
+                    <div className="row">
+                      <button className="pill" disabled={busy || !/^0x[0-9a-fA-F]{40}$/.test(owner.trim())} onClick={register}>
+                        Make my Hoax key
+                      </button>
+                      <button className="pill ghost" onClick={connect}>
+                        Use connected wallet
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </li>
+
+            <li className={stepClass(linked, Boolean(session) && !linked)}>
+              <span className="n">02</span>
+              <div className="stack">
+                <h3>Link the Hoax key in dreamDEX</h3>
+                {!session && <p className="copy soft">After step 01.</p>}
+                {session && !key && <p className="copy soft">Making a key just for this wallet…</p>}
+                {session && key && (
+                  <>
+                    <div className="panel" style={{ maxWidth: 640 }}>
+                      <div className="cap soft">Hoax key for {short(session.owner)}</div>
+                      <div className="spread" style={{ marginTop: 8, alignItems: "center" }}>
+                        <code className="mono" style={{ fontSize: 15 }}>
+                          {key}
+                        </code>
+                        <CopyButton text={key} />
+                      </div>
+                    </div>
+                    <div className="rows" style={{ maxWidth: 640 }}>
+                      <div className="r">
+                        <span>One</span>
+                        <span style={{ fontFamily: "var(--label)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          Open <a href={DREAMDEX_APP}>dreamDEX ↗</a>, pick this wallet, choose Link a bot
+                        </span>
+                      </div>
+                      <div className="r">
+                        <span>Two</span>
+                        <span style={{ fontFamily: "var(--label)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          Paste the key · keep Perps ticked · leave Send it for gas on
+                        </span>
+                      </div>
+                      <div className="r">
+                        <span>Three</span>
+                        <span style={{ fontFamily: "var(--label)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          Press Add bot · Hoax notices within seconds
+                        </span>
+                      </div>
+                    </div>
+                    <p>{linked ? <span className="tag saved">linked</span> : <span className="tag pending">waiting for the link…</span>}</p>
+                  </>
+                )}
+              </div>
+            </li>
+
+            <li className={stepClass(linked && gas !== null && !lowGas, linked && (gas === null || lowGas))}>
+              <span className="n">03</span>
+              <div className="stack">
+                <h3>Gas for Hoax&apos;s orders</h3>
+                {!linked && <p className="copy soft">After the link.</p>}
+                {linked && (
+                  <p className="copy">
+                    The key holds {gas !== null ? `${Number(formatEther(gas)).toFixed(4)} STT` : "an unknown amount of STT"}.{" "}
+                    {lowGas
+                      ? "That is low: top it up from dreamDEX (Bots tab, Top up). Each close costs about 0.003 STT."
+                      : "That covers many closes."}
+                  </p>
+                )}
+              </div>
+            </li>
+
+            <li className={stepClass(Boolean(approveTx) || (linked && !feeOn), linked && feeOn && !approveTx)}>
+              <span className="n">04</span>
+              <div className="stack">
+                <h3>Builder fee · optional</h3>
+                {!feeOn && <p className="copy soft">This Hoax deployment charges no builder fee.</p>}
+                {feeOn && view && (
+                  <>
+                    <p className="copy">
+                      Hoax charges {view.builder.feeBpsTimes1k / 1000} bps on each close, and only if you approve it. Without an
+                      approval Hoax still protects you and charges nothing. Paper USDso accounts are never charged.
+                    </p>
+                    {ownerConnected ? (
+                      <button className="pill" onClick={approveBuilder}>
+                        Approve {view.builder.feeBpsTimes1k / 1000} bps
+                      </button>
+                    ) : (
+                      <p className="cap soft">Connect this wallet in your browser to approve, or skip this step.</p>
+                    )}
+                    {approveTx && <p className="mono">Sent {approveTx.slice(0, 18)}…</p>}
+                  </>
+                )}
+              </div>
+            </li>
+
+            <li className={stepClass(false, linked)}>
+              <span className="n">05</span>
+              <div className="stack">
+                <h3>Policy</h3>
+                {!linked && <p className="copy soft">After the link.</p>}
+                {linked && (
+                  <>
+                    <p className="copy soft">
+                      Markets: {markets.join(", ")}. Hoax acts when health, equity over maintenance margin, falls to the trigger,
+                      and closes just enough to get back to the target.
+                    </p>
+                    <div className="grid g4" style={{ maxWidth: 820 }}>
+                      <label className="field">
+                        <span>Trigger health</span>
+                        <input type="number" step="0.05" value={policy.triggerHealth} onChange={(e) => setPolicy({ ...policy, triggerHealth: Number(e.target.value) })} />
+                      </label>
+                      <label className="field">
+                        <span>Target health</span>
+                        <input type="number" step="0.05" value={policy.targetHealth} onChange={(e) => setPolicy({ ...policy, targetHealth: Number(e.target.value) })} />
+                      </label>
+                      <label className="field">
+                        <span>Max close / step %</span>
+                        <input type="number" value={policy.maxClosePct} onChange={(e) => setPolicy({ ...policy, maxClosePct: Number(e.target.value) })} />
+                      </label>
+                      <label className="field">
+                        <span>Max slippage bps</span>
+                        <input type="number" value={policy.maxSlippageBps} onChange={(e) => setPolicy({ ...policy, maxSlippageBps: Number(e.target.value) })} />
+                      </label>
+                    </div>
+                    <div className="row" style={{ marginTop: 8 }}>
+                      <button className="pill" disabled={busy} onClick={turnOn}>
+                        Turn on Hoax
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </li>
+          </ol>
+
+          {session && (
+            <div className="panel" style={{ marginTop: 48 }}>
+              <div className="spread" style={{ alignItems: "center" }}>
+                <div>
+                  <div className="cap soft">Manage token · kept in this browser</div>
+                  <code className="mono" style={{ fontSize: 14 }}>
+                    {session.token}
+                  </code>
+                  <div className="cap soft" style={{ marginTop: 6 }}>
+                    Save it to manage Hoax from another device.
+                  </div>
+                </div>
+                <CopyButton text={session.token} />
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
   );
 }
