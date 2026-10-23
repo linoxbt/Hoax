@@ -46,7 +46,7 @@ export default function PositionDetail() {
             </div>
           </div>
           <HealthField health={p.health} trigger={policy.triggerHealth} target={policy.targetHealth} />
-          <div className="grid g2" style={{ marginTop: "4rem", gap: "4.8rem" }}>
+          <div className="grid g2" style={{ marginTop: "3.2rem", gap: "3.2rem" }}>
             <div>
               <h3 style={{ marginBottom: "1.4rem" }}>Market</h3>
               <div className="rows">

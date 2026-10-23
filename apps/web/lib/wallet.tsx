@@ -3,25 +3,49 @@
 // account (Safe) the wallet trades from, and the signed-in session that lets it
 // manage protection. One provider at the root; every page reads `useHoax()`.
 
+import type { AppKit } from "@reown/appkit/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { WagmiProvider, createConfig, http, injected, useAccount as useWagmiAccount, useDisconnect } from "wagmi";
-import { signMessage, switchChain } from "wagmi/actions";
+import { WagmiProvider, createConfig, http, injected, useAccount as useWagmiAccount, useDisconnect, type Config } from "wagmi";
+import { reconnect, signMessage, switchChain } from "wagmi/actions";
 import type { Address } from "viem";
 import { ConnectModal } from "@/components/ConnectModal";
 import { hideki, RPC_URL } from "./chain";
 import { api, type Session } from "./session";
 import type { EngineJson, WalletJson } from "./types";
 
-export const wagmiConfig = createConfig({
+/** Reown Cloud project id. Without one, Hoax falls back to its own picker of installed wallets. */
+const REOWN_PROJECT_ID = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
+
+/**
+ * The light config every page starts on: wallets installed in the browser,
+ * found by EIP-6963, plus `injected` for in-app browsers that only expose
+ * window.ethereum. The Reown config replaces it when someone connects.
+ */
+const baseConfig = createConfig({
   chains: [hideki],
-  // EIP-6963 discovery lists every installed wallet by name and icon; `injected`
-  // covers in-app browsers that only expose window.ethereum.
   multiInjectedProviderDiscovery: true,
   connectors: [injected({ shimDisconnect: true })],
   transports: { [hideki.id]: http(RPC_URL) },
   ssr: true,
 });
+
+let activeConfig: Config = baseConfig;
+/** The wagmi config in use right now, for actions called outside React. */
+export const wagmiConfig = (): Config => activeConfig;
+
+// Connectors only the Reown config has; if the last session used one, restore it through Reown.
+const REOWN_CONNECTORS = ["walletConnect", "baseAccount", "coinbaseWalletSDK", "metaMaskSDK"];
+function lastUsedReown(): boolean {
+  if (!REOWN_PROJECT_ID || typeof window === "undefined") return false;
+  try {
+    const id = JSON.parse(localStorage.getItem("wagmi.recentConnectorId") ?? "null");
+    return REOWN_CONNECTORS.includes(id);
+  } catch {
+    return false;
+  }
+}
+const restoreViaReown = lastUsedReown();
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
 
@@ -49,6 +73,8 @@ export interface HoaxState {
   session: Session | null | undefined;
   engine: EngineJson | null;
   openConnect: () => void;
+  /** True when wallet selection goes through the Reown modal. */
+  hasReown: boolean;
   signIn: () => Promise<boolean>;
   ensureChain: () => Promise<void>;
   disconnect: () => void;
@@ -84,7 +110,7 @@ function writeAuth(a: Auth | null, wallet: string) {
   }
 }
 
-function HoaxStateProvider({ children }: { children: React.ReactNode }) {
+function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reown: () => Promise<AppKit | null> }) {
   const { address, chainId, status } = useWagmiAccount();
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const [modal, setModal] = useState(false);
@@ -95,6 +121,29 @@ function HoaxStateProvider({ children }: { children: React.ReactNode }) {
   const [sample, setSample] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const signing = useRef(false);
+  // Set when Connect sends the user to the Reown modal, so the verify step opens once a wallet arrives.
+  const verifyNext = useRef(false);
+
+  useEffect(() => {
+    if (address && verifyNext.current) {
+      verifyNext.current = false;
+      setModal(true);
+    }
+  }, [address]);
+
+  const [opening, setOpening] = useState(false);
+  const openConnect = useCallback(() => {
+    if (address || !REOWN_PROJECT_ID) return setModal(true);
+    setOpening(true);
+    reown()
+      .then((kit) => {
+        if (!kit) return setModal(true);
+        verifyNext.current = true;
+        return kit.open({ view: "Connect" });
+      })
+      .catch(() => setModal(true))
+      .finally(() => setOpening(false));
+  }, [address, reown]);
 
   useEffect(() => {
     setHydrated(true);
@@ -141,7 +190,7 @@ function HoaxStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const ensureChain = useCallback(async () => {
-    if (chainId !== hideki.id) await switchChain(wagmiConfig, { chainId: hideki.id });
+    if (chainId !== hideki.id) await switchChain(wagmiConfig(), { chainId: hideki.id });
   }, [chainId]);
 
   const signIn = useCallback(async (): Promise<boolean> => {
@@ -149,7 +198,7 @@ function HoaxStateProvider({ children }: { children: React.ReactNode }) {
     signing.current = true;
     try {
       const { message } = await api<{ message: string }>("/api/auth/challenge", { method: "POST", body: JSON.stringify({ address }) });
-      const signature = await signMessage(wagmiConfig, { account: address, message });
+      const signature = await signMessage(wagmiConfig(), { account: address, message });
       const r = await api<{ wallet: string; token: string; expiresAt: string }>("/api/auth/verify", {
         method: "POST",
         body: JSON.stringify({ message, signature }),
@@ -196,7 +245,7 @@ function HoaxStateProvider({ children }: { children: React.ReactNode }) {
 
   const value: HoaxState = {
     wallet: address,
-    connecting: status === "connecting" || status === "reconnecting",
+    connecting: opening || status === "connecting" || status === "reconnecting",
     onHideki: chainId === hideki.id,
     walletInfo,
     walletErr,
@@ -204,7 +253,8 @@ function HoaxStateProvider({ children }: { children: React.ReactNode }) {
     signedIn,
     session,
     engine,
-    openConnect: () => setModal(true),
+    openConnect,
+    hasReown: REOWN_PROJECT_ID !== "",
     signIn,
     ensureChain,
     disconnect,
@@ -222,10 +272,39 @@ function HoaxStateProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [config, setConfig] = useState<Config>(baseConfig);
+  const loading = useRef<Promise<AppKit | null> | null>(null);
+
+  // Load Reown once, move wagmi onto its config, and restore any session it holds.
+  const reown = useCallback(() => {
+    if (!REOWN_PROJECT_ID) return Promise.resolve(null);
+    loading.current ??= import("./reown").then(async ({ loadReown }) => {
+      const { config: next, appKit } = loadReown(REOWN_PROJECT_ID);
+      await reconnect(next).catch(() => []);
+      activeConfig = next;
+      setConfig(next);
+      return appKit;
+    });
+    return loading.current;
+  }, []);
+
+  useEffect(() => {
+    if (restoreViaReown) {
+      void reown();
+      return;
+    }
+    // Otherwise fetch the module while the browser is idle, so Connect opens at once.
+    if (!REOWN_PROJECT_ID) return;
+    const idle = (window as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    const prefetch = () => void import("./reown");
+    const id = idle ? idle(prefetch, { timeout: 6000 }) : window.setTimeout(prefetch, 3000);
+    return () => (idle ? (window as { cancelIdleCallback?: (n: number) => void }).cancelIdleCallback?.(id) : clearTimeout(id));
+  }, [reown]);
+
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={config} reconnectOnMount={!restoreViaReown}>
       <QueryClientProvider client={queryClient}>
-        <HoaxStateProvider>{children}</HoaxStateProvider>
+        <HoaxStateProvider reown={reown}>{children}</HoaxStateProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

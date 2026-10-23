@@ -13,6 +13,8 @@
     "@hoax/chain": "*",
     "@hoax/core": "*",
     "@hoax/db": "*",
+    "@reown/appkit": "1.8.24",
+    "@reown/appkit-adapter-wagmi": "1.8.24",
     "@tanstack/react-query": "5.103.3",
     "lenis": "1.3.26",
     "next": "15.5.28",

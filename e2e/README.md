@@ -20,4 +20,6 @@ DATABASE_URL=… RPC_URL=http://127.0.0.1:8545 HOAX_SESSION_SECRET=<32+ chars> n
 npx tsx e2e/onboarding.ts
 ```
 
+If the web app was built with `NEXT_PUBLIC_REOWN_PROJECT_ID`, run with `E2E_REOWN=1` so the wallet is picked in the Reown modal.
+
 It passes when the wallet is verified, the watcher issues its key, one transaction links all 21 perp markets, the watcher activates the account and drips gas, the policy is saved, and the revoke transaction leaves 0 of 21 linked. Screenshots go to `e2e/out/`.

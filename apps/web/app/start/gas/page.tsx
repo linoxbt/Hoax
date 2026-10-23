@@ -29,9 +29,9 @@ export default function GasStep() {
     setBusy(true);
     try {
       await hoax.ensureChain();
-      const h = await sendTransaction(wagmiConfig, { account: hoax.wallet, to: key as `0x${string}`, value: parseEther(AMOUNT) });
+      const h = await sendTransaction(wagmiConfig(), { account: hoax.wallet, to: key as `0x${string}`, value: parseEther(AMOUNT) });
       setHash(h);
-      await waitForTransactionReceipt(wagmiConfig, { hash: h });
+      await waitForTransactionReceipt(wagmiConfig(), { hash: h });
       await refresh();
     } catch (e) {
       setErr(friendly(e));

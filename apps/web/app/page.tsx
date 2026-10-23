@@ -1,4 +1,4 @@
-import { ArtBlind, ArtBlunt, ArtCases, ArtCostly, ArtForced, ArtMark3d, ArtTower } from "@/components/home/Art";
+import { ArtBlind, ArtBlunt, ArtCases, ArtCostly, ArtForced, ArtTower } from "@/components/home/Art";
 import { BuildUp } from "@/components/home/BuildUp";
 import { Accordion } from "@/components/home/Accordion";
 import { HeroLive } from "@/components/home/HeroLive";
@@ -185,7 +185,7 @@ export default async function Landing() {
       {/* why: built to act while you are away */}
       <section className="sec">
         <div className="cells c-why">
-          <div className="p" style={{ paddingTop: "10.4rem" }}>
+          <div className="p" style={{ paddingTop: "6.4rem" }}>
             <Label>Why Hoax</Label>
             <Split className="h2" delay={0.05}>
               Built to act while you are away
@@ -294,13 +294,6 @@ export default async function Landing() {
               Get protected
             </Btn>
           </div>
-        </div>
-        <div className="cells c4 cta-deco">
-          <div />
-          <div className="cta-deco-img">
-            <ArtMark3d />
-          </div>
-          <div />
         </div>
       </section>
     </>

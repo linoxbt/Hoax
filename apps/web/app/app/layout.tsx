@@ -22,7 +22,7 @@ function Gate() {
   const noAccount = hoax.wallet && hoax.walletInfo && !hoax.walletInfo.primary;
   return (
     <section className="sec first">
-      <div className="pad" style={{ minHeight: "60vh", paddingTop: "9.6rem" }}>
+      <div className="pad" style={{ minHeight: "60vh", paddingTop: "6.4rem" }}>
         <Label dot>Dashboard</Label>
         {noAccount ? (
           <>
@@ -75,7 +75,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const session = hoax.session;
   const { view, err, setErr, refresh } = useAccount(session ?? null);
 
-  if (session === undefined) return <section className="sec" style={{ minHeight: "60vh" }} />;
+  if (session === undefined) return <section className="sec wait" aria-busy="true" />;
   if (!session) return <Gate />;
 
   const on = (href: string) => (href === "/app" ? path === "/app" : path === href || path.startsWith(`${href}/`)) ? "on" : undefined;

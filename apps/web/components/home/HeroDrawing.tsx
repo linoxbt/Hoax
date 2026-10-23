@@ -67,8 +67,26 @@ export function HeroDrawing({ mark = 2400 }: { mark?: number }) {
   const s0 = (C0 * LEV) / p0;
   const liq0 = (s0 * p0 - C0) / (s0 * (1 - MM));
   const trig = (s0 * p0 - C0) / (s0 * (1 - DEFAULT_POLICY.triggerHealth * MM));
+  // The recorded part of the chart: deterministic candles drifting around entry.
+  const candles = useMemo(() => {
+    const out: Array<{ x: number; o: number; c: number; h: number; l: number }> = [];
+    // a range that wanders a little above and below entry, then returns to it
+    const amp = (p0 - liq0) / p0;
+    let v = p0 * (1 + amp * 0.12);
+    for (let i = 0; i < 34; i++) {
+      const drift = (Math.sin(i * 0.7) * 0.18 + Math.cos(i * 1.9) * 0.12 - (i > 26 ? 0.08 : 0)) * amp;
+      const o = v;
+      const c = i === 33 ? p0 : v * (1 + drift);
+      const hiP = Math.max(o, c) * (1 + amp * (0.05 + (i % 3) * 0.02));
+      const loP = Math.min(o, c) * (1 - amp * (0.05 + (i % 4) * 0.015));
+      out.push({ x: 90 + i * 26, o, c, h: hiP, l: loP });
+      v = c;
+    }
+    return out;
+  }, [p0]);
   const lo = liq0 - (p0 - liq0) * 0.45;
-  const hi = p0 + (p0 - liq0) * 0.22;
+  // the top of the board clears the highest candle
+  const hi = Math.max(p0 + (p0 - liq0) * 0.22, Math.max(...candles.map((k) => k.h)) + (p0 - liq0) * 0.06);
   const y = useCallback((p: number) => 70 + ((hi - p) / (hi - lo)) * (H - 140), [hi, lo]);
   const toPrice = useCallback((yy: number) => hi - ((yy - 70) / (H - 140)) * (hi - lo), [hi, lo]);
 
@@ -109,23 +127,6 @@ export function HeroDrawing({ mark = 2400 }: { mark?: number }) {
   const run = useMemo(() => protect(p0, price), [p0, price]);
   const bareLiquidated = price <= liq0;
 
-  // The recorded part of the chart: deterministic candles drifting around entry.
-  const candles = useMemo(() => {
-    const out: Array<{ x: number; o: number; c: number; h: number; l: number }> = [];
-    // a range that wanders a little above and below entry, then returns to it
-    const amp = (p0 - liq0) / p0;
-    let v = p0 * (1 + amp * 0.12);
-    for (let i = 0; i < 34; i++) {
-      const drift = (Math.sin(i * 0.7) * 0.18 + Math.cos(i * 1.9) * 0.12 - (i > 26 ? 0.08 : 0)) * amp;
-      const o = v;
-      const c = i === 33 ? p0 : v * (1 + drift);
-      const hiP = Math.max(o, c) * (1 + amp * (0.05 + (i % 3) * 0.02));
-      const loP = Math.min(o, c) * (1 - amp * (0.05 + (i % 4) * 0.015));
-      out.push({ x: 90 + i * 26, o, c, h: hiP, l: loP });
-      v = c;
-    }
-    return out;
-  }, [p0]);
   const x0 = 90 + 33 * 26;
   const xHandle = 1360;
 

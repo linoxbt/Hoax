@@ -159,17 +159,25 @@ export function BuildUp() {
     const setMode = () => setPinned(!mq.matches);
     setMode();
     mq.addEventListener("change", setMode);
-    const update = () => {
+    // One measurement per frame, and a re-render only when progress really moves.
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
       const total = r.height - window.innerHeight;
-      setK(clamp(-r.top / Math.max(1, total)));
+      const next = clamp(-r.top / Math.max(1, total));
+      setK((prev) => (Math.abs(prev - next) > 0.002 || next === 0 || next === 1 ? next : prev));
     };
-    update();
+    const update = () => {
+      if (!raf) raf = requestAnimationFrame(measure);
+    };
+    measure();
     window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
     return () => {
+      cancelAnimationFrame(raf);
       mq.removeEventListener("change", setMode);
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
@@ -179,7 +187,7 @@ export function BuildUp() {
   if (!pinned) {
     return (
       <section className="sec bu-flat">
-        <div className="p" style={{ paddingTop: "8rem", paddingBottom: "8rem", textAlign: "center" }}>
+        <div className="p" style={{ paddingTop: "4.8rem", paddingBottom: "4.8rem", textAlign: "center" }}>
           <Statement text="Before the engine does" k={1} dotAt={9} />
         </div>
         <div className="bt drawing" style={{ padding: "1.6rem" }}>

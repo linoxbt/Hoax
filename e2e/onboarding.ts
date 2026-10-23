@@ -125,7 +125,13 @@ async function main() {
   await page.waitForTimeout(1500);
   if (process.env.E2E_DEBUG) console.log("  buttons:", await page.locator("button").evaluateAll((bs) => bs.map((b) => `${b.textContent}${(b as HTMLButtonElement).disabled ? "(disabled)" : ""}`)));
   await page.locator(".checklist").getByRole("button", { name: "Connect wallet" }).click();
-  await page.locator(".modal").getByRole("button", { name: /E2E Wallet/ }).click();
+  // With a Reown project id the wallet is picked in the Reown modal (shadow DOM);
+  // without one, in Hoax's own list. Either way the verify step is Hoax's.
+  if (process.env.E2E_REOWN) {
+    await page.locator("w3m-modal").getByText("E2E Wallet", { exact: true }).first().click({ timeout: 20_000 });
+  } else {
+    await page.locator(".modal").getByRole("button", { name: /E2E Wallet/ }).click();
+  }
   await page.locator(".modal").getByRole("button", { name: "Verify wallet", exact: true }).click();
   await page.getByText("Connected and verified.").waitFor({ timeout: 20_000 });
   await snap(page, "verified");

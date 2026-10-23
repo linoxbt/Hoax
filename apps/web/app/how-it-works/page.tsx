@@ -83,7 +83,7 @@ export default function HowItWorks() {
         <SectionHead label="Flip guard" title="No reduce-only flag, so four guards" sub="dreamDEX perp orders cannot be marked reduce-only. An oversized close would open the opposite position. Hoax never lets it." />
         <div className="cells c4 bt">
           {GUARDS.map(([t, d], i) => (
-            <div key={t} className="p" data-reveal style={{ ["--d" as string]: `${i * 0.06}s`, minHeight: "24rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div key={t} className="p" data-reveal style={{ ["--d" as string]: `${i * 0.06}s`, minHeight: "16rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
               <div className="mono-s muted">[{String(i + 1).padStart(2, "0")}]</div>
               <div>
                 <div className="h5">{t}</div>

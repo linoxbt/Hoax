@@ -35,7 +35,7 @@ export function useLinkTx() {
         });
         setPlan(tx);
         setPhase("confirm");
-        const h = await sendTransaction(wagmiConfig, {
+        const h = await sendTransaction(wagmiConfig(), {
           account: hoax.wallet,
           to: tx.to as `0x${string}`,
           data: tx.data as `0x${string}`,
@@ -44,7 +44,7 @@ export function useLinkTx() {
         });
         setHash(h);
         setPhase("mining");
-        const r = await waitForTransactionReceipt(wagmiConfig, { hash: h });
+        const r = await waitForTransactionReceipt(wagmiConfig(), { hash: h });
         if (r.status !== "success") throw new Error("The transaction reverted. Nothing changed.");
         setPhase("done");
         return true;

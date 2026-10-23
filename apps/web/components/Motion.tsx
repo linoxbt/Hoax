@@ -20,7 +20,8 @@ export function Motion() {
   // Inertial scroll, as one continuous drawing being panned.
   useEffect(() => {
     if (reduced) return;
-    const lenis = new Lenis({ duration: 1.1, smoothWheel: true });
+    // A light lerp keeps the glide but answers the wheel at once; touch stays native.
+    const lenis = new Lenis({ lerp: 0.14, smoothWheel: true, anchors: true });
     let raf = 0;
     const loop = (t: number) => {
       lenis.raf(t);
@@ -52,15 +53,20 @@ export function Motion() {
           }
         }
       },
-      { rootMargin: "0px 0px -6% 0px", threshold: 0.05 },
+      { rootMargin: "0px 0px -4% 0px", threshold: 0.01 },
     );
     const scan = () => document.querySelectorAll("[data-reveal]:not(.in),[data-split]:not(.in),[data-draw]:not(.in)").forEach((el) => io.observe(el));
     scan();
-    const mo = new MutationObserver(scan);
+    // Live data re-renders often; batch rescans to one per frame.
+    let pending = 0;
+    const mo = new MutationObserver(() => {
+      if (!pending) pending = requestAnimationFrame(() => ((pending = 0), scan()));
+    });
     mo.observe(document.body, { childList: true, subtree: true });
     return () => {
       io.disconnect();
       mo.disconnect();
+      cancelAnimationFrame(pending);
     };
   }, [path]);
 
@@ -77,8 +83,8 @@ export function Motion() {
       y = e.clientY;
     };
     const tick = () => {
-      cx += (x - cx) * 0.25;
-      cy += (y - cy) * 0.25;
+      cx += (x - cx) * 0.4;
+      cy += (y - cy) * 0.4;
       if (cursor.current) cursor.current.style.transform = `translate(${cx - 3}px, ${cy - 3}px)`;
       raf = requestAnimationFrame(tick);
     };
@@ -117,11 +123,11 @@ function Loader() {
     const start = performance.now();
     let raf = 0;
     const tick = (t: number) => {
-      const k = Math.min(1, (t - start) / 1400);
+      const k = Math.min(1, (t - start) / 800);
       const eased = 1 - Math.pow(1 - k, 3);
       setPct(Math.round(eased * 100));
       if (k < 1) raf = requestAnimationFrame(tick);
-      else setTimeout(() => setDone(true), 250);
+      else setTimeout(() => setDone(true), 120);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);

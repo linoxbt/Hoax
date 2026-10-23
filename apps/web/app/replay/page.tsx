@@ -57,7 +57,7 @@ export default function ReplayPage() {
         <div className="pad txt">No replay yet. Run npm run replay and reload.</div>
       </section>
     );
-  if (!r) return <section className="sec first" style={{ minHeight: "60vh" }} />;
+  if (!r) return <section className="sec first wait" aria-busy="true" />;
   const events = r.frames.flatMap((f, i) => f.events.map((e) => ({ t: Math.round((f.t - r.frames[0].t) / 1000), mark: f.mark, e, i })));
   const saved = r.receipts.find((x) => x.outcome === "saved");
   const sides = [
@@ -112,7 +112,7 @@ export default function ReplayPage() {
               </div>
             ))}
           </div>
-          <div className="mono-s ink" style={{ marginTop: "4.8rem" }}>
+          <div className="mono-s ink" style={{ marginTop: "3.2rem" }}>
             The receipts
           </div>
           <div className="rows" style={{ marginTop: "2.4rem" }}>

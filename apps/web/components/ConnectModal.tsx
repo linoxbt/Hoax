@@ -1,6 +1,7 @@
 "use client";
-// Connect, switch to Hideki, sign in: one dialog, three checks, every wallet the
-// browser has installed listed by name (EIP-6963).
+// Connect, switch to Hideki, sign in: one dialog, three checks. With a Reown
+// project id the wallet itself is picked in the Reown modal; without one, every
+// wallet the browser has installed is listed here by name (EIP-6963).
 
 import { useEffect, useState } from "react";
 import { useAccount, useConnect, useConnectors, type Connector } from "wagmi";
@@ -107,7 +108,17 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
           ))}
         </ol>
 
-        {!address ? (
+        {!address && hoax.hasReown ? (
+          <button
+            className="pill wide"
+            onClick={() => {
+              onClose();
+              hoax.openConnect();
+            }}
+          >
+            Choose a wallet
+          </button>
+        ) : !address ? (
           <div className="wallets">
             {list.map((c) => (
               <button key={c.uid} className="wallet" onClick={() => pick(c)} disabled={busy !== null}>

@@ -84,7 +84,7 @@ export function Footer() {
           </div>
         ))}
         <div className="footer-mark">
-          <LogoMark size={180} still />
+          <LogoMark size={140} still />
         </div>
       </div>
       <div className="footer-word">
