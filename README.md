@@ -59,6 +59,10 @@ npm run web                     # the app at http://localhost:3000
 
 To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps with, sign the free sign-in message, then on step 02 press **Link Hoax · one transaction**. Step 03 tops the key up with STT (the watcher's gas wallet does it automatically when configured), step 04 sets the policy. Revoke from Settings with one more transaction, or remove the bot in dreamDEX.
 
+### The engine on a real position
+
+`spike/10-engine-fork.ts` runs the real engine against a real trader's dreamDEX account on an Anvil fork of Hideki: one tick sized a 0.05374 BTC close, sent it through `placeOrderFor` from the Hoax key, filled it against the forked book, reconciled, and signed the receipt (health 3.071 → 3.595, target 3.58). See `spike/README.md`.
+
 ### End to end on a fork
 
 `e2e/onboarding.ts` drives the real web app with a scripted wallet against a local Anvil fork of Hideki, with the real watcher running: a fresh wallet gets a dreamDEX Safe, connects, signs in, receives its key, links 21 markets in one transaction, is activated by the watcher, gets gas, sets a policy and revokes. See `e2e/README.md`.

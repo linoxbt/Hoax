@@ -1,0 +1,91 @@
+{
+  "spike": "10-engine-fork",
+  "sdk": "@somnia-chain/markets-sdk@0.32.1",
+  "network": {
+    "chainId": 50383,
+    "rpc": "https://api.hideki2.infra.testnet.somnia.network"
+  },
+  "startedAt": "2026-10-23T15:38:40.043Z",
+  "finishedAt": "2026-10-23T15:39:07.808Z",
+  "finishedAtBlock": "31178830",
+  "result": {
+    "pass": true,
+    "summary": "the engine closed 0.053740 BTC of a real BTC-PERP position through placeOrderFor; health 3.071 → 3.595; signed receipt written"
+  },
+  "entries": [
+    {
+      "at": "2026-10-23T15:38:40.081Z",
+      "event": "fork",
+      "rpc": "http://127.0.0.1:8545",
+      "forkBlock": "31168821"
+    },
+    {
+      "at": "2026-10-23T15:38:40.878Z",
+      "event": "account",
+      "wallet": "0x64C4b28753b3a35F22425feD179573684da250BB",
+      "safe": "0x649a9d82143C50642CEF27D5965be702D00D434A",
+      "equity": "2365216777895194072659",
+      "mmReq": "770163511358750775849",
+      "health": 3.071057954592515,
+      "positions": [
+        {
+          "market": "BTC-PERP",
+          "size": "12836000",
+          "mark": "81495071382255856500000"
+        },
+        {
+          "market": "SOL-PERP",
+          "size": "97710000000",
+          "mark": "104365601883871500000"
+        },
+        {
+          "market": "ETH-PERP",
+          "size": "4225100000000000000",
+          "mark": "2401900577891786000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-23T15:38:40.906Z",
+      "event": "policy",
+      "market": "BTC-PERP",
+      "trigger": 3.18,
+      "target": 3.58,
+      "hoaxKey": "0x8ae60430a5C2B89865c6ACc4266c7268bb74b3eC"
+    },
+    {
+      "at": "2026-10-23T15:39:06.549Z",
+      "event": "link",
+      "tx": "0xfafa3937c878c6eacbb96f8c2b968303e8a23c97327654de7c5b077ac6a0ba82",
+      "status": "success",
+      "linked": true
+    },
+    {
+      "at": "2026-10-23T15:39:07.293Z",
+      "event": "tick",
+      "result": {
+        "kind": "acted",
+        "actionId": "b49125ba-736c-4b3b-9b88-46dd515ac8d2",
+        "outcome": "pending"
+      },
+      "action": {
+        "outcome": "pending",
+        "reason": null,
+        "tx": "0x9d213d07b8d0ddb0669dac61b9512c3f8371f9704c16ff1e346579b9a29ff8a2",
+        "sizeBefore": "12836000",
+        "sizeRequested": "5374000",
+        "sizeFilled": "5374000",
+        "sizeAfter": "7462000",
+        "avgPrice": "81678981149981391886862",
+        "mark": "81495071382255856500000",
+        "cost": "-9883310917570271690",
+        "estLiqCost": "132371329415757836922",
+        "healthBefore": 3.0710579545925145,
+        "healthAfter": 3.5949604716068215,
+        "signature": "0xa725d84ea2eea0f4134793376d0365f66927865df50eeb72a1bcb8ecef6e185932ce52b53122dd84bd1ca434ac26defcb4d3ccecd8bd462b08680f4b43c10b9c1c"
+      },
+      "positionAfter": "7462000",
+      "healthAfter": 3.5949604716068215
+    }
+  ]
+}
