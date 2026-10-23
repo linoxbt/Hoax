@@ -13,9 +13,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ owner: s
   const chainId = Number(url.searchParams.get("chain") ?? HIDEKI.id);
   if (!isNetworkId(chainId)) return error(400, "chain must be 50312 (Shannon) or 50383 (Hideki)");
   const id = url.searchParams.get("account");
-  // Hoax's records are for Hideki accounts; a Shannon account is read from chain only.
-  let account = chainId !== HIDEKI.id ? null : id ? await store.getAccount(id) : await store.getAccountByOwner(owner);
-  if (account && account.owner !== owner.toLowerCase()) account = null;
+  let account = id ? await store.getAccount(id) : await store.getAccountByOwner(owner, chainId);
+  if (account && (account.owner !== owner.toLowerCase() || account.chainId !== chainId)) account = null;
   const isOwner = account ? await authorized(req, account) : false;
   try {
     return json(await accountView(store, owner, account, isOwner, chainId));

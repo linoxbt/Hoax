@@ -47,32 +47,53 @@ if [ ! -f deploy/pg-certs/server.key ]; then
   chmod 600 deploy/pg-certs/server.key
 fi
 
-docker compose up -d --build
+# Ports another program already holds (a Postgres of its own, another app on
+# 8080) are swapped for the next free one, and .env remembers the choice.
+port_taken() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+pick_port() { # name default
+  local key=$1 port
+  port=$(grep "^$key=" .env | cut -d= -f2)
+  [ -z "$port" ] && port=$2 && echo "$key=$port" >> .env
+  # Ours if our own containers are what is listening.
+  if docker compose ps --status running -q 2>/dev/null | grep -q .; then return; fi
+  while port_taken "$port"; do port=$((port + 1)); done
+  sed -i "s/^$key=.*/$key=$port/" .env
+}
+pick_port POSTGRES_PUBLIC_PORT 5432
+pick_port HEALTH_PORT 8080
+pick_port HEALTH_PORT_SHANNON 8081
+val() { grep "^$1=" .env | cut -d= -f2; }
 
-# Open the ports if ufw is active: 8080 health endpoint, Postgres for Netlify.
+docker compose up -d --build --remove-orphans
+
+# Open the ports if ufw is active: the engines' health endpoints, Postgres for Netlify.
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-  ufw allow 8080/tcp
-  ufw allow "$(grep POSTGRES_PUBLIC_PORT .env | cut -d= -f2)"/tcp
+  for k in HEALTH_PORT HEALTH_PORT_SHANNON POSTGRES_PUBLIC_PORT; do ufw allow "$(val $k)"/tcp; done
 fi
 
-echo "Waiting for the watcher..."
-for i in $(seq 1 60); do
-  if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then break; fi
-  sleep 2
+echo "Waiting for both engines (Hideki and Shannon)..."
+for port in "$(val HEALTH_PORT)" "$(val HEALTH_PORT_SHANNON)"; do
+  for i in $(seq 1 60); do
+    if curl -fsS "http://localhost:$port/healthz" >/dev/null 2>&1; then break; fi
+    sleep 2
+  done
+  curl -fsS "http://localhost:$port/healthz" && echo
 done
-curl -fsS http://localhost:8080/healthz && echo
 
 IP=$(curl -fsS https://api.ipify.org || hostname -I | awk '{print $1}')
-PASS=$(grep POSTGRES_PASSWORD .env | cut -d= -f2)
-PORT=$(grep POSTGRES_PUBLIC_PORT .env | cut -d= -f2)
-GAS=$(curl -fsS http://localhost:8080/healthz | sed -n 's/.*"gasWallet":"\(0x[0-9a-fA-F]*\)".*/\1/p')
+GAS=$(curl -fsS "http://localhost:$(val HEALTH_PORT)/healthz" | sed -n 's/.*"gasWallet":"\(0x[0-9a-fA-F]*\)".*/\1/p')
 echo
-echo "Watcher health:  http://$IP:8080/healthz"
-[ -n "$GAS" ] && echo "Gas wallet:      $GAS   <- send it some STT; it tops up every linked Hoax key"
+echo "Hideki engine:   http://$IP:$(val HEALTH_PORT)/healthz"
+echo "Shannon engine:  http://$IP:$(val HEALTH_PORT_SHANNON)/healthz"
+if [ -n "$GAS" ]; then
+  echo "Gas wallet:      $GAS"
+  echo "                 Send it STT on both Somnia Hideki and Somnia Shannon: it tops up"
+  echo "                 every linked Hoax key on that network so the key can pay for its orders."
+fi
 echo
 echo "On Netlify (Project configuration > Environment variables), add:"
 echo
-echo "  DATABASE_URL = postgres://hoax:$PASS@$IP:$PORT/hoax?sslmode=no-verify"
+echo "  DATABASE_URL = postgres://hoax:$(val POSTGRES_PASSWORD)@$IP:$(val POSTGRES_PUBLIC_PORT)/hoax?sslmode=no-verify"
 echo
 echo "Mark it secret, scope it to Functions. Then turn off demo mode (delete HOAX_DEMO)"
 echo "and redeploy. The site's engine badge turns green within seconds."

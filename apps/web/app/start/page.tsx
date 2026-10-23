@@ -10,8 +10,6 @@ export default function WalletStep() {
   const info = hoax.walletInfo;
   const shown = info?.accounts.find((a) => a.address === hoax.account && a.chainId === hoax.accountChain) ?? null;
   const margin = shown && shown.equity !== null ? { equity: shown.equity, health: shown.health, positions: shown.positions } : null;
-  // The engine protects Hideki accounts today; a Shannon account can be watched in the dashboard but not linked yet.
-  const onHidekiAccount = hoax.accountChain === 50383;
 
   const rows: Array<{ k: string; ok: boolean; v: React.ReactNode; act?: React.ReactNode }> = [
     {
@@ -116,13 +114,7 @@ export default function WalletStep() {
           </div>
         )}
 
-        {hoax.account && !onHidekiAccount && (
-          <p className="note" style={{ marginTop: "2.4rem" }}>
-            This account is on {NETWORK_NAMES[hoax.accountChain ?? 0]}. Hoax reads its positions live in the dashboard; automatic protection runs on Somnia
-            Hideki for now, so linking is for Hideki accounts.
-          </p>
-        )}
-        <StepNav next={onHidekiAccount ? "/start/link" : "/app"} nextLabel={onHidekiAccount ? "Link Hoax" : "Open dashboard"} nextDisabled={!(hoax.account && (hoax.signedIn || !onHidekiAccount))} />
+        <StepNav next="/start/link" nextLabel="Link Hoax" nextDisabled={!(hoax.account && hoax.signedIn)} />
       </div>
     </div>
   );

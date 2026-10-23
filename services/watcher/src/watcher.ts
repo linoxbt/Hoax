@@ -20,6 +20,8 @@ export interface WatcherOptions {
   log: Logger;
   engine: EngineConfig;
   tickMs: number;
+  /** The heartbeat's name: one per engine process, e.g. watcher-hideki. */
+  service?: string;
 }
 
 export interface WatcherStatus {
@@ -59,7 +61,7 @@ export class Watcher {
 
   /** One health pass over every active account. */
   async tickAll(): Promise<void> {
-    const accounts = await this.opts.store.listAccounts("active");
+    const accounts = await this.opts.store.listAccounts("active", this.opts.venue.chainId);
     this.status.activeAccounts = accounts.length;
     await Promise.all(accounts.map((a) => this.tickOne(a.id)));
     this.status.lastTickAt = new Date().toISOString();
@@ -80,7 +82,7 @@ export class Watcher {
   }
 
   private async refreshSubscriptions(): Promise<void> {
-    const accounts = await this.opts.store.listAccounts("active");
+    const accounts = await this.opts.store.listAccounts("active", this.opts.venue.chainId);
     const owners = accounts.map((a) => getAddress(a.owner) as Address).sort();
     const sig = owners.join(",");
     if (sig === this.watchedOwners) return;
@@ -132,7 +134,7 @@ export class Watcher {
     this.loop("counterfactuals", 2_000, () => this.tracker.run());
     if (this.opts.gas) this.loop("gas", 30_000, () => this.opts.gas!.run());
     this.loop("heartbeat", 5_000, () =>
-      this.opts.store.beat("watcher", { ...this.status, venue: this.opts.venue.name, gasWallet: this.opts.gas?.address ?? null }),
+      this.opts.store.beat(this.opts.service ?? "watcher", { ...this.status, venue: this.opts.venue.name, gasWallet: this.opts.gas?.address ?? null }),
     );
     this.loop("prune", 60 * 60_000, () => this.opts.store.pruneHealthTicks(new Date(Date.now() - 24 * 60 * 60_000)));
   }

@@ -27,6 +27,7 @@ function toAccount(r: Row): AccountRow {
   return {
     id: String(r.id),
     owner: String(r.owner),
+    chainId: Number(r.chain_id ?? 50383),
     hoaxKey: (r.hoax_key as string | null) ?? null,
     status: r.status as AccountStatus,
     manageTokenHash: String(r.manage_token_hash),
@@ -131,10 +132,10 @@ export class PgStore implements Store {
     return (await this.pool.query(sql, params)).rows as Row[];
   }
 
-  async createAccount(a: { id: string; owner: string; manageTokenHash: string }) {
+  async createAccount(a: { id: string; owner: string; manageTokenHash: string; chainId?: number }) {
     const [r] = await this.q(
-      `INSERT INTO accounts (id, owner, status, manage_token_hash) VALUES ($1, $2, 'pending_key', $3) RETURNING *`,
-      [a.id, a.owner.toLowerCase(), a.manageTokenHash],
+      `INSERT INTO accounts (id, owner, status, manage_token_hash, chain_id) VALUES ($1, $2, 'pending_key', $3, $4) RETURNING *`,
+      [a.id, a.owner.toLowerCase(), a.manageTokenHash, a.chainId ?? 50383],
     );
     return toAccount(r);
   }
@@ -144,16 +145,20 @@ export class PgStore implements Store {
     return r ? toAccount(r) : null;
   }
 
-  async getAccountByOwner(owner: string) {
+  async getAccountByOwner(owner: string, chainId = 50383) {
     const [r] = await this.q(
-      `SELECT * FROM accounts WHERE owner = $1 ORDER BY (status = 'active') DESC, created_at DESC LIMIT 1`,
-      [owner.toLowerCase()],
+      `SELECT * FROM accounts WHERE owner = $1 AND chain_id = $2 ORDER BY (status = 'active') DESC, created_at DESC LIMIT 1`,
+      [owner.toLowerCase(), chainId],
     );
     return r ? toAccount(r) : null;
   }
 
-  async listAccounts(status: AccountStatus) {
-    return (await this.q(`SELECT * FROM accounts WHERE status = $1 ORDER BY created_at`, [status])).map(toAccount);
+  async listAccounts(status: AccountStatus, chainId?: number) {
+    const rows =
+      chainId === undefined
+        ? await this.q(`SELECT * FROM accounts WHERE status = $1 ORDER BY created_at`, [status])
+        : await this.q(`SELECT * FROM accounts WHERE status = $1 AND chain_id = $2 ORDER BY created_at`, [status, chainId]);
+    return rows.map(toAccount);
   }
 
   async setHoaxKey(id: string, hoaxKey: string) {

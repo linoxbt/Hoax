@@ -1,0 +1,91 @@
+{
+  "spike": "10-engine-fork-shannon",
+  "sdk": "@somnia-chain/markets-sdk@0.32.1",
+  "network": {
+    "chainId": 50383,
+    "rpc": "https://api.hideki2.infra.testnet.somnia.network"
+  },
+  "startedAt": "2026-10-23T18:40:50.827Z",
+  "finishedAt": "2026-10-23T18:41:46.154Z",
+  "finishedAtBlock": "31288380",
+  "result": {
+    "pass": true,
+    "summary": "the engine closed 0.100000 SOL of a real SOL-PERP position through placeOrderFor; health 3.200 → 6.394; signed receipt written"
+  },
+  "entries": [
+    {
+      "at": "2026-10-23T18:40:50.863Z",
+      "event": "fork",
+      "network": "Somnia Shannon",
+      "chainId": 50312,
+      "rpc": "http://127.0.0.1:8545",
+      "forkBlock": "522066691"
+    },
+    {
+      "at": "2026-10-23T18:41:04.129Z",
+      "event": "run hotter",
+      "healthBefore": 191.08331184494256,
+      "withdrawn": "97704019242166260000",
+      "status": "success",
+      "healthAfter": 3.2
+    },
+    {
+      "at": "2026-10-23T18:41:04.420Z",
+      "event": "account",
+      "wallet": "0xb884Da245921FFc2bCD87f0da1Bb31e0845729Ea",
+      "safe": "0x5071a40b75107e1b2faaBA9bA89EA3315D273d34",
+      "equity": "1664080000000000000",
+      "mmReq": "520025000000000000",
+      "health": 3.2,
+      "positions": [
+        {
+          "market": "SOL-PERP",
+          "size": "200000000",
+          "mark": "104005000000000000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-23T18:41:04.450Z",
+      "event": "policy",
+      "market": "SOL-PERP",
+      "trigger": 3.3,
+      "target": 3.6999999999999997,
+      "hoaxKey": "0x9Cf20190850b4a4Dc0C20A1179A8FF854A8dc2Ba"
+    },
+    {
+      "at": "2026-10-23T18:41:27.656Z",
+      "event": "link",
+      "tx": "0x9f74642b8bde25524bc1ac62454860dacedc9c30542a61cb0b14ff43a4771ac9",
+      "status": "success",
+      "linked": true
+    },
+    {
+      "at": "2026-10-23T18:41:45.426Z",
+      "event": "tick",
+      "result": {
+        "kind": "acted",
+        "actionId": "a90fc469-3da1-4fe7-8da4-5cb90f734e8f",
+        "outcome": "pending"
+      },
+      "action": {
+        "outcome": "pending",
+        "reason": null,
+        "tx": "0xf9ab65ec62d200622b31fe7f4f73ce3ccfbe7c19d7ace00ca4ec5f7059b0ba2e",
+        "sizeBefore": "200000000",
+        "sizeRequested": "100000000",
+        "sizeFilled": "100000000",
+        "sizeAfter": "100000000",
+        "avgPrice": "103990000000000000000",
+        "mark": "104005000000000000000",
+        "cost": "1500000000000000",
+        "estLiqCost": "294414153846153846",
+        "healthBefore": 3.2,
+        "healthAfter": 6.394231046584299,
+        "signature": "0x6652647d2e6bd41a900d1a3c9253ed18339403c1c219f3aeeb406c530aa49cad0a241ec04aa5f863619decbe6b0d669ae7ae5d6690b9920cc1e3f3505fb5b8231b"
+      },
+      "positionAfter": "100000000",
+      "healthAfter": 6.394231046584299
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 // Apply every migration in order. Each file is idempotent (IF NOT EXISTS), so
-// running this twice is safe.
+// running this twice is safe. An advisory lock serialises processes that start
+// together (one watcher per network), since concurrent CREATEs can collide.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,9 +12,10 @@ export async function migrate(connectionString: string): Promise<string[]> {
   const client = new pg.Client({ connectionString });
   await client.connect();
   try {
+    await client.query("SELECT pg_advisory_lock(4884)");
     for (const f of files) await client.query(readFileSync(join(dir, f), "utf8"));
   } finally {
-    await client.end();
+    await client.end(); // releases the lock with the session
   }
   return files;
 }

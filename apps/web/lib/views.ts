@@ -4,7 +4,7 @@ import type { AccountRow, ActionRow, CounterfactualRow, Store } from "@hoax/db";
 import { getAddress, type Hex } from "viem";
 import { accountsClient } from "./auth";
 import { DEMO_OWNER } from "./demo";
-import { BUILDER, DEMO, getMarkets, getVenue } from "./server";
+import { BUILDER, DEMO, getMarkets, getStore, getVenue } from "./server";
 
 export interface PositionView {
   market: string;
@@ -95,9 +95,8 @@ export async function positionsFor(store: Store, owner: string, account: Account
 }
 
 /**
- * Everything the dashboard shows for one dreamDEX account on one network.
- * Hoax's own records (policies, the key, alerts) exist only for accounts it
- * protects, which today are on Hideki; on Shannon the view is live chain data.
+ * Everything the dashboard shows for one dreamDEX account on one network:
+ * live positions from that network, plus Hoax's records when it protects it.
  */
 export async function accountView(store: Store, owner: string, account: AccountRow | null, isOwner: boolean, chainId: number = HIDEKI.id) {
   const network = networkOf(chainId);
@@ -110,7 +109,7 @@ export async function accountView(store: Store, owner: string, account: AccountR
     account && isOwner ? store.listAlerts(account.id, 20) : Promise.resolve([]),
     account?.hoaxKey && venue ? venue.nativeBalance(getAddress(account.hoaxKey)).catch(() => null) : Promise.resolve(null),
     live
-      ? accountsClient()
+      ? accountsClient(chainId)
           .linkStatus(getAddress(owner), getAddress(account!.hoaxKey!), markets.map((m) => m.pool))
           .catch(() => null)
       : Promise.resolve(null),
@@ -119,8 +118,6 @@ export async function accountView(store: Store, owner: string, account: AccountR
     owner: owner.toLowerCase(),
     chainId: network.id,
     network: { id: network.id, key: network.key, name: network.name, explorer: network.explorer },
-    /** Whether the Hoax engine can protect accounts on this network yet. */
-    protectable: network.id === HIDEKI.id,
     account: account && {
       id: account.id,
       status: account.status,
@@ -152,13 +149,18 @@ export async function receiptView(action: ActionRow, cf: CounterfactualRow | nul
       signatureValid = false;
     }
   }
-  const markets = await getMarkets();
-  const market = markets.find((m) => m.symbol === action.market);
+  // The receipt's network is its account's; older rows without one are Hideki.
+  const account = await (await getStore()).getAccount(action.accountId).catch(() => null);
+  const network = networkOf(account?.chainId ?? HIDEKI.id);
+  const markets = await getMarkets(network.id).catch(() => []);
+  const market = markets.find((m) => m.pool.toLowerCase() === action.pool.toLowerCase()) ?? markets.find((m) => m.symbol === action.market);
   return {
     ...action,
     baseDecimals: market?.baseDecimals ?? 18,
     counterfactual: cf,
     signatureValid,
-    explorer: HIDEKI.explorer,
+    chainId: network.id,
+    networkName: network.name,
+    explorer: network.explorer,
   };
 }

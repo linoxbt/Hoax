@@ -8,9 +8,10 @@ import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { defineChain } from "@reown/appkit/networks";
 import { createAppKit, type AppKit } from "@reown/appkit/react";
 import { http, type Config } from "wagmi";
-import { hideki, RPC_URL } from "./chain";
+import { hideki, RPC_URL, shannon, SHANNON_RPC_URL } from "./chain";
 
 const hidekiNetwork = defineChain({ ...hideki, chainNamespace: "eip155", caipNetworkId: "eip155:50383" });
+const shannonNetwork = defineChain({ ...shannon, chainNamespace: "eip155", caipNetworkId: "eip155:50312" });
 
 let made: { config: Config; appKit: AppKit } | null = null;
 
@@ -19,11 +20,16 @@ export function loadReown(projectId: string): { config: Config; appKit: AppKit }
   // Built in the browser after the page has mounted, so not an SSR config: with
   // ssr on, wagmi would wait for a mount-time hydrate that never comes and skip
   // the wallets the browser has already announced.
-  const adapter = new WagmiAdapter({ projectId, networks: [hidekiNetwork], transports: { [hideki.id]: http(RPC_URL) }, ssr: false });
+  const adapter = new WagmiAdapter({
+    projectId,
+    networks: [hidekiNetwork, shannonNetwork],
+    transports: { [hideki.id]: http(RPC_URL), [shannon.id]: http(SHANNON_RPC_URL) },
+    ssr: false,
+  });
   const appKit = createAppKit({
     adapters: [adapter],
     projectId,
-    networks: [hidekiNetwork],
+    networks: [hidekiNetwork, shannonNetwork],
     defaultNetwork: hidekiNetwork,
     metadata: {
       name: "Hoax",

@@ -1,7 +1,7 @@
 // Server-only singletons and helpers for the API routes.
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { DreamDexVenue, HIDEKI, networkOf, type MarketInfo, type Venue } from "@hoax/chain";
+import { DreamDexVenue, HIDEKI, NETWORKS, isNetworkId, networkOf, type MarketInfo, type Venue } from "@hoax/chain";
 import { MemoryStore, PgStore, type AccountRow, type Store } from "@hoax/db";
 import { bearer, controls, sessionWallet } from "./auth";
 import { seedDemo } from "./demo";
@@ -79,25 +79,43 @@ export async function authorized(req: Request, account: AccountRow): Promise<boo
   const token = bearer(req);
   if (!token) return false;
   const wallet = sessionWallet(token);
-  if (wallet) return controls(wallet, account.owner).catch(() => false);
+  if (wallet) return controls(wallet, account.owner, account.chainId).catch(() => false);
   const a = Buffer.from(hashToken(token));
   const b = Buffer.from(account.manageTokenHash);
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Whether the protection engine (the watcher) has reported in recently. */
+/**
+ * The network a request is about: `chain` in the body or the query string,
+ * Hideki when absent. Null when it names a network Hoax does not serve.
+ */
+export function chainOf(req: Request, body?: { chain?: unknown } | null): number | null {
+  const raw = body?.chain ?? new URL(req.url).searchParams.get("chain");
+  const id = raw === undefined || raw === null || raw === "" ? HIDEKI.id : Number(raw);
+  return isNetworkId(id) ? id : null;
+}
+
+export const BAD_CHAIN = "chain must be 50312 (Shannon) or 50383 (Hideki)";
+
+/**
+ * Whether each network's protection engine has reported in recently. One
+ * engine process runs per network and beats as watcher-<network>; a lone
+ * "watcher" beat is an older Hideki engine.
+ */
 export async function engineStatus() {
-  if (DEMO) return { online: false, mode: "demo" as const, lastBeatAt: null, ageSec: null, info: null };
+  const none = { online: false, lastBeatAt: null, ageSec: null, info: null };
+  if (DEMO) return { online: false, mode: "demo" as const, lastBeatAt: null, ageSec: null, info: null, networks: Object.fromEntries(NETWORKS.map((n) => [n.id, none])) };
   const store = await getStore();
-  const beat = await store.lastBeat("watcher").catch(() => null);
-  const ageSec = beat ? Math.round((Date.now() - beat.beatAt.getTime()) / 1000) : null;
-  return {
-    online: ageSec !== null && ageSec < 30,
-    mode: "live" as const,
-    lastBeatAt: beat?.beatAt.toISOString() ?? null,
-    ageSec,
-    info: beat?.info ?? null,
-  };
+  const networks: Record<number, { online: boolean; lastBeatAt: string | null; ageSec: number | null; info: Record<string, unknown> | null }> = {};
+  for (const n of NETWORKS) {
+    const names = n.id === HIDEKI.id ? [`watcher-${n.key}`, "watcher"] : [`watcher-${n.key}`];
+    const beats = (await Promise.all(names.map((s) => store.lastBeat(s).catch(() => null)))).filter((b) => b !== null);
+    const beat = beats.sort((a, b) => b.beatAt.getTime() - a.beatAt.getTime())[0] ?? null;
+    const ageSec = beat ? Math.round((Date.now() - beat.beatAt.getTime()) / 1000) : null;
+    networks[n.id] = { online: ageSec !== null && ageSec < 30, lastBeatAt: beat?.beatAt.toISOString() ?? null, ageSec, info: beat?.info ?? null };
+  }
+  const freshest = Object.values(networks).sort((a, b) => (a.ageSec ?? Infinity) - (b.ageSec ?? Infinity))[0] ?? none;
+  return { ...freshest, online: Object.values(networks).some((x) => x.online), mode: "live" as const, networks };
 }
 
 export function isAddress(s: string): s is `0x${string}` {

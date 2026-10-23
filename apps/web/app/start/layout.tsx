@@ -38,7 +38,7 @@ export default function StartLayout({ children }: { children: React.ReactNode })
               Get protected
             </Split>
           </div>
-          <EngineBadge />
+          <EngineBadge chainId={session?.chainId} />
         </div>
         <div>
           <div className="rail">

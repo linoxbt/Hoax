@@ -24,18 +24,19 @@ export function useLinkTx() {
       setErr(null);
       setHash(null);
       try {
-        await hoax.ensureChain();
+        await hoax.ensureChain(session.chainId);
         if (!hoax.signedIn && !(await hoax.signIn())) throw new Error("Verify your wallet first.");
         setPhase("building");
         const token = hoax.session?.token || readToken(hoax.wallet);
         const tx = await api<LinkTxJson>("/api/link", {
           method: "POST",
           token,
-          body: JSON.stringify({ owner: session.owner, approved: opts.approved, builderFee: opts.builderFee }),
+          body: JSON.stringify({ owner: session.owner, chain: session.chainId, approved: opts.approved, builderFee: opts.builderFee }),
         });
         setPlan(tx);
         setPhase("confirm");
         const h = await sendTransaction(wagmiConfig(), {
+          chainId: session.chainId,
           account: hoax.wallet,
           to: tx.to as `0x${string}`,
           data: tx.data as `0x${string}`,
@@ -44,7 +45,7 @@ export function useLinkTx() {
         });
         setHash(h);
         setPhase("mining");
-        const r = await waitForTransactionReceipt(wagmiConfig(), { hash: h });
+        const r = await waitForTransactionReceipt(wagmiConfig(), { hash: h, chainId: session.chainId });
         if (r.status !== "success") throw new Error("The transaction reverted. Nothing changed.");
         setPhase("done");
         return true;

@@ -1,19 +1,21 @@
 import { DEFAULT_POLICY, validatePolicy, type Policy } from "@hoax/core";
-import { authorized, error, getMarkets, getStore, isAddress, json } from "@/lib/server";
+import { BAD_CHAIN, authorized, chainOf, error, getMarkets, getStore, isAddress, json } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-/** Create or update the policy for one market. Missing fields take the defaults. */
+/** Create or update the policy for one market. Missing fields take the defaults. ?chain= picks the network (Hideki by default). */
 export async function PUT(req: Request, { params }: { params: Promise<{ owner: string; market: string }> }) {
   const { owner, market } = await params;
   if (!isAddress(owner)) return error(400, "owner must be a 0x address");
-  const markets = await getMarkets();
+  const chainId = chainOf(req);
+  if (!chainId) return error(400, BAD_CHAIN);
+  const markets = await getMarkets(chainId);
   if (!markets.some((m) => m.symbol === market)) return error(400, `unknown market ${market}`);
   const store = await getStore();
   const url = new URL(req.url);
   const id = url.searchParams.get("account");
-  const account = id ? await store.getAccount(id) : await store.getAccountByOwner(owner);
-  if (!account || account.owner !== owner.toLowerCase()) return error(404, "no Hoax registration for this wallet");
+  const account = id ? await store.getAccount(id) : await store.getAccountByOwner(owner, chainId);
+  if (!account || account.owner !== owner.toLowerCase() || account.chainId !== chainId) return error(404, "no Hoax registration for this wallet on this network");
   if (!(await authorized(req, account))) return error(401, "sign in with the wallet that owns this account");
 
   const body = (await req.json().catch(() => ({}))) as Partial<Record<keyof Policy, unknown>>;

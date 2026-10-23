@@ -1,8 +1,10 @@
 // The watcher process: reads its configuration from the environment, connects
-// to Postgres and Somnia Tokyo testnet, and runs until stopped.
+// to Postgres and one Somnia network, and runs until stopped. NETWORK picks it:
+// hideki (default) or shannon. Run one process per network against the same
+// database and keystore; each protects only its own network's accounts.
 
 import { createServer } from "node:http";
-import { DreamDexVenue } from "@hoax/chain";
+import { DreamDexVenue, NETWORKS } from "@hoax/chain";
 import { MemoryStore, PgStore, migrate, type Store } from "@hoax/db";
 import { getAddress, parseEther, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -32,7 +34,10 @@ async function main() {
   if (!secret) throw new Error("HOAX_KEYSTORE_SECRET is required: it encrypts the per-account Hoax keys");
   const keys = new FileKeystore(env("KEYSTORE_DIR", "./keystore")!, secret);
 
-  const venue = new DreamDexVenue({ rpcUrl: env("RPC_URL"), wsUrl: env("WS_URL"), indexerUrl: env("INDEXER_URL") });
+  const networkKey = env("NETWORK", "hideki")!;
+  const network = NETWORKS.find((n) => n.key === networkKey);
+  if (!network) throw new Error(`NETWORK must be one of ${NETWORKS.map((n) => n.key).join(", ")}`);
+  const venue = new DreamDexVenue({ network, rpcUrl: env("RPC_URL"), wsUrl: env("WS_URL"), indexerUrl: env("INDEXER_URL") });
 
   const gasKey = env("GAS_WALLET_PRIVATE_KEY");
   const gas = gasKey
@@ -59,6 +64,7 @@ async function main() {
     gas,
     log,
     tickMs: Number(env("TICK_MS", "1000")),
+    service: `watcher-${network.key}`,
     engine: {
       ...DEFAULT_ENGINE_CONFIG,
       builder: builder ? getAddress(builder) : null,

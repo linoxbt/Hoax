@@ -6,7 +6,7 @@ Hoax cuts a dreamDEX perp position down to safe size before the liquidation engi
 
 Liquidation is the worst exit in perps: a 1% penalty, a forced close at whatever the book pays, and no say in the exit. Hoax gives traders a cheaper one, automatically, without ever touching their funds. A trader links Hoax to a dreamDEX wallet as a trade-only bot and sets a trigger health and a target health. When health falls to the trigger, Hoax closes the smallest slice that restores the target, but only when that close costs less than the liquidation it prevents.
 
-Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dreamdex-perps-bounty/detail), MVP track (bots and agents, trader tools). Runs on Somnia Tokyo testnet (Hideki, chain 50383).
+Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dreamdex-perps-bounty/detail), MVP track (bots and agents, trader tools). Runs on both networks the dreamDEX testnet app trades on: Somnia Hideki (Tokyo, chain 50383) and Somnia Shannon (chain 50312), one engine per network.
 
 **Who it is for:** anyone holding a leveraged dreamDEX perp position who isn't watching it every minute. Mark price and hourly funding move health on an idle position, and a stop-loss closes everything at a fixed price. Hoax closes just enough, only when it is cheaper than liquidation.
 
@@ -31,7 +31,7 @@ apps/web/            Next.js app: wallet connect (wagmi, EIP-6963), sign-in, one
                      receipts, stats, live markets, crash simulator, replay + HTTP API
 services/watcher/    health loop, executor, reconciler, counterfactual tracker, link detection, gas drips, keystore
 packages/core/       sizing, cost gate, flip guard, decisions, receipts, counterfactual (pure, unit-tested)
-packages/chain/      Venue interface; DreamDexVenue (Hideki, SDK reads, placeOrderFor via viem); SimVenue;
+packages/chain/      Venue interface; networks (Hideki, Shannon); DreamDexVenue (SDK reads, placeOrderFor via viem); SimVenue;
                      DreamDexAccounts (wallet → dreamDEX Safe, link/revoke transaction, link status)
 packages/db/         Store interface; Postgres and in-memory backends; schema in migrations/
 spike/               proof scripts for the spec's spike tests, with logged evidence in spike/evidence/
@@ -61,7 +61,7 @@ To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps 
 
 ### The engine on a real position
 
-`spike/10-engine-fork.ts` runs the real engine against a real trader's dreamDEX account on an Anvil fork of Hideki: one tick sized a 0.05374 BTC close, sent it through `placeOrderFor` from the Hoax key, filled it against the forked book, reconciled, and signed the receipt (health 3.071 → 3.595, target 3.58). See `spike/README.md`.
+`spike/10-engine-fork.ts` runs the real engine against a real trader's dreamDEX account on an Anvil fork of Hideki: one tick sized a 0.05374 BTC close, sent it through `placeOrderFor` from the Hoax key, filled it against the forked book, reconciled, and signed the receipt (health 3.071 → 3.595, target 3.58). With `NETWORK=shannon` it does the same on a fork of Shannon: a real Safe linked on all 24 Shannon perp pools in one transaction, then 0.1 SOL closed, health 3.2 → 6.39. See `spike/README.md`.
 
 ### End to end on a fork
 

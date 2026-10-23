@@ -36,8 +36,6 @@ export interface AccountJson {
   owner: string;
   chainId: number;
   network: { id: number; key: "shannon" | "hideki"; name: string; explorer: string };
-  /** Whether the Hoax engine can protect accounts on this network yet. */
-  protectable: boolean;
   account: {
     id: string;
     status: "pending_key" | "pending_link" | "active" | "unlinked";
@@ -118,7 +116,7 @@ export interface WalletAccountJson {
   network: "shannon" | "hideki";
   networkName: string;
   address: string;
-  via: "owner" | "derived";
+  via: "owner" | "derived" | "wallet";
   equity: string | null;
   mmReq: string | null;
   health: number | null;
@@ -152,12 +150,17 @@ export interface MarketJson {
   baseDecimals: number;
 }
 
-export interface EngineJson {
+export interface EngineNetworkJson {
   online: boolean;
-  mode: "demo" | "live";
   lastBeatAt: string | null;
   ageSec: number | null;
   info: Record<string, unknown> | null;
+}
+
+/** The freshest engine at the top level; one entry per network (by chain id) underneath. */
+export interface EngineJson extends EngineNetworkJson {
+  mode: "demo" | "live";
+  networks: Record<string, EngineNetworkJson>;
 }
 
 export interface LinkTxJson {
@@ -167,6 +170,9 @@ export interface LinkTxJson {
   from: string;
   gas: string | null;
   calls: Array<{ to: string; label: string }>;
+  /** "pool": per-pool grants through the Safe; "global": one registry-wide grant from a plain-key account. */
+  scope: "pool" | "global";
   markets: number;
   hoaxKey: string;
+  chainId: number;
 }

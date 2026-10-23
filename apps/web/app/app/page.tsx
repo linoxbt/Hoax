@@ -52,7 +52,7 @@ export default function Overview() {
       </AppHead>
       <div className="wrap pad-s">
         <div className="statusbar">
-          <EngineBadge />
+          <EngineBadge chainId={session.chainId} />
           <span>
             <b>{linkedCount === null ? "–" : `${linkedCount}/${view?.markets.length ?? 21}`}</b> markets linked
           </span>
@@ -63,17 +63,7 @@ export default function Overview() {
             <b>{view ? view.policies.filter((p) => p.enabled).length : "–"}</b> policies on
           </span>
         </div>
-        {view && !view.protectable && (
-          <div className="cta-band">
-            <div>
-              <div className="cap accent">Live view · {view.network.name}</div>
-              <p className="copy" style={{ marginTop: "0.6rem" }}>
-                Positions on this account are read live from {view.network.name}. Automatic protection runs on Somnia Hideki for now.
-              </p>
-            </div>
-          </div>
-        )}
-        {view && view.protectable && (!account || account.status === "pending_key" || account.status === "pending_link") && (
+        {view && (!account || account.status === "pending_key" || account.status === "pending_link") && (
           <div className="cta-band">
             <div>
               <div className="cap accent">Not protected yet</div>

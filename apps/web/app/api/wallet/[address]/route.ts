@@ -10,8 +10,11 @@ interface Found {
   network: string;
   networkName: string;
   address: Address;
-  /** "owner": the indexer lists the wallet as an owner. "derived": the factory account of the wallet itself. */
-  via: "owner" | "derived";
+  /**
+   * "owner": the indexer lists the wallet as an owner. "derived": the factory
+   * account of the wallet itself. "wallet": the wallet trades directly, no Safe.
+   */
+  via: "owner" | "derived" | "wallet";
   equity: bigint | null;
   mmReq: bigint | null;
   health: number | null;
@@ -51,8 +54,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ address
     };
     for (const o of owned ?? []) if (NETWORKS.some((n) => n.id === o.chainId)) add(o.chainId, o.address, "owner");
     NETWORKS.forEach((n, i) => derived[i].filter((s) => s.deployed).forEach((s) => add(n.id, s.address, "derived")));
+    // Many Shannon traders hold margin on the wallet itself.
+    NETWORKS.forEach((n) => add(n.id, wallet, "wallet"));
 
-    const accounts: Found[] = await Promise.all(
+    const read: Found[] = await Promise.all(
       found.map(async (f) => {
         const network = NETWORKS.find((n) => n.id === f.chainId)!;
         const base = { ...f, network: network.key, networkName: network.name };
@@ -69,6 +74,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ address
       }),
     );
 
+    // The wallet itself counts only where it actually trades.
+    const accounts = read.filter((a) => a.via !== "wallet" || a.positions > 0 || (a.equity ?? 0n) > 0n);
     // Open positions first, then the most equity, then network order.
     const order = (a: Found) => NETWORKS.findIndex((n) => n.id === a.chainId);
     accounts.sort((a, b) => b.positions - a.positions || Number((b.equity ?? 0n) - (a.equity ?? 0n)) || order(a) - order(b));

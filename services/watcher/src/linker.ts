@@ -30,7 +30,7 @@ export class Linker {
   }
 
   async run(): Promise<void> {
-    for (const a of await this.store.listAccounts("pending_key")) {
+    for (const a of await this.store.listAccounts("pending_key", this.venue.chainId)) {
       const key = await this.keys.create();
       await this.store.setHoaxKey(a.id, key.address);
       this.log.info("made a Hoax key", { owner: a.owner, key: key.address });
@@ -39,7 +39,7 @@ export class Linker {
     const market = await this.probeMarket();
     if (!market) return;
 
-    for (const a of await this.store.listAccounts("pending_link")) {
+    for (const a of await this.store.listAccounts("pending_link", this.venue.chainId)) {
       if (!a.hoaxKey || this.now() - a.createdAt.getTime() > PENDING_LINK_MAX_AGE_MS) continue;
       const linked = await this.venue.isLinked(market, getAddress(a.owner), getAddress(a.hoaxKey));
       if (!linked) continue;
@@ -48,7 +48,7 @@ export class Linker {
 
     if (this.now() - this.lastUnlinkCheck >= 30_000) {
       this.lastUnlinkCheck = this.now();
-      for (const a of await this.store.listAccounts("active")) {
+      for (const a of await this.store.listAccounts("active", this.venue.chainId)) {
         if (!a.hoaxKey) continue;
         const linked = await this.venue.isLinked(market, getAddress(a.owner), getAddress(a.hoaxKey));
         if (linked) continue;
@@ -65,7 +65,7 @@ export class Linker {
 
   private async activate(a: AccountRow): Promise<void> {
     // The newest link wins: an older active registration for the same owner retires.
-    const current = await this.store.getAccountByOwner(a.owner);
+    const current = await this.store.getAccountByOwner(a.owner, a.chainId);
     if (current && current.id !== a.id && current.status === "active") {
       await this.store.setStatus(current.id, "unlinked");
     }

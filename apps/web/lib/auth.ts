@@ -110,14 +110,14 @@ export function bearer(req: Request): string {
   return h.startsWith("Bearer ") ? h.slice(7) : "";
 }
 
-/** Whether `wallet` may manage the dreamDEX account `owner`. Cached for five minutes. */
-export async function controls(wallet: Address, owner: string): Promise<boolean> {
+/** Whether `wallet` may manage the dreamDEX account `owner` on a network (Hideki unless given). Cached for five minutes. */
+export async function controls(wallet: Address, owner: string, chainId: number = HIDEKI.id): Promise<boolean> {
   if (wallet.toLowerCase() === owner.toLowerCase()) return true;
   g.__hoaxControls ??= new Map();
-  const key = `${wallet.toLowerCase()}:${owner.toLowerCase()}`;
+  const key = `${chainId}:${wallet.toLowerCase()}:${owner.toLowerCase()}`;
   const hit = g.__hoaxControls.get(key);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.ok;
-  const ok = await accountsClient().controls(wallet, getAddress(owner));
+  const ok = await accountsClient(chainId).controls(wallet, getAddress(owner));
   g.__hoaxControls.set(key, { ok, at: Date.now() });
   return ok;
 }

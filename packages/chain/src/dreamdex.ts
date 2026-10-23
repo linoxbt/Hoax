@@ -82,6 +82,7 @@ export interface DreamDexVenueOptions {
 export class DreamDexVenue implements Venue {
   readonly name: string;
   readonly network: Network;
+  readonly chainId: number;
   private readonly exchange: SomniaMarkets;
   private readonly publicClient: PublicClient;
   private readonly rpcUrl: string;
@@ -93,6 +94,7 @@ export class DreamDexVenue implements Venue {
   constructor(opts: DreamDexVenueOptions = {}) {
     this.network = opts.network ?? HIDEKI;
     this.name = `dreamdex-${this.network.key}`;
+    this.chainId = this.network.id;
     this.rpcUrl = opts.rpcUrl ?? this.network.rpcUrl;
     this.rpcTimeoutMs = opts.rpcTimeoutMs;
     this.wsUrl = opts.wsUrl ?? this.network.wsUrl;

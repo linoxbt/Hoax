@@ -70,7 +70,7 @@ export class GasManager {
   }
 
   async run(): Promise<void> {
-    for (const a of await this.store.listAccounts("active")) {
+    for (const a of await this.store.listAccounts("active", this.venue.chainId)) {
       if (a.hoaxKey) await this.topUp(a.hoaxKey, a.id);
     }
   }

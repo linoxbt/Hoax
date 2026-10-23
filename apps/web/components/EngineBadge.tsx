@@ -1,11 +1,14 @@
 "use client";
-// Whether the protection engine is running, from its heartbeat. Never claims
-// "protected" when the engine has not reported in.
+// Whether the protection engine is running, from its heartbeat: for one
+// network when given (the account's), else for any. Never claims "protected"
+// when the engine has not reported in.
 
 import { useHoax } from "@/lib/wallet";
 
-export function EngineBadge({ label = true }: { label?: boolean }) {
-  const { engine } = useHoax();
+export function EngineBadge({ label = true, chainId }: { label?: boolean; chainId?: number }) {
+  const { engine: all } = useHoax();
+  const net = chainId !== undefined ? all?.networks?.[chainId] : undefined;
+  const engine = all && net ? { ...all, ...net } : all;
   const state = !engine ? "pending" : engine.online ? "on" : "off";
   const text = !engine
     ? "Checking engine"

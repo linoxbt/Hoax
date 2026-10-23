@@ -26,7 +26,7 @@ export default function PolicyStep() {
     setErr(null);
     try {
       for (const m of markets) {
-        await api(`/api/policies/${session.owner}/${m}`, {
+        await api(`/api/policies/${session.owner}/${m}?chain=${session.chainId}`, {
           method: "PUT",
           token: session.token,
           body: JSON.stringify({ ...policy, enabled: true }),

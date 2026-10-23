@@ -1,9 +1,9 @@
 # Running the Hoax engine
 
 The web app runs on Netlify. The engine (the watcher) has to stay on: it holds
-each account's encrypted Hoax key and reads health every second. It runs with
-its Postgres on one machine you control, and the web app reaches that Postgres
-over TLS.
+each account's encrypted Hoax key and reads health every second. One engine
+runs per network, Somnia Hideki and Somnia Shannon, both with one Postgres on a
+machine you control; the web app reaches that Postgres over TLS.
 
 ## A Linux server (Ubuntu or Debian)
 
@@ -15,18 +15,21 @@ bash vps-setup.sh
 ```
 
 The script installs Docker if needed, clones the repo to `/opt/hoax`, writes
-`.env` with fresh secrets, makes a TLS certificate for Postgres, starts both
-containers and prints:
+`.env` with fresh secrets, makes a TLS certificate for Postgres, picks free
+ports if 5432 or 8080 are taken by something else, starts Postgres and the two
+engines, and prints:
 
-- the gas wallet address: send it some Hideki STT from the faucet; it tops up
-  every linked Hoax key so the key can pay for its own orders;
+- the gas wallet address: send it STT on both Hideki and Shannon; it tops up
+  every linked Hoax key on that network so the key can pay for its own orders;
 - the `DATABASE_URL` to add on Netlify.
 
 Run it again any time to update: it keeps `.env` and rebuilds. Back up
 `/opt/hoax/.env`: losing `HOAX_KEYSTORE_SECRET` loses every Hoax key.
 
-Open ports 5432 (Postgres, for Netlify) and 8080 (the health endpoint) in your
-provider's firewall if it has one; the script opens them in `ufw` itself.
+Open the Postgres port (5432 unless the script moved it) for Netlify, and
+optionally the health ports (8080 Hideki, 8081 Shannon), in your provider's
+firewall if it has one; the script opens them in `ufw` itself. `.env` records
+the ports it chose.
 
 ## An always-on Mac or Windows PC
 
@@ -53,5 +56,5 @@ In Project configuration > Environment variables:
 3. Redeploy.
 
 The engine badge on the site turns green within a few seconds, and
-`/start/link` issues keys. `https://<server>:8080/healthz` shows the watcher's
-own view.
+`/start/link` issues keys on either network. `http://<server>:8080/healthz`
+(Hideki) and `:8081/healthz` (Shannon) show each engine's own view.

@@ -10,7 +10,7 @@ import { WagmiProvider, createConfig, http, injected, useAccount as useWagmiAcco
 import { reconnect, signMessage, switchChain } from "wagmi/actions";
 import type { Address } from "viem";
 import { ConnectModal } from "@/components/ConnectModal";
-import { hideki, RPC_URL } from "./chain";
+import { hideki, RPC_URL, shannon, SHANNON_RPC_URL } from "./chain";
 import { api, type Session } from "./session";
 import type { EngineJson, WalletJson } from "./types";
 
@@ -23,10 +23,10 @@ const REOWN_PROJECT_ID = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
  * window.ethereum. The Reown config replaces it when someone connects.
  */
 const baseConfig = createConfig({
-  chains: [hideki],
+  chains: [hideki, shannon],
   multiInjectedProviderDiscovery: true,
   connectors: [injected({ shimDisconnect: true })],
-  transports: { [hideki.id]: http(RPC_URL) },
+  transports: { [hideki.id]: http(RPC_URL), [shannon.id]: http(SHANNON_RPC_URL) },
   ssr: true,
 });
 
@@ -82,7 +82,8 @@ export interface HoaxState {
   /** True when wallet selection goes through the Reown modal. */
   hasReown: boolean;
   signIn: () => Promise<boolean>;
-  ensureChain: () => Promise<void>;
+  /** Switch the wallet to a network (the account's, usually); Hideki when none is given. */
+  ensureChain: (chainId?: number) => Promise<void>;
   disconnect: () => void;
   refreshWallet: () => Promise<void>;
   /** Explore the app on the sample account (demo deployments only). */
@@ -196,9 +197,12 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     return () => clearInterval(t);
   }, []);
 
-  const ensureChain = useCallback(async () => {
-    if (chainId !== hideki.id) await switchChain(wagmiConfig(), { chainId: hideki.id });
-  }, [chainId]);
+  const ensureChain = useCallback(
+    async (target: number = hideki.id) => {
+      if (chainId !== target) await switchChain(wagmiConfig(), { chainId: target });
+    },
+    [chainId],
+  );
 
   const signIn = useCallback(async (): Promise<boolean> => {
     if (!address || signing.current) return false;
@@ -279,7 +283,7 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     wallet: address,
     connecting: opening || status === "connecting" || status === "reconnecting",
     onHideki: chainId === hideki.id,
-    onSupported: chainId === hideki.id || chainId === 50312,
+    onSupported: chainId === hideki.id || chainId === shannon.id,
     walletInfo,
     walletErr,
     account,

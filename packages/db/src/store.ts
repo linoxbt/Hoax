@@ -6,6 +6,8 @@ export interface AccountRow {
   id: string;
   /** Lowercase dreamDEX wallet address. */
   owner: string;
+  /** The network the account trades on: 50383 (Hideki) or 50312 (Shannon). */
+  chainId: number;
   /** Lowercase Hoax key address; null until the watcher has made it. */
   hoaxKey: string | null;
   status: AccountStatus;
@@ -114,11 +116,14 @@ export interface HeartbeatRow {
 }
 
 export interface Store {
-  createAccount(a: { id: string; owner: string; manageTokenHash: string }): Promise<AccountRow>;
+  /** chainId defaults to Hideki (50383). */
+  createAccount(a: { id: string; owner: string; manageTokenHash: string; chainId?: number }): Promise<AccountRow>;
   getAccount(id: string): Promise<AccountRow | null>;
   /** The active account for an owner, else the newest registration. */
-  getAccountByOwner(owner: string): Promise<AccountRow | null>;
-  listAccounts(status: AccountStatus): Promise<AccountRow[]>;
+  /** The owner's account on one network (Hideki unless given): the active one, else the newest. */
+  getAccountByOwner(owner: string, chainId?: number): Promise<AccountRow | null>;
+  /** Accounts in a status, on one network when chainId is given. */
+  listAccounts(status: AccountStatus, chainId?: number): Promise<AccountRow[]>;
   setHoaxKey(id: string, hoaxKey: string): Promise<void>;
   setStatus(id: string, status: AccountStatus): Promise<void>;
   setPaused(id: string, paused: boolean): Promise<void>;

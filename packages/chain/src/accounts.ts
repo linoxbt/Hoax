@@ -22,6 +22,7 @@ import { HIDEKI, type Network } from "./networks.ts";
 
 export const REGISTRY_ABI = parseAbi([
   "function setOperatorApprovalForPool(address pool, address operator, bytes4[] selectors, bool approved)",
+  "function setOperatorApprovalGlobal(address operator, bytes4[] selectors, bool approved)",
   "function isApprovedForPool(address pool, address owner, address operator, bytes4 selector) view returns (bool)",
 ]);
 
@@ -49,7 +50,7 @@ export interface TradingAccount {
 }
 
 export interface LinkTx {
-  /** The trader's Safe: the transaction is a call to its execTransaction. */
+  /** The trader's Safe (a call to its execTransaction), or the registry for a plain-key account. */
   to: Address;
   data: Hex;
   value: bigint;
@@ -57,6 +58,11 @@ export interface LinkTx {
   from: Address;
   /** What the batch does, one line per call, for the confirmation screen. */
   calls: Array<{ to: Address; label: string }>;
+  /**
+   * "pool": per-pool grants on the perp pools, batched through the Safe.
+   * "global": one registry-wide grant, for an account that is the wallet itself.
+   */
+  scope: "pool" | "global";
 }
 
 export interface LinkRequest {
@@ -194,13 +200,23 @@ export class DreamDexAccounts {
     }
 
     if (req.wallet.toLowerCase() === req.account.toLowerCase()) {
-      // A plain key account (no Safe) can only send the calls one by one; the
-      // web app does that itself. Refuse here so nobody wraps a key in execTransaction.
-      throw new Error("this account is a plain key, not a dreamDEX Safe: send each call directly");
+      // A trader who trades from the wallet itself has no Safe to batch through,
+      // and one confirmation per pool would be dozens. So the key gets the same
+      // three order selectors registry-wide in one call, as dreamDEX's own
+      // "Link a bot" does. Still no withdraw or transfer; the engine only ever
+      // trades the perp pools. Builder approvals need a call per pool and are skipped.
+      return {
+        to: registry,
+        data: encodeFunctionData({ abi: REGISTRY_ABI, functionName: "setOperatorApprovalGlobal", args: [req.operator, [...HOAX_SELECTORS], req.approved] }),
+        value: 0n,
+        from: req.wallet,
+        calls: [{ to: registry, label: `${req.approved ? "grant" : "revoke"} trade-only on every pool, registry-wide` }],
+        scope: "global",
+      };
     }
     const plan = planExecution({ chainId: this.network.id, account: req.account, calls, nonce: 0n });
     const tx = prevalidatedExecution(plan, req.wallet);
-    return { to: getAddress(tx.to), data: tx.data, value: tx.value, from: req.wallet, calls: labels };
+    return { to: getAddress(tx.to), data: tx.data, value: tx.value, from: req.wallet, calls: labels, scope: "pool" };
   }
 
   /** Gas for the link transaction, from the wallet that will send it, with headroom. */

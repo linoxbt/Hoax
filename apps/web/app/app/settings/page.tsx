@@ -20,7 +20,7 @@ export default function Settings() {
 
   async function setPaused(paused: boolean) {
     try {
-      await api(`/api/accounts/${session.owner}/pause`, { method: "POST", token: session.token, body: JSON.stringify({ paused }) });
+      await api(`/api/accounts/${session.owner}/pause`, { method: "POST", token: session.token, body: JSON.stringify({ paused, chain: session.chainId }) });
       await refresh();
     } catch (e) {
       setErr((e as Error).message);

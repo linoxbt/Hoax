@@ -14,8 +14,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE INDEX IF NOT EXISTS accounts_owner ON accounts (owner);
 CREATE INDEX IF NOT EXISTS accounts_status ON accounts (status);
--- One protected account per owner at a time.
-CREATE UNIQUE INDEX IF NOT EXISTS accounts_one_active ON accounts (owner) WHERE status = 'active';
+-- One protected account per owner per network: see 003_chain.sql.
 
 CREATE TABLE IF NOT EXISTS policies (
   account_id        UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

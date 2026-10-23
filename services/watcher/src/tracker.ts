@@ -42,7 +42,11 @@ export class CounterfactualTracker {
         // protected account, so the store answers this without scanning logs.
         const later = await this.store.listActions({ owner: action.owner, limit: 50 });
         const liquidatedSince = later.some(
-          (a) => a.outcome === "missed" && a.market === action.market && a.createdAt > action.createdAt && a.id !== action.id,
+          (a) =>
+            a.outcome === "missed" &&
+            a.pool.toLowerCase() === action.pool.toLowerCase() &&
+            a.createdAt > action.createdAt &&
+            a.id !== action.id,
         );
         const verdict = evaluateTracking({
           side: action.side,

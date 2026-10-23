@@ -116,7 +116,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </label>
               )}
               <div style={{ marginTop: "1.6rem" }}>
-                <EngineBadge />
+                <EngineBadge chainId={session.chainId} />
               </div>
               {!hoax.sample && !hoax.signedIn && (
                 <button className="pill ghost" style={{ marginTop: "1.6rem", width: "100%" }} onClick={hoax.openConnect}>

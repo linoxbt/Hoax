@@ -29,14 +29,16 @@ export default function LinkStep() {
   const account = view?.account ?? null;
   const key = account?.hoaxKey ?? null;
   const offline = hoax.engine?.mode === "demo";
-  const feeOn = Boolean(view?.builder.address) && (view?.builder.feeBpsTimes1k ?? 0) > 0;
+  // A trader who trades from the wallet itself gets one registry-wide grant (see DreamDexAccounts.buildLinkTx).
+  const plainKey = Boolean(session && hoax.wallet && session.owner === hoax.wallet.toLowerCase());
+  const feeOn = !plainKey && Boolean(view?.builder.address) && (view?.builder.feeBpsTimes1k ?? 0) > 0;
 
   // Register once the wallet is verified and the account is known.
   useEffect(() => {
     if (!session || !hoax.signedIn || !view || account || offline || asked.current) return;
     asked.current = true;
     setRegistering(true);
-    api("/api/accounts", { method: "POST", token: session.token, body: JSON.stringify({ owner: session.owner }) })
+    api("/api/accounts", { method: "POST", token: session.token, body: JSON.stringify({ owner: session.owner, chain: session.chainId }) })
       .then(() => refresh())
       .catch((e) => setErr((e as Error).message))
       .finally(() => setRegistering(false));
@@ -82,7 +84,7 @@ export default function LinkStep() {
                 "Waiting for the engine…"
               )}
             </p>
-            {hoax.engine && !hoax.engine.online && (
+            {hoax.engine && !(hoax.engine.networks?.[session.chainId]?.online ?? hoax.engine.online) && (
               <p className="cap soft" style={{ marginTop: "0.8rem" }}>
                 The engine has not reported in. Keys are issued as soon as it does.
               </p>
@@ -112,10 +114,16 @@ export default function LinkStep() {
               ))}
               <div className="no">
                 <span className="dot">×</span>
-                <b>Withdraw, transfer, spot</b>
+                <b>{plainKey ? "Withdraw, transfer" : "Withdraw, transfer, spot"}</b>
                 <small>Not granted. Fills always settle to your account.</small>
               </div>
             </div>
+            {plainKey && (
+              <p className="note" style={{ marginTop: "1.6rem" }}>
+                This account is your wallet itself, with no dreamDEX Safe to batch through, so the grant is registry-wide in one transaction, as
+                dreamDEX&apos;s own Link a bot does: the same three order permissions on every pool. Hoax only ever trades the perp markets.
+              </p>
+            )}
 
             {feeOn && (
               <label className="toggle">

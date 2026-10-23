@@ -140,6 +140,24 @@ function contract(name: string, make: () => Promise<Store>) {
       expect((await store.listActions({ owner: OWNER, limit: 10 })).length).toBeGreaterThanOrEqual(2);
     });
 
+    it("keeps an owner's accounts apart per network", async () => {
+      const owner = "0x00000000000000000000000000000000000000bb";
+      const hideki = randomUUID();
+      const shannon = randomUUID();
+      await store.createAccount({ id: hideki, owner, manageTokenHash: "h" });
+      await store.createAccount({ id: shannon, owner, manageTokenHash: "h", chainId: 50312 });
+      expect((await store.getAccount(shannon))?.chainId).toBe(50312);
+      expect((await store.getAccountByOwner(owner))?.id).toBe(hideki);
+      expect((await store.getAccountByOwner(owner, 50312))?.id).toBe(shannon);
+      // The same Safe address may be active on both networks at once.
+      await store.setStatus(hideki, "active");
+      await store.setStatus(shannon, "active");
+      const onShannon = (await store.listAccounts("active", 50312)).map((x) => x.id);
+      expect(onShannon).toContain(shannon);
+      expect(onShannon).not.toContain(hideki);
+      expect((await store.listAccounts("active")).map((x) => x.id)).toEqual(expect.arrayContaining([hideki, shannon]));
+    });
+
     it("keeps the newest heartbeat per service", async () => {
       expect(await store.lastBeat("watcher-test")).toBeNull();
       await store.beat("watcher-test", { ticks: 1 });

@@ -36,7 +36,7 @@ export default function PolicyEditor() {
     setBusy(true);
     setErr(null);
     try {
-      await api(`/api/policies/${session.owner}/${symbol}`, { method: "PUT", token: session.token, body: JSON.stringify(form) });
+      await api(`/api/policies/${session.owner}/${symbol}?chain=${session.chainId}`, { method: "PUT", token: session.token, body: JSON.stringify(form) });
       await refresh();
       router.push(`/app/positions/${symbol}`);
     } catch (e) {
@@ -81,13 +81,8 @@ export default function PolicyEditor() {
             </span>
           </label>
         </div>
-        {view && !view.protectable && (
-          <p className="note" style={{ marginTop: "2.4rem" }}>
-            This account is on {view.network.name}. Policies run on Somnia Hideki accounts for now.
-          </p>
-        )}
         <div className="row" style={{ marginTop: "3.2rem" }}>
-          <button className="pill" disabled={busy || (view !== null && !view.protectable)} onClick={save}>
+          <button className="pill" disabled={busy} onClick={save}>
             Save policy
           </button>
           <button className="pill ghost" onClick={() => setForm({ ...DEFAULT_POLICY_JSON, enabled: true })}>

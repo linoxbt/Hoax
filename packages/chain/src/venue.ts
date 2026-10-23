@@ -78,6 +78,8 @@ export interface IocOrder {
 
 export interface Venue {
   readonly name: string;
+  /** The chain this venue trades on. Unset on the simulator, which serves every account. */
+  readonly chainId?: number;
   listMarkets(): Promise<MarketInfo[]>;
   liquidationParams(marginBank: Address): Promise<LiquidationParams>;
   readMargin(marginBank: Address, owner: Address): Promise<MarginRead>;

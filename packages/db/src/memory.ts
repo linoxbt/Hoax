@@ -24,10 +24,11 @@ export class MemoryStore implements Store {
   alerts: AlertRow[] = [];
   drips: Array<{ hoaxKey: string; amount: bigint; txHash: string; at: Date }> = [];
 
-  async createAccount(a: { id: string; owner: string; manageTokenHash: string }): Promise<AccountRow> {
+  async createAccount(a: { id: string; owner: string; manageTokenHash: string; chainId?: number }): Promise<AccountRow> {
     const row: AccountRow = {
       id: a.id,
       owner: a.owner.toLowerCase(),
+      chainId: a.chainId ?? 50383,
       hoaxKey: null,
       status: "pending_key",
       manageTokenHash: a.manageTokenHash,
@@ -45,16 +46,16 @@ export class MemoryStore implements Store {
     return a ? { ...a } : null;
   }
 
-  async getAccountByOwner(owner: string) {
-    const rows = [...this.accounts.values()].filter((a) => a.owner === owner.toLowerCase());
+  async getAccountByOwner(owner: string, chainId = 50383) {
+    const rows = [...this.accounts.values()].filter((a) => a.owner === owner.toLowerCase() && a.chainId === chainId);
     const active = rows.find((a) => a.status === "active");
     if (active) return { ...active };
     rows.sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime());
     return rows[0] ? { ...rows[0] } : null;
   }
 
-  async listAccounts(status: AccountStatus) {
-    return [...this.accounts.values()].filter((a) => a.status === status).map((a) => ({ ...a }));
+  async listAccounts(status: AccountStatus, chainId?: number) {
+    return [...this.accounts.values()].filter((a) => a.status === status && (chainId === undefined || a.chainId === chainId)).map((a) => ({ ...a }));
   }
 
   private patch(id: string, p: Partial<AccountRow>) {
@@ -71,8 +72,8 @@ export class MemoryStore implements Store {
     if (!a) return;
     if (status === "active") {
       for (const other of this.accounts.values()) {
-        if (other.owner === a.owner && other.id !== id && other.status === "active") {
-          throw new Error("owner already has an active account");
+        if (other.owner === a.owner && other.chainId === a.chainId && other.id !== id && other.status === "active") {
+          throw new Error("owner already has an active account on this network");
         }
       }
     }
