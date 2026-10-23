@@ -1,8 +1,8 @@
 "use client";
-// A statement whose words light up one by one as it scrolls through the viewport.
+// A statement whose words go from pencil grey to ink as it scrolls through.
 import { useEffect, useRef, useState } from "react";
 
-export function ScrollText({ text, accent = [] }: { text: string; accent?: string[] }) {
+export function ScrollText({ text, className = "h3", as: Tag = "p" }: { text: string; className?: string; as?: "p" | "h2" }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const words = text.split(" ");
   const [lit, setLit] = useState(words.length);
@@ -12,7 +12,7 @@ export function ScrollText({ text, accent = [] }: { text: string; accent?: strin
     const update = () => {
       const r = el.getBoundingClientRect();
       const vh = window.innerHeight;
-      const k = Math.min(1, Math.max(0, (vh * 0.85 - r.top) / (r.height + vh * 0.35)));
+      const k = Math.min(1, Math.max(0, (vh * 0.8 - r.top) / (r.height + vh * 0.3)));
       setLit(Math.round(k * words.length));
     };
     update();
@@ -24,12 +24,12 @@ export function ScrollText({ text, accent = [] }: { text: string; accent?: strin
     };
   }, [words.length]);
   return (
-    <p ref={ref} className="quote">
+    <Tag ref={ref} className={`${className} scrolltext`}>
       {words.map((w, i) => (
-        <span key={i} className={`w${i < lit ? " lit" : ""}${accent.includes(w.replace(/[^\w]/g, "")) ? " accent" : ""}`}>
+        <span key={i} className={`wd${i < lit ? " lit" : ""}`}>
           {w}{" "}
         </span>
       ))}
-    </p>
+    </Tag>
   );
 }

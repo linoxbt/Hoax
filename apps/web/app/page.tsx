@@ -1,36 +1,62 @@
-import Link from "next/link";
-import { Bars, Edge } from "@/components/Bars";
-import { CountUp } from "@/components/CountUp";
-import { Kicker, Marquee } from "@/components/Kicker";
-import { MarketTape } from "@/components/LiveMarkets";
-import { LiveSimulator } from "@/components/Simulator";
+import { ArtBlind, ArtBlunt, ArtCases, ArtCostly, ArtForced, ArtMark3d, ArtTower } from "@/components/home/Art";
+import { BuildUp } from "@/components/home/BuildUp";
+import { Accordion } from "@/components/home/Accordion";
+import { HeroLive } from "@/components/home/HeroLive";
+import { MarketStrip } from "@/components/home/MarketStrip";
 import { ScrollText } from "@/components/ScrollText";
-import { StatsGrid } from "@/components/StatsGrid";
+import { LiveSimulator } from "@/components/Simulator";
+import { Btn, CornerLink, Label, Split } from "@/components/Ui";
+import { usd } from "@/lib/format";
 import { getStore } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-// Every figure here is sourced: the LiquidationEngine's 100 bps penalty and the
-// 10 bps builder-fee cap are chain reads, 478 ms is spike 3's measured median,
-// 21 is the live perp market count, and the replay numbers come from
-// public/replay.json (demo/replay.ts).
-const METRICS: Array<{ value: number; decimals?: number; prefix?: string; suffix?: string; label: string }> = [
-  { value: 1, suffix: "%", label: "Liquidation penalty avoided" },
-  { value: 478, suffix: " ms", label: "Median detection time" },
-  { value: 0, label: "Funds in custody" },
-  { value: 21, label: "Perp markets covered" },
+const WORK = ["Fewer liquidations", "Smaller exits", "Signed receipts", "No custody", "Every market", "Second by second"];
+
+const PROBLEMS: Array<{ tag: string; title: string; text: string; Art: () => React.JSX.Element }> = [
+  { tag: "Forced", title: "The engine picks your exit", text: "Below maintenance the liquidation engine closes for you, at a spread you never agreed to.", Art: ArtForced },
+  { tag: "Blind", title: "Health moves while you sleep", text: "Mark price and hourly funding move health on a position you are not watching.", Art: ArtBlind },
+  { tag: "Blunt", title: "Stop-losses close everything", text: "A stop exits the whole position at one price, even when a slice would have done.", Art: ArtBlunt },
+  { tag: "Costly", title: "A penalty on the way out", text: "Liquidation takes a 100 bps penalty plus the forced-close spread, out of your equity.", Art: ArtCostly },
 ];
 
-const STEPS: Array<[string, string]> = [
-  ["Link", "One transaction from your wallet covers every market."],
-  ["Watch", "Account health read every second."],
-  ["Trim", "The smallest close that restores your target."],
+const PLATFORM: Array<{ n: string; title: string; text: string; href: string; mock: React.ReactNode }> = [
+  {
+    n: "01",
+    title: "Protection engine",
+    text: "A watcher that reads every protected account each second, decides with a cost gate, and closes through your linked key with immediate-or-cancel orders only.",
+    href: "/how-it-works",
+    mock: <EngineMock />,
+  },
+  {
+    n: "02",
+    title: "Signed receipts",
+    text: "Every action writes a receipt anyone can check: health before and after, size, fill, cost, and the liquidation it avoided, signed by the key that acted.",
+    href: "/stats",
+    mock: <ReceiptMock />,
+  },
+  {
+    n: "03",
+    title: "Your dashboard",
+    text: "Connect the wallet you trade with. Hoax finds your dreamDEX account, shows each position against its trigger and target, and links in one transaction.",
+    href: "/app",
+    mock: <DashMock />,
+  },
 ];
 
-const MODEL: Array<[string, string, string]> = [
-  ["Non-custodial", "0", "withdrawal rights. The key can only trade."],
-  ["Revenue", "≤10 bps", "builder fee on each protective close, approved on-chain by the trader."],
-  ["Verifiable", "1:1", "every action has a signed, public receipt."],
+const WHY: Array<{ k: string; text: string; side: "l" | "r" }> = [
+  { k: "Watch", text: "Hoax reads health every second, and on every position event", side: "l" },
+  { k: "Decide", text: "It acts only when a close costs less than the liquidation it prevents", side: "r" },
+  { k: "Trim", text: "It closes the smallest slice that restores your target, then reconciles", side: "l" },
+];
+
+const CASES: Array<[string, string]> = [
+  ["Swing traders", "Hold a leveraged view for days without watching the screen overnight."],
+  ["Market makers", "Keep inventory hedges alive through spikes without full stop-outs."],
+  ["Funds and desks", "Per-account policies, signed receipts and a public track record for reporting."],
+  ["Trading bots", "A second line of defence that does not depend on your bot staying up."],
+  ["Part-time traders", "Set a policy once; Hoax trims while you work, sleep or travel."],
+  ["High-leverage traders", "The closer you run to maintenance, the more a timely slice is worth."],
 ];
 
 export default async function Landing() {
@@ -39,190 +65,325 @@ export default async function Landing() {
 
   return (
     <>
-      <section className="sec">
-        <div className="wrap" style={{ paddingTop: 64 }}>
-          <div className="cap accent hero-in" style={{ ["--d" as string]: "0.1s" }}>
-            Liquidation protection · dreamDEX perps
+      {/* hero: the drawing, then title, description and the corner link */}
+      <section className="sec first">
+        <HeroLive />
+        <div className="cells c-hero bt">
+          <div className="hero-title">
+            <Split as="h1" className="h1">
+              Exit before the liquidation engine does
+            </Split>
           </div>
-          <div className="striate xl intro" style={{ marginTop: 14 }}>
-            Hoax
-          </div>
-          <div className="grid g-aside" style={{ marginTop: 40, alignItems: "end", gap: 40 }}>
-            <h1 className="h2 hero-in" style={{ ["--d" as string]: "0.5s" }}>
-              Exit before the <span className="accent">liquidation engine</span> does
-            </h1>
-            <div className="hero-in" style={{ ["--d" as string]: "0.7s" }}>
-              <p className="lede">
-                Hoax trims leveraged positions to safe size the moment health slips, only when that is cheaper than
-                liquidation, with a signed receipt for every action.
-              </p>
-              <div className="row" style={{ marginTop: 24 }}>
-                <Link href="/start" className="pill">
-                  Get protected
-                </Link>
-                <Link href="/replay" className="pill ghost">
-                  See it work
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="wrap" style={{ marginTop: 64 }}>
-          <div className="grid g4" style={{ gap: 0 }}>
-            {METRICS.map((m, i) => (
-              <div key={m.label} data-reveal style={{ ["--d" as string]: `${i * 0.08}s`, padding: "24px 20px 24px 0", borderTop: "1px solid var(--line)", borderLeft: i % 4 ? "1px solid var(--line)" : undefined, paddingLeft: i % 4 ? 20 : 0 }}>
-                <div className="num m accent">
-                  <CountUp value={m.value} decimals={m.decimals} prefix={m.prefix} suffix={m.suffix} />
-                </div>
-                <div className="cap soft" style={{ marginTop: 12 }}>
-                  {m.label}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ color: "var(--indigo)", opacity: 0.18, marginTop: 40 }} data-reveal="grow">
-          <Bars n={240} shape="story" seed={5} height={220} label="Health over time: two slides toward liquidation, each stopped by a small close" />
-        </div>
-      </section>
-
-      <MarketTape />
-
-      <section className="sec alt">
-        <Edge seed={4} opacity={0.45} />
-        <div className="wrap pad" style={{ paddingTop: 72, paddingBottom: 120 }}>
-          <Kicker center>Thesis</Kicker>
-          <ScrollText text="Liquidation is a forced sale at the worst possible price. Hoax makes it optional." accent={["optional"]} />
-        </div>
-      </section>
-
-      <section className="sec">
-        <div className="wrap pad">
-          <div className="spread" style={{ marginBottom: 40 }}>
-            <div>
-              <Kicker>Product</Kicker>
-              <h2>Three steps. Zero custody.</h2>
-            </div>
-            <Link href="/how-it-works" className="pill ghost">
-              The mechanism
-            </Link>
-          </div>
-          <div className="grid g3">
-            {STEPS.map(([t, d], i) => (
-              <div key={t} data-reveal style={{ ["--d" as string]: `${i * 0.1}s`, borderTop: "2px solid var(--indigo)", paddingTop: 20 }}>
-                <div className="cap accent">{String(i + 1).padStart(2, "0")}</div>
-                <h3 style={{ margin: "12px 0 8px" }}>{t}</h3>
-                <p className="copy">{d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="sec deep">
-        <div className="wrap pad">
-          <div className="grid g-aside" style={{ gap: 48, alignItems: "end" }}>
-            <div data-reveal>
-              <Kicker>Proof</Kicker>
-              <h2>Same crash. Two outcomes.</h2>
-              <p className="lede" style={{ marginTop: 20, color: "var(--soft)" }}>
-                Two identical 1 ETH positions through a 4.5% drop, on live dreamDEX parameters.
-              </p>
-              <Link href="/replay" className="pill" style={{ marginTop: 28 }}>
-                Watch the replay
-              </Link>
-            </div>
-            <div className="grid g2" style={{ gap: 0 }} data-reveal>
-              <div style={{ paddingRight: 24 }}>
-                <div className="cap soft">Unprotected</div>
-                <div className="num m" style={{ marginTop: 10, opacity: 0.6 }}>
-                  <CountUp value={59.45} decimals={2} />
-                </div>
-                <div className="cap soft" style={{ marginTop: 10 }}>
-                  USDso · liquidated
-                </div>
-              </div>
-              <div style={{ paddingLeft: 24, borderLeft: "1px solid var(--rule)" }}>
-                <div className="cap" style={{ color: "#a5b4fc" }}>
-                  With Hoax
-                </div>
-                <div className="num m" style={{ marginTop: 10, color: "#a5b4fc" }}>
-                  <CountUp value={85.35} decimals={2} />
-                </div>
-                <div className="cap soft" style={{ marginTop: 10 }}>
-                  USDso · survived · +43%
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="sec alt">
-        <div className="wrap pad">
-          <div className="spread" style={{ marginBottom: 36 }}>
-            <div>
-              <Kicker>Try it</Kicker>
-              <h2>Run a crash</h2>
-            </div>
-            <p className="copy soft" style={{ maxWidth: 420 }}>
-              The engine&apos;s own sizing function, in your browser, from ETH&apos;s live mark.
+          <div className="stack">
+            <p className="txt ink p-s grow" style={{ padding: "1.6rem" }} data-reveal>
+              Hoax watches your leveraged dreamDEX perps and trims them back to safe health the moment they slip, only when that is cheaper than
+              liquidation, with a signed receipt for <b>every action</b>.
             </p>
-          </div>
-          <div data-reveal>
-            <LiveSimulator />
-          </div>
-        </div>
-      </section>
-
-      <section className="sec">
-        <div className="wrap pad">
-          <Kicker>Model</Kicker>
-          <h2 style={{ marginBottom: 40 }}>Built to scale with the venue</h2>
-          <div className="grid g3">
-            {MODEL.map(([k, v, d], i) => (
-              <div key={k} className="card" data-reveal style={{ ["--d" as string]: `${i * 0.1}s` }}>
-                <div className="cap soft">{k}</div>
-                <div className="num m accent" style={{ margin: "16px 0 12px" }}>
-                  {v}
+            <div className="bt marquee hero-work" aria-label="What Hoax brings">
+              {[0, 1].map((n) => (
+                <div className="marquee-track" key={n} aria-hidden={n === 1}>
+                  {WORK.map((w) => (
+                    <span key={w} className="mono-s soft work-item">
+                      <i />
+                      {w}
+                    </span>
+                  ))}
                 </div>
-                <p className="copy">{d}</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+          <CornerLink href="/start">Get protected</CornerLink>
         </div>
       </section>
 
-      <section className="sec alt">
-        <div className="wrap" style={{ paddingTop: 56 }}>
-          <Marquee text="Track record" />
+      {/* intro: the tower drawing beside the statement, and the live markets */}
+      <section className="sec cells c2">
+        <div className="drawing intro-art">
+          <ArtTower />
         </div>
-        <div className="wrap pad" style={{ paddingTop: 40 }}>
-          <div data-reveal>
-            <StatsGrid stats={stats} />
+        <div className="stack">
+          <div className="intro-copy grow">
+            <ScrollText
+              className="h3"
+              text="Liquidation is the worst exit in perps. Hoax closes a small slice first, so you keep the trade, keep the equity and keep the choice."
+            />
+            <div style={{ marginTop: "3.2rem" }} data-reveal>
+              <Btn href="/how-it-works">Learn more</Btn>
+            </div>
           </div>
-          <div className="row" style={{ marginTop: 32 }}>
-            <Link href="/stats" className="pill ghost">
-              Full track record
-            </Link>
-          </div>
+          <MarketStrip />
         </div>
       </section>
 
+      {/* problems */}
       <section className="sec">
-        <div className="wrap pad" style={{ textAlign: "center" }}>
-          <h2 data-reveal>
-            Protected in <span className="accent">two minutes</span>
-          </h2>
-          <div className="row" style={{ justifyContent: "center", marginTop: 36 }} data-reveal>
-            <Link href="/start" className="ring">
-              Get protected
-            </Link>
+        <div className="between prob-head">
+          <div>
+            <Label>Problems</Label>
+            <Split className="h2" delay={0.05}>
+              Liquidation takes more than it needs
+            </Split>
           </div>
+          <p className="txt prob-sub" data-reveal>
+            Perp venues protect themselves, not you. When an account slips under maintenance, the engine sells into the book on its terms, and the trader
+            pays for it.
+          </p>
+        </div>
+        <div className="cells c4 bt">
+          {PROBLEMS.map((p, i) => (
+            <div key={p.tag} className="prob-item">
+              <div className="prob-item-head between">
+                <span className="mono-s ink row" style={{ gap: "0.8rem" }}>
+                  {i === 2 && <span className="dotsq" />}
+                  {p.tag}
+                </span>
+                <span className="mono-s muted">[{String(i + 1).padStart(2, "0")}]</span>
+              </div>
+              <div className="prob-item-img">
+                <p.Art />
+              </div>
+              <div className="prob-item-body">
+                <div className="h5" style={{ maxWidth: "24rem" }}>
+                  {p.title}
+                </div>
+                <p className="txt" style={{ marginTop: "1.6rem" }}>
+                  {p.text}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <BuildUp />
+
+      {/* platform */}
+      {PLATFORM.map((p) => (
+        <section key={p.n} className="sec cells c-plat plat">
+          <div className="plat-left">
+            <div className="mono-s muted">[{p.n}]</div>
+            <div className="h4" style={{ marginTop: "2.4rem" }}>
+              {p.title}
+            </div>
+          </div>
+          <div className="plat-img drawing">
+            <span className="plus tl" aria-hidden />
+            <span className="plus br" aria-hidden />
+            <div data-reveal>{p.mock}</div>
+          </div>
+          <div className="stack">
+            <p className="txt p grow">{p.text}</p>
+            <div className="bt">
+              <CornerLink href={p.href} ink>
+                Learn more
+              </CornerLink>
+            </div>
+          </div>
+        </section>
+      ))}
+
+      {/* why: built to act while you are away */}
+      <section className="sec">
+        <div className="cells c-why">
+          <div className="p" style={{ paddingTop: "10.4rem" }}>
+            <Label>Why Hoax</Label>
+            <Split className="h2" delay={0.05}>
+              Built to act while you are away
+            </Split>
+          </div>
+          <div className="stack" style={{ justifyContent: "flex-end" }}>
+            <div className="p">
+              <p className="txt">
+                Hoax fits around how you trade instead of replacing it. It stays quiet while health is fine, acts only when a close is cheaper than the
+                alternative, and leaves every decision on the record.
+              </p>
+              <div className="mono-xs muted" style={{ marginTop: "1.6rem" }}>
+                [Scroll to continue]
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="why-rows bt">
+          {WHY.map((w, i) => (
+            <div key={w.k} className={`why-row ${w.side}`}>
+              <div className="why-bar" data-reveal>
+                <span className="why-k">{w.k}</span>
+                <span className="why-t">{w.text}</span>
+                <i className="why-dot" />
+              </div>
+              <span className="why-line" data-draw style={{ ["--d" as string]: "0.3s" }} />
+              <span className="why-pt" />
+              <span className="mono-xs muted why-n">[{String(i + 1).padStart(2, "0")}]</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* try it */}
+      <section className="sec">
+        <div className="between prob-head">
+          <div>
+            <Label>Try it</Label>
+            <Split className="h2" delay={0.05}>
+              Run a crash
+            </Split>
+          </div>
+          <p className="txt prob-sub" data-reveal>
+            The engine&apos;s own sizing function, in your browser, from ETH&apos;s live mark. Liquidation follows the venue model in the replay.
+          </p>
+        </div>
+        <div className="bt">
+          <LiveSimulator />
+        </div>
+      </section>
+
+      {/* use cases */}
+      <section className="sec cells c2">
+        <div className="drawing cases-art">
+          <ArtCases />
+        </div>
+        <div className="stack">
+          <div className="cases-head">
+            <Label>Use cases</Label>
+            <Split className="h2" delay={0.05}>
+              Made for every leveraged trader
+            </Split>
+          </div>
+          <Accordion items={CASES} />
+        </div>
+      </section>
+
+      {/* track record */}
+      <section className="sec cells c4 record">
+        {(
+          [
+            ["Saved equity", `${usd(stats.savedEquity)}`, "USDso"],
+            ["Insurance cost", `${usd(stats.insuranceCost)}`, "USDso"],
+            ["Actions taken", String(stats.actionsTaken), ""],
+            ["Accounts protected", String(stats.accountsProtected), ""],
+          ] as const
+        ).map(([k, v, u], i) => (
+          <div key={k} className="p" data-reveal style={{ ["--d" as string]: `${i * 0.06}s` }}>
+            <div className="mono-s soft">{k}</div>
+            <div className="num m" style={{ marginTop: "2.4rem" }}>
+              {v}
+              {u && <small>{u}</small>}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {/* call to action */}
+      <section className="sec cta">
+        <div className="cells c4 cta-coords">
+          {["[0,246]", "[831,0]", "[2303,0]", "[0,544]"].map((c) => (
+            <div key={c} className="mono-xs muted">
+              {c}
+            </div>
+          ))}
+        </div>
+        <div className="cta-main">
+          <Split className="h2" delay={0.05}>
+            See what Hoax does for your positions
+          </Split>
+          <p className="txt" style={{ marginTop: "1.6rem" }} data-reveal>
+            Connect the wallet you trade with. Linking takes one transaction and you can revoke it with another.
+          </p>
+          <div style={{ marginTop: "3.2rem" }} data-reveal>
+            <Btn href="/start" fill>
+              Get protected
+            </Btn>
+          </div>
+        </div>
+        <div className="cells c4 cta-deco">
+          <div />
+          <div className="cta-deco-img">
+            <ArtMark3d />
+          </div>
+          <div />
         </div>
       </section>
     </>
+  );
+}
+
+function EngineMock() {
+  const rows = [
+    ["31,168,812", "3.07", "watch"],
+    ["31,168,826", "2.41", "watch"],
+    ["31,168,840", "1.23", "act"],
+    ["31,168,841", "1.60", "receipt"],
+  ];
+  return (
+    <div className="mock tagbox" style={{ width: "100%" }}>
+      <div className="tagbox-head between">
+        <span>Engine · BTC-PERP</span>
+        <span>1 tick / s</span>
+      </div>
+      <div className="mock-rows">
+        {rows.map(([b, h, s]) => (
+          <div key={b} className={`mock-row${s === "act" ? " act" : ""}`}>
+            <span>#{b}</span>
+            <span>H {h}</span>
+            <span>{s === "act" ? "Trim 0.0537 BTC" : s === "receipt" ? "Signed" : "Watch"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReceiptMock() {
+  return (
+    <div className="mock tagbox" style={{ width: "100%" }}>
+      <div className="tagbox-head between">
+        <span>Receipt · saved</span>
+        <span>✓ Verified</span>
+      </div>
+      <div className="mock-rows">
+        {[
+          ["Health", "1.23 → 1.60"],
+          ["Closed", "0.0537 BTC"],
+          ["Avg fill", "81,679"],
+          ["Liq. cost avoided", "132.37 USDso"],
+          ["Signed by", "0x8ae6…b3eC"],
+        ].map(([k, v]) => (
+          <div key={k} className="mock-row">
+            <span>{k}</span>
+            <span />
+            <span>{v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DashMock() {
+  const pos = [
+    ["BTC-PERP", 0.36],
+    ["ETH-PERP", 0.62],
+    ["SOL-PERP", 0.18],
+  ] as const;
+  return (
+    <div className="mock tagbox" style={{ width: "100%" }}>
+      <div className="tagbox-head between">
+        <span>Positions</span>
+        <span>21 / 21 linked</span>
+      </div>
+      <div className="mock-rows">
+        {pos.map(([m, k]) => (
+          <div key={m} className="mock-row bar">
+            <span>{m}</span>
+            <span className="mock-meter">
+              <i style={{ width: `${k * 100}%` }} />
+              <b style={{ left: "30%" }} />
+              <b className="t" style={{ left: "55%" }} />
+            </span>
+            <span>{(1 + k * 3).toFixed(2)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

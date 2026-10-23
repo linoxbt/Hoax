@@ -1,23 +1,25 @@
 "use client";
-// The header's wallet control: Connect when nothing is connected, otherwise the
-// wallet with its dreamDEX account and a small menu.
+// The wallet cell: Connect when nothing is connected, otherwise the wallet with
+// its dreamDEX account and a small menu that drops out of the header.
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { addressUrl, short } from "@/lib/format";
 import { useHoax } from "@/lib/wallet";
+import { Arrow, Roll } from "./Ui";
 
-/** A deterministic two-tone avatar from the address, in the brand's indigo range. */
-export function Avatar({ address, size = 22 }: { address: string; size?: number }) {
-  const n = parseInt(address.slice(2, 10), 16);
-  const hue = 225 + (n % 50);
-  const angle = n % 360;
+/** A deterministic square identicon: a 3x3 field of the address's bits in ink and orange. */
+export function Avatar({ address, size = 20 }: { address: string; size?: number }) {
+  const n = BigInt(address.slice(0, 18));
+  const cells = Array.from({ length: 9 }, (_, i) => Number((n >> BigInt(i * 3)) & 7n));
   return (
-    <span
-      className="avatar"
-      aria-hidden
-      style={{ width: size, height: size, background: `linear-gradient(${angle}deg, hsl(${hue} 70% 58%), hsl(${(hue + 40) % 360} 75% 30%))` }}
-    />
+    <svg className="avatar" width={size} height={size} viewBox="0 0 3 3" aria-hidden shapeRendering="crispEdges">
+      <rect width="3" height="3" fill="#f5f5ef" />
+      {cells.map((v, i) =>
+        v > 3 ? <rect key={i} x={i % 3} y={Math.floor(i / 3)} width="1" height="1" fill={v === 7 ? "#fa3600" : "#282828"} /> : null,
+      )}
+      <rect width="3" height="3" fill="none" stroke="#282828" strokeWidth="0.12" />
+    </svg>
   );
 }
 
@@ -35,44 +37,51 @@ export function WalletButton() {
 
   if (hoax.sample && !hoax.wallet) {
     return (
-      <button className="pill ghost chip" onClick={hoax.disconnect} title="Leave the sample account">
-        Sample account ×
+      <button className="wbtn" onClick={hoax.disconnect} title="Leave the sample account">
+        <Roll>Sample account</Roll>
+        <span className="mono-xs soft" style={{ position: "absolute", left: "1.2rem", bottom: "1rem" }}>
+          × Leave
+        </span>
       </button>
     );
   }
 
   if (!hoax.wallet) {
     return (
-      <button className="pill" onClick={hoax.openConnect} disabled={hoax.connecting}>
-        {hoax.connecting ? "Connecting…" : "Connect wallet"}
+      <button className="wbtn connect" onClick={hoax.openConnect} disabled={hoax.connecting}>
+        <Roll>{hoax.connecting ? "Connecting" : "Connect wallet"}</Roll>
+        <Arrow />
       </button>
     );
   }
 
-  const needs = !hoax.onHideki ? "Wrong network" : !hoax.signedIn ? "Verify" : null;
+  const needs = !hoax.onHideki ? "Wrong network" : !hoax.signedIn ? "Verify wallet" : null;
 
   return (
     <div className="wmenu" ref={ref}>
-      <button className={`pill ghost chip${needs ? " warn" : ""}`} onClick={() => (needs ? hoax.openConnect() : setOpen(!open))} aria-expanded={open}>
+      <button className="wbtn" onClick={() => (needs ? hoax.openConnect() : setOpen(!open))} aria-expanded={open}>
         <Avatar address={hoax.wallet} />
-        <span className="mono">{short(hoax.wallet)}</span>
-        {needs && <span className="badge">{needs}</span>}
+        <span style={{ textTransform: "none" }}>{short(hoax.wallet)}</span>
+        {needs && <span className="badge">● {needs}</span>}
+        {!needs && <span className="corner" style={{ position: "absolute", right: "0.6rem", bottom: "0.6rem", width: "0.6rem", height: "0.6rem", borderRight: "var(--b) solid var(--ink-4)", borderBottom: "var(--b) solid var(--ink-4)" }} aria-hidden />}
       </button>
       {open && (
         <div className="wdrop">
-          <div className="cap soft">Wallet</div>
-          <div className="mono">{short(hoax.wallet)}</div>
-          <div className="cap soft" style={{ marginTop: 14 }}>
-            dreamDEX account
+          <div className="blk">
+            <div className="mono-s soft">Wallet</div>
+            <div className="val">{hoax.wallet}</div>
           </div>
-          <div className="mono">{hoax.account ? short(hoax.account) : hoax.walletInfo ? "None yet" : "Reading…"}</div>
+          <div className="blk">
+            <div className="mono-s soft">dreamDEX account</div>
+            <div className="val">{hoax.account ?? (hoax.walletInfo ? "None yet" : "Reading chain…")}</div>
+          </div>
           <div className="wlinks">
             <Link href="/app" onClick={() => setOpen(false)}>
               Dashboard
             </Link>
             {hoax.account && (
               <a href={addressUrl(hoax.account)} target="_blank" rel="noreferrer">
-                Explorer ↗
+                View on explorer ↗
               </a>
             )}
             <button
