@@ -1,5 +1,5 @@
 import "server-only";
-import { receiptSigner, HIDEKI, type MarketInfo } from "@hoax/chain";
+import { receiptSigner, HIDEKI, networkOf, type MarketInfo } from "@hoax/chain";
 import type { AccountRow, ActionRow, CounterfactualRow, Store } from "@hoax/db";
 import { getAddress, type Hex } from "viem";
 import { accountsClient } from "./auth";
@@ -22,8 +22,8 @@ export interface PositionView {
   source: "chain" | "watcher";
 }
 
-async function livePositions(owner: string, markets: MarketInfo[]): Promise<PositionView[] | null> {
-  const venue = getVenue();
+async function livePositions(owner: string, markets: MarketInfo[], chainId: number): Promise<PositionView[] | null> {
+  const venue = getVenue(chainId);
   if (!venue || markets.length === 0) return null;
   const who = getAddress(owner);
   const margin = await venue.readMargin(markets[0].marginBank, who);
@@ -60,12 +60,12 @@ async function livePositions(owner: string, markets: MarketInfo[]): Promise<Posi
   return out.filter((x): x is PositionView => x !== null);
 }
 
-export async function positionsFor(store: Store, owner: string, account: AccountRow | null): Promise<PositionView[]> {
-  const markets = await getMarkets();
+export async function positionsFor(store: Store, owner: string, account: AccountRow | null, chainId: number = HIDEKI.id): Promise<PositionView[]> {
+  const markets = await getMarkets(chainId);
   // The demo account is sample data with nothing on chain: show its recorded ticks.
   const sample = DEMO && owner.toLowerCase() === DEMO_OWNER;
   try {
-    const live = sample ? null : await livePositions(owner, markets);
+    const live = sample ? null : await livePositions(owner, markets, chainId);
     if (live) return live;
   } catch {
     // fall back to the watcher's last reading
@@ -94,13 +94,19 @@ export async function positionsFor(store: Store, owner: string, account: Account
     });
 }
 
-export async function accountView(store: Store, owner: string, account: AccountRow | null, isOwner: boolean) {
-  const venue = getVenue();
-  const markets = await getMarkets();
+/**
+ * Everything the dashboard shows for one dreamDEX account on one network.
+ * Hoax's own records (policies, the key, alerts) exist only for accounts it
+ * protects, which today are on Hideki; on Shannon the view is live chain data.
+ */
+export async function accountView(store: Store, owner: string, account: AccountRow | null, isOwner: boolean, chainId: number = HIDEKI.id) {
+  const network = networkOf(chainId);
+  const venue = getVenue(chainId);
+  const markets = await getMarkets(chainId);
   const live = account?.hoaxKey && !(DEMO && owner.toLowerCase() === DEMO_OWNER);
   const [policies, positions, alerts, keyBalance, links] = await Promise.all([
     account ? store.listPolicies(account.id) : Promise.resolve([]),
-    positionsFor(store, owner, account),
+    positionsFor(store, owner, account, chainId),
     account && isOwner ? store.listAlerts(account.id, 20) : Promise.resolve([]),
     account?.hoaxKey && venue ? venue.nativeBalance(getAddress(account.hoaxKey)).catch(() => null) : Promise.resolve(null),
     live
@@ -111,6 +117,10 @@ export async function accountView(store: Store, owner: string, account: AccountR
   ]);
   return {
     owner: owner.toLowerCase(),
+    chainId: network.id,
+    network: { id: network.id, key: network.key, name: network.name, explorer: network.explorer },
+    /** Whether the Hoax engine can protect accounts on this network yet. */
+    protectable: network.id === HIDEKI.id,
     account: account && {
       id: account.id,
       status: account.status,

@@ -8,9 +8,12 @@ import { EngineBadge } from "@/components/EngineBadge";
 import { HealthField } from "@/components/HealthField";
 import { ReceiptTable } from "@/components/ReceiptRow";
 import { useApp } from "@/lib/appContext";
-import { short } from "@/lib/format";
+import { short, units, usd } from "@/lib/format";
 import { api } from "@/lib/session";
 import type { ActionJson } from "@/lib/types";
+
+/** Health colour: red under the default trigger, amber under the target, green above. */
+const hl = (h: number | null | undefined) => (h === null || h === undefined ? "" : h < 1.25 ? "hl-bad" : h < 1.6 ? "hl-warn" : "hl-ok");
 
 export default function Overview() {
   const { session, view } = useApp();
@@ -60,7 +63,17 @@ export default function Overview() {
             <b>{view ? view.policies.filter((p) => p.enabled).length : "–"}</b> policies on
           </span>
         </div>
-        {view && (!account || account.status === "pending_key" || account.status === "pending_link") && (
+        {view && !view.protectable && (
+          <div className="cta-band">
+            <div>
+              <div className="cap accent">Live view · {view.network.name}</div>
+              <p className="copy" style={{ marginTop: "0.6rem" }}>
+                Positions on this account are read live from {view.network.name}. Automatic protection runs on Somnia Hideki for now.
+              </p>
+            </div>
+          </div>
+        )}
+        {view && view.protectable && (!account || account.status === "pending_key" || account.status === "pending_link") && (
           <div className="cta-band">
             <div>
               <div className="cap accent">Not protected yet</div>
@@ -81,7 +94,7 @@ export default function Overview() {
         <div className="grid g4">
           <div className="card">
             <div className="cap soft">Lowest health</div>
-            <div className="num s accent" style={{ marginTop: "1rem" }}>
+            <div className={`num s ${hl(lowest)}`} style={{ marginTop: "1rem" }}>
               {lowest === null ? "–" : lowest.toFixed(2)}
             </div>
           </div>
@@ -106,7 +119,7 @@ export default function Overview() {
         </div>
 
         <h3 style={{ margin: "48px 0 16px" }}>Positions</h3>
-        {view && view.positions.length === 0 && <p className="copy soft">No open perp positions on this wallet.</p>}
+        {view && view.positions.length === 0 && <p className="copy soft">No open perp positions on this account.</p>}
         <div className="grid g3">
           {view?.positions.map((p) => {
             const policy = view.policies.find((x) => x.market === p.market);
@@ -117,7 +130,19 @@ export default function Overview() {
                   {policy?.enabled ? <span className="tag saved">protected</span> : <span className="tag not-needed">not protected</span>}
                 </div>
                 <h3 style={{ margin: "10px 0" }}>{p.market}</h3>
-                <div className="num s accent">{p.health === null ? "–" : p.health.toFixed(2)}</div>
+                <div className={`num s ${hl(p.health)}`}>{p.health === null ? "–" : p.health.toFixed(2)}</div>
+                <div className="pos-facts">
+                  <span>Size</span>
+                  <b>
+                    {units(p.size.replace("-", ""), p.baseDecimals)} {p.baseSymbol}
+                  </b>
+                  <span>Mark</span>
+                  <b>{p.markOk ? usd(p.mark) : "stale"}</b>
+                  <span>Notional</span>
+                  <b>{usd((BigInt(p.size.replace("-", "")) * BigInt(p.mark)) / 10n ** BigInt(p.baseDecimals))}</b>
+                  <span>Liq. price</span>
+                  <b>{p.liqPrice ? usd(p.liqPrice) : "–"}</b>
+                </div>
                 <HealthField health={p.health} trigger={policy?.triggerHealth ?? 1.25} target={policy?.targetHealth ?? 1.6} />
                 <div className="go" style={{ marginTop: "1.4rem" }}>
                   Open →
@@ -134,10 +159,12 @@ export default function Overview() {
           </Link>
         </div>
         {recent && <ReceiptTable actions={recent} />}
-        <p className="cap soft" style={{ marginTop: "2.4rem" }}>
-          Key <span className="mono">{short(account?.hoaxKey)}</span>
-          {view && view.isOwner === false ? " · read-only" : ""}
-        </p>
+        {account?.hoaxKey && (
+          <p className="cap soft" style={{ marginTop: "2.4rem" }}>
+            Key <span className="mono">{short(account.hoaxKey)}</span>
+            {view && view.isOwner === false ? " · read-only" : ""}
+          </p>
+        )}
       </div>
     </>
   );

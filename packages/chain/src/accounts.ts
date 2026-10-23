@@ -1,8 +1,11 @@
 // dreamDEX trading accounts and the Hoax link, from the trader's side.
 //
 // A dreamDEX trader does not trade from their wallet key. The app gives each
-// wallet a Safe 1.5.0 smart account (the SomniaAccountFactory's account at
-// index 0, owned 1-of-1 by the wallet), and that Safe is the perp `owner`.
+// wallet a Safe 1.5.0 smart account, and that Safe is the perp `owner`. Older
+// accounts are the SomniaAccountFactory's account at index 0 of the wallet,
+// owned 1-of-1 by it. The current app derives the account from a session key
+// instead and adds the wallet as an owner (threshold 1), so nothing derived
+// from the wallet finds it: the accounts indexer, asked "controlled by", does.
 // dreamDEX's own "Link a bot" is one Safe transaction batching
 // OperatorPermissionsRegistry grants of placeOrderFor, cancelOrderFor and
 // reduceOrderFor (read from mainnet Hideki traffic, see spike/README.md).
@@ -12,9 +15,10 @@
 // a spot pool. The wallet sends it straight to its Safe as a pre-validated
 // execution (msg.sender is the owner), so one confirmation links every market.
 
-import { accountsAt, planExecution, prevalidatedExecution, type Call } from "@somnia-chain/accounts-sdk";
+import { accountsAt, getAccountsPage, planExecution, prevalidatedExecution, type Call } from "@somnia-chain/accounts-sdk";
 import { createPublicClient, encodeFunctionData, getAddress, http, parseAbi, type Address, type Hex, type PublicClient } from "viem";
-import { HIDEKI, TRADING_KEY_SELECTOR } from "./dreamdex.ts";
+import { TRADING_KEY_SELECTOR } from "./dreamdex.ts";
+import { HIDEKI, type Network } from "./networks.ts";
 
 export const REGISTRY_ABI = parseAbi([
   "function setOperatorApprovalForPool(address pool, address operator, bytes4[] selectors, bool approved)",
@@ -29,7 +33,7 @@ const POOL_ABI = parseAbi([
 
 const SAFE_ABI = parseAbi(["function getOwners() view returns (address[])", "function getThreshold() view returns (uint256)"]);
 
-/** How many factory indices to look at for a wallet's trading account. dreamDEX uses index 0. */
+/** How many factory indices to look at for an account derived from the wallet. dreamDEX used index 0. */
 const ACCOUNT_INDICES = [0n, 1n, 2n, 3n] as const;
 
 export const HOAX_SELECTORS = [
@@ -64,17 +68,46 @@ export interface LinkRequest {
   builder?: { address: Address; feeBpsTimes1k: bigint } | null;
 }
 
+/** An account the accounts indexer says a wallet owns now. */
+export interface OwnedAccount {
+  chainId: number;
+  address: Address;
+  /** The key the address derives from: the wallet itself for older accounts, a session key for newer ones. */
+  derivedFrom: Address;
+}
+
+/**
+ * Every account the wallet currently owns on the given chains, from the
+ * accounts indexer. This is how the dreamDEX app finds a trader's account.
+ * Resolves to null when the indexer does not answer in time, so a caller can
+ * tell "none" from "unknown" and fall back to the derived scan.
+ */
+export async function ownedAccounts(wallet: Address, chainIds: readonly number[], timeoutMs = 6000): Promise<OwnedAccount[] | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), timeoutMs)));
+  const read = getAccountsPage({ controlledBy: wallet, chainIds, limit: 100 })
+    .then((page) => page.items.map((a) => ({ chainId: a.chainId, address: getAddress(a.address), derivedFrom: getAddress(a.derivation.accountId) })))
+    .catch(() => null);
+  try {
+    return await Promise.race([read, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class DreamDexAccounts {
+  readonly network: Network;
   private readonly client: PublicClient;
   private registry: Address | null = null;
 
-  constructor(rpcUrl: string = HIDEKI.rpcUrl) {
-    this.client = createPublicClient({ chain: HIDEKI.chain, transport: http(rpcUrl) }) as PublicClient;
+  constructor(rpcUrl?: string, network: Network = HIDEKI) {
+    this.network = network;
+    this.client = createPublicClient({ chain: network.chain, transport: http(rpcUrl ?? network.rpcUrl) }) as PublicClient;
   }
 
-  /** The wallet's dreamDEX trading accounts, deployed or not, lowest index first. */
+  /** The accounts derived from the wallet itself, deployed or not, lowest index first. */
   async tradingAccounts(wallet: Address): Promise<TradingAccount[]> {
-    const scan = await accountsAt(this.client, HIDEKI.chain.id, wallet, ACCOUNT_INDICES);
+    const scan = await accountsAt(this.client, this.network.id, wallet, ACCOUNT_INDICES);
     return scan.slots.map((s) => ({ index: Number(s.index), address: getAddress(s.address), deployed: s.deployed === true }));
   }
 
@@ -165,7 +198,7 @@ export class DreamDexAccounts {
       // web app does that itself. Refuse here so nobody wraps a key in execTransaction.
       throw new Error("this account is a plain key, not a dreamDEX Safe: send each call directly");
     }
-    const plan = planExecution({ chainId: HIDEKI.chain.id, account: req.account, calls, nonce: 0n });
+    const plan = planExecution({ chainId: this.network.id, account: req.account, calls, nonce: 0n });
     const tx = prevalidatedExecution(plan, req.wallet);
     return { to: getAddress(tx.to), data: tx.data, value: tx.value, from: req.wallet, calls: labels };
   }

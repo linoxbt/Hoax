@@ -41,11 +41,11 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
 
   // Close once everything is done.
   useEffect(() => {
-    if (open && address && hoax.onHideki && hoax.signedIn) {
+    if (open && address && hoax.onSupported && hoax.signedIn) {
       const t = setTimeout(onClose, 700);
       return () => clearTimeout(t);
     }
-  }, [open, address, hoax.onHideki, hoax.signedIn, onClose]);
+  }, [open, address, hoax.onSupported, hoax.signedIn, onClose]);
 
   if (!open) return null;
 
@@ -80,7 +80,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
 
   const steps = [
     { k: "Connect", done: Boolean(address), detail: address ? short(address) : "Choose a wallet" },
-    { k: "Network", done: Boolean(address) && hoax.onHideki, detail: "Somnia Hideki · 50383" },
+    { k: "Network", done: Boolean(address) && hoax.onSupported, detail: "Somnia Shannon or Hideki" },
     { k: "Verify", done: hoax.signedIn, detail: "Free signature, no transaction" },
   ];
 
@@ -140,7 +140,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
               </div>
             )}
           </div>
-        ) : !hoax.onHideki ? (
+        ) : !hoax.onSupported ? (
           <button className="pill wide" onClick={() => run("chain")} disabled={busy !== null}>
             {busy === "chain" ? "Confirm in wallet…" : "Switch to Somnia Hideki"}
           </button>

@@ -5,7 +5,7 @@ import { EngineBadge } from "@/components/EngineBadge";
 import { Label } from "@/components/Ui";
 import { Avatar } from "@/components/WalletButton";
 import { AppContext } from "@/lib/appContext";
-import { DREAMDEX_APP, short } from "@/lib/format";
+import { DREAMDEX_APP, NETWORK_NAMES, addressUrl, short } from "@/lib/format";
 import { useAccount } from "@/lib/useAccount";
 import { useHoax } from "@/lib/wallet";
 
@@ -28,7 +28,8 @@ function Gate() {
           <>
             <h1 className="h1" style={{ marginTop: "1.6rem" }}>No dreamDEX account yet</h1>
             <p className="txt ink" style={{ marginTop: "2.4rem", maxWidth: "62rem" }}>
-              {short(hoax.wallet)} has no dreamDEX trading account on Hideki. Open one in dreamDEX, then come back.
+              {short(hoax.wallet)} owns no dreamDEX trading account on Somnia Shannon or Hideki. Open one in dreamDEX, then come back.
+              {hoax.walletInfo && !hoax.walletInfo.indexed && " The accounts indexer did not answer, so only accounts derived from this wallet were checked."}
             </p>
             <div className="row" style={{ marginTop: "3.2rem" }}>
               <a href={DREAMDEX_APP} className="pill" target="_blank" rel="noreferrer">
@@ -90,12 +91,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="row" style={{ gap: "1.2rem", alignItems: "center" }}>
                 <Avatar address={session.owner} size={28} />
                 <div>
-                  <div className="cap soft">{hoax.sample ? "Sample account" : "dreamDEX account"}</div>
-                  <div className="mono" style={{ color: "var(--ink)", fontSize: "1.4rem" }}>
-                    {short(session.owner)}
-                  </div>
+                  <div className="cap soft">{hoax.sample ? "Sample account" : `dreamDEX · ${NETWORK_NAMES[session.chainId] ?? session.chainId}`}</div>
+                  <a className="mono acct-link" href={addressUrl(session.owner, session.chainId)} target="_blank" rel="noreferrer">
+                    {short(session.owner)} ↗
+                  </a>
                 </div>
               </div>
+              {!hoax.sample && (hoax.walletInfo?.accounts.length ?? 0) > 1 && (
+                <label className="acct-pick">
+                  <span className="cap soft">Account</span>
+                  <select
+                    value={`${session.chainId}:${session.owner}`}
+                    onChange={(e) => {
+                      const [c, a] = e.target.value.split(":");
+                      hoax.selectAccount(Number(c), a);
+                    }}
+                  >
+                    {hoax.walletInfo!.accounts.map((a) => (
+                      <option key={`${a.chainId}:${a.address}`} value={`${a.chainId}:${a.address.toLowerCase()}`}>
+                        {a.networkName.replace("Somnia ", "")} · {short(a.address)} · {a.positions} open
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div style={{ marginTop: "1.6rem" }}>
                 <EngineBadge />
               </div>

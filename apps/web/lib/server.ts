@@ -1,12 +1,12 @@
 // Server-only singletons and helpers for the API routes.
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { DreamDexVenue, type MarketInfo, type Venue } from "@hoax/chain";
+import { DreamDexVenue, HIDEKI, networkOf, type MarketInfo, type Venue } from "@hoax/chain";
 import { MemoryStore, PgStore, type AccountRow, type Store } from "@hoax/db";
 import { bearer, controls, sessionWallet } from "./auth";
 import { seedDemo } from "./demo";
 
-const g = globalThis as unknown as { __hoaxStore?: Store; __hoaxVenue?: Venue; __hoaxSeeded?: Promise<void> };
+const g = globalThis as unknown as { __hoaxStore?: Store; __hoaxVenues?: Map<number, Venue>; __hoaxSeeded?: Promise<void> };
 
 /**
  * Demo mode: no database and no watcher, so the receipts, stats and the sample
@@ -25,17 +25,22 @@ export async function getStore(): Promise<Store> {
   return g.__hoaxStore;
 }
 
-/** The live venue. Null only when HOAX_OFFLINE=1 (no network, e.g. CI). */
-export function getVenue(): Venue | null {
+/**
+ * The live venue on one network, Hideki unless asked. Null only when
+ * HOAX_OFFLINE=1 (no network, e.g. CI). RPC_URL, WS_URL and INDEXER_URL point
+ * Hideki somewhere else (a local fork); SHANNON_RPC_URL does the same for Shannon.
+ */
+export function getVenue(chainId: number = HIDEKI.id): Venue | null {
   if (process.env.HOAX_OFFLINE === "1") return null;
-  if (!g.__hoaxVenue) {
-    g.__hoaxVenue = new DreamDexVenue({
-      rpcUrl: process.env.RPC_URL || undefined,
-      wsUrl: process.env.WS_URL || undefined,
-      indexerUrl: process.env.INDEXER_URL || undefined,
-    });
+  g.__hoaxVenues ??= new Map();
+  let v = g.__hoaxVenues.get(chainId);
+  if (!v) {
+    const network = networkOf(chainId);
+    const env = network.id === HIDEKI.id ? { rpcUrl: process.env.RPC_URL, wsUrl: process.env.WS_URL, indexerUrl: process.env.INDEXER_URL } : { rpcUrl: process.env.SHANNON_RPC_URL };
+    v = new DreamDexVenue({ network, rpcUrl: env.rpcUrl || undefined, wsUrl: env.wsUrl || undefined, indexerUrl: env.indexerUrl || undefined });
+    g.__hoaxVenues.set(chainId, v);
   }
-  return g.__hoaxVenue;
+  return v;
 }
 
 const DEMO_MARKETS: MarketInfo[] = [
@@ -53,9 +58,9 @@ const DEMO_MARKETS: MarketInfo[] = [
   },
 ];
 
-export async function getMarkets(): Promise<MarketInfo[]> {
-  const venue = getVenue();
-  return venue ? venue.listMarkets() : DEMO_MARKETS;
+export async function getMarkets(chainId: number = HIDEKI.id): Promise<MarketInfo[]> {
+  const venue = getVenue(chainId);
+  return venue ? venue.listMarkets() : chainId === HIDEKI.id ? DEMO_MARKETS : [];
 }
 
 export function hashToken(token: string): string {

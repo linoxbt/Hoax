@@ -12,7 +12,7 @@ export function useAccount(session: Session | null | undefined, everyMs = 5000) 
 
   const refresh = useCallback(async () => {
     if (!session) return;
-    const q = session.accountId ? `?account=${session.accountId}` : "";
+    const q = `?chain=${session.chainId}${session.accountId ? `&account=${session.accountId}` : ""}`;
     try {
       setView(await api<AccountJson>(`/api/accounts/${session.owner}${q}`, { token: session.token || undefined }));
       setErr(null);

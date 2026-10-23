@@ -8,6 +8,8 @@ export interface Session {
   accountId: string;
   /** Wallet session token; "" when the wallet has not signed in. */
   token: string;
+  /** The network the account lives on: 50312 (Shannon) or 50383 (Hideki). */
+  chainId: number;
 }
 
 export async function api<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {

@@ -40,6 +40,10 @@ export function ago(iso: string | Date): string {
 }
 
 export const EXPLORER = "https://explorer.testnet.somnia.network/tokyo";
-export const txUrl = (hash: string) => `${EXPLORER}/tx/${hash}`;
-export const addressUrl = (addr: string) => `${EXPLORER}/address/${addr}`;
+/** Block explorers by chain id: Hideki (50383) and Shannon (50312). */
+const EXPLORERS: Record<number, string> = { 50383: EXPLORER, 50312: "https://shannon-explorer.somnia.network" };
+const explorerOf = (chainId?: number) => (chainId && EXPLORERS[chainId]) || EXPLORER;
+export const txUrl = (hash: string, chainId?: number) => `${explorerOf(chainId)}/tx/${hash}`;
+export const addressUrl = (addr: string, chainId?: number) => `${explorerOf(chainId)}/address/${addr}`;
+export const NETWORK_NAMES: Record<number, string> = { 50383: "Somnia Hideki", 50312: "Somnia Shannon" };
 export const DREAMDEX_APP = process.env.NEXT_PUBLIC_DREAMDEX_APP_URL || "https://app.testnet.dreamdex.io";

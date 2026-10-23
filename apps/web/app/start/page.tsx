@@ -2,13 +2,16 @@
 // Step 1: connect the wallet, verify it, and find its dreamDEX trading account.
 import { StepNav } from "@/components/StepNav";
 import { Avatar } from "@/components/WalletButton";
-import { DREAMDEX_APP, addressUrl, health, short, usd } from "@/lib/format";
+import { DREAMDEX_APP, NETWORK_NAMES, addressUrl, health, short, usd } from "@/lib/format";
 import { useHoax } from "@/lib/wallet";
 
 export default function WalletStep() {
   const hoax = useHoax();
   const info = hoax.walletInfo;
-  const margin = info?.margin ?? null;
+  const shown = info?.accounts.find((a) => a.address === hoax.account && a.chainId === hoax.accountChain) ?? null;
+  const margin = shown && shown.equity !== null ? { equity: shown.equity, health: shown.health, positions: shown.positions } : null;
+  // The engine protects Hideki accounts today; a Shannon account can be watched in the dashboard but not linked yet.
+  const onHidekiAccount = hoax.accountChain === 50383;
 
   const rows: Array<{ k: string; ok: boolean; v: React.ReactNode; act?: React.ReactNode }> = [
     {
@@ -29,9 +32,9 @@ export default function WalletStep() {
     },
     {
       k: "Network",
-      ok: Boolean(hoax.wallet) && hoax.onHideki,
-      v: "Somnia Hideki · 50383",
-      act: hoax.wallet && !hoax.onHideki && (
+      ok: Boolean(hoax.wallet) && hoax.onSupported,
+      v: "Somnia Shannon or Hideki",
+      act: hoax.wallet && !hoax.onSupported && (
         <button className="pill" onClick={() => void hoax.ensureChain().catch(() => {})}>
           Switch
         </button>
@@ -41,7 +44,7 @@ export default function WalletStep() {
       k: "Verified",
       ok: hoax.signedIn,
       v: hoax.signedIn ? "Signed in" : "Free signature, no transaction",
-      act: hoax.wallet && hoax.onHideki && !hoax.signedIn && (
+      act: hoax.wallet && hoax.onSupported && !hoax.signedIn && (
         <button className="pill" onClick={hoax.openConnect}>
           Verify
         </button>
@@ -51,8 +54,8 @@ export default function WalletStep() {
       k: "dreamDEX account",
       ok: Boolean(hoax.account),
       v: hoax.account ? (
-        <a className="mono" href={addressUrl(hoax.account)} target="_blank" rel="noreferrer">
-          {short(hoax.account)} ↗
+        <a className="mono" href={addressUrl(hoax.account, hoax.accountChain ?? undefined)} target="_blank" rel="noreferrer">
+          {short(hoax.account)} ↗ <span className="cap soft">{NETWORK_NAMES[hoax.accountChain ?? 0]}</span>
         </a>
       ) : !hoax.wallet ? (
         "–"
@@ -113,7 +116,13 @@ export default function WalletStep() {
           </div>
         )}
 
-        <StepNav next="/start/link" nextLabel="Link Hoax" nextDisabled={!(hoax.account && hoax.signedIn)} />
+        {hoax.account && !onHidekiAccount && (
+          <p className="note" style={{ marginTop: "2.4rem" }}>
+            This account is on {NETWORK_NAMES[hoax.accountChain ?? 0]}. Hoax reads its positions live in the dashboard; automatic protection runs on Somnia
+            Hideki for now, so linking is for Hideki accounts.
+          </p>
+        )}
+        <StepNav next={onHidekiAccount ? "/start/link" : "/app"} nextLabel={onHidekiAccount ? "Link Hoax" : "Open dashboard"} nextDisabled={!(hoax.account && (hoax.signedIn || !onHidekiAccount))} />
       </div>
     </div>
   );

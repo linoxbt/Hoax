@@ -60,11 +60,17 @@ export interface HoaxState {
   wallet: Address | undefined;
   connecting: boolean;
   onHideki: boolean;
+  /** On a network dreamDEX runs on (Shannon or Hideki): enough to verify and to read. */
+  onSupported: boolean;
   /** The wallet's dreamDEX accounts; null until read. */
   walletInfo: WalletJson | null;
   walletErr: string | null;
-  /** The dreamDEX account Hoax protects for this wallet. */
+  /** The dreamDEX account the app is showing for this wallet. */
   account: string | null;
+  /** The network that account lives on. */
+  accountChain: number | null;
+  /** Show another of the wallet's accounts (it may own one per network). */
+  selectAccount: (chainId: number, address: string) => void;
   signedIn: boolean;
   /**
    * What the app pages run on: the protected account plus the session token.
@@ -88,7 +94,8 @@ const HoaxContext = createContext<HoaxState | null>(null);
 
 const authKey = (wallet: string) => `hoax.auth.${wallet.toLowerCase()}`;
 const SAMPLE_KEY = "hoax.sample";
-export const SAMPLE_SESSION: Session = { owner: "0x00000000000000000000000000000000000d3e00", accountId: "", token: "demo" };
+export const SAMPLE_SESSION: Session = { owner: "0x00000000000000000000000000000000000d3e00", accountId: "", token: "demo", chainId: 50383 };
+const pickKey = (wallet: string) => `hoax.pick.${wallet.toLowerCase()}`;
 
 function readAuth(wallet: string): Auth | null {
   try {
@@ -230,7 +237,32 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     setModal(false);
   }, []);
 
-  const account = walletInfo?.primary ?? null;
+  // The account on screen: the one the user picked if the wallet still has it, else the primary.
+  const [picked, setPicked] = useState<{ chainId: number; address: string } | null>(null);
+  useEffect(() => {
+    if (!address) return setPicked(null);
+    try {
+      setPicked(JSON.parse(localStorage.getItem(pickKey(address)) ?? "null"));
+    } catch {
+      setPicked(null);
+    }
+  }, [address]);
+  const selectAccount = useCallback(
+    (chainId: number, addr: string) => {
+      const p = { chainId, address: addr };
+      setPicked(p);
+      try {
+        if (address) localStorage.setItem(pickKey(address), JSON.stringify(p));
+      } catch {}
+    },
+    [address],
+  );
+  const shown =
+    (picked && walletInfo?.accounts.find((a) => a.chainId === picked.chainId && a.address.toLowerCase() === picked.address.toLowerCase())) ||
+    walletInfo?.accounts[0] ||
+    null;
+  const account = shown?.address ?? null;
+  const accountChain = shown?.chainId ?? null;
   const signedIn = Boolean(auth && address && auth.wallet.toLowerCase() === address.toLowerCase());
 
   const session: Session | null | undefined = useMemo(() => {
@@ -239,17 +271,20 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     if (status === "reconnecting" || status === "connecting") return undefined;
     if (!address) return null;
     if (!walletInfo) return walletErr ? null : undefined;
-    if (!account) return null;
-    return { owner: account.toLowerCase(), accountId: "", token: signedIn ? auth!.token : "" };
-  }, [hydrated, sample, address, status, walletInfo, walletErr, account, signedIn, auth]);
+    if (!account || !accountChain) return null;
+    return { owner: account.toLowerCase(), accountId: "", token: signedIn ? auth!.token : "", chainId: accountChain };
+  }, [hydrated, sample, address, status, walletInfo, walletErr, account, accountChain, signedIn, auth]);
 
   const value: HoaxState = {
     wallet: address,
     connecting: opening || status === "connecting" || status === "reconnecting",
     onHideki: chainId === hideki.id,
+    onSupported: chainId === hideki.id || chainId === 50312,
     walletInfo,
     walletErr,
     account,
+    accountChain,
+    selectAccount,
     signedIn,
     session,
     engine,

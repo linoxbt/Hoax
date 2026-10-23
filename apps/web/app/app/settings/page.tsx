@@ -92,7 +92,7 @@ export default function Settings() {
           </div>
           <div className="r">
             <span>dreamDEX account</span>
-            <a className="mono" href={addressUrl(session.owner)} target="_blank" rel="noreferrer">
+            <a className="mono" href={addressUrl(session.owner, session.chainId)} target="_blank" rel="noreferrer">
               {session.owner}
             </a>
           </div>

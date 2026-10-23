@@ -34,6 +34,10 @@ export interface PositionJson {
 
 export interface AccountJson {
   owner: string;
+  chainId: number;
+  network: { id: number; key: "shannon" | "hideki"; name: string; explorer: string };
+  /** Whether the Hoax engine can protect accounts on this network yet. */
+  protectable: boolean;
   account: {
     id: string;
     status: "pending_key" | "pending_link" | "active" | "unlinked";
@@ -108,13 +112,33 @@ export interface StatsJson {
   pending: number;
 }
 
+/** One dreamDEX account a wallet can trade from, with its live margin summary. */
+export interface WalletAccountJson {
+  chainId: number;
+  network: "shannon" | "hideki";
+  networkName: string;
+  address: string;
+  via: "owner" | "derived";
+  equity: string | null;
+  mmReq: string | null;
+  health: number | null;
+  positions: number;
+  marginError: string | null;
+}
+
 export interface WalletJson {
   wallet: string;
-  walletBalance: string;
-  accounts: Array<{ index: number; address: string; deployed: boolean }>;
+  /** STT on Hideki, where the Hoax key's gas is paid. */
+  walletBalance: string | null;
+  balances: Record<string, string | null>;
+  /** Every account found, open positions first. */
+  accounts: WalletAccountJson[];
   primary: string | null;
+  primaryChain: number | null;
   margin: { equity: string; mmReq: string; health: number | null; positions: number } | null;
   marginError: string | null;
+  /** False when the accounts indexer did not answer and only wallet-derived accounts were checked. */
+  indexed: boolean;
 }
 
 export interface MarketJson {

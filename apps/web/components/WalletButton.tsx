@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { addressUrl, short } from "@/lib/format";
+import { NETWORK_NAMES, addressUrl, short } from "@/lib/format";
 import { useHoax } from "@/lib/wallet";
 import { Arrow, Roll } from "./Ui";
 
@@ -55,7 +55,7 @@ export function WalletButton() {
     );
   }
 
-  const needs = !hoax.onHideki ? "Wrong network" : !hoax.signedIn ? "Verify wallet" : null;
+  const needs = !hoax.onSupported ? "Wrong network" : !hoax.signedIn ? "Verify wallet" : null;
 
   return (
     <div className="wmenu" ref={ref}>
@@ -72,7 +72,7 @@ export function WalletButton() {
             <div className="val">{hoax.wallet}</div>
           </div>
           <div className="blk">
-            <div className="mono-s soft">dreamDEX account</div>
+            <div className="mono-s soft">dreamDEX account{hoax.accountChain ? ` · ${NETWORK_NAMES[hoax.accountChain]}` : ""}</div>
             <div className="val">{hoax.account ?? (hoax.walletInfo ? "None yet" : "Reading chain…")}</div>
           </div>
           <div className="wlinks">
@@ -80,7 +80,7 @@ export function WalletButton() {
               Dashboard
             </Link>
             {hoax.account && (
-              <a href={addressUrl(hoax.account)} target="_blank" rel="noreferrer">
+              <a href={addressUrl(hoax.account, hoax.accountChain ?? undefined)} target="_blank" rel="noreferrer">
                 View on explorer ↗
               </a>
             )}

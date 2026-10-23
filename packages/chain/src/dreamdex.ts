@@ -1,4 +1,5 @@
-// The real venue: dreamDEX perps on Somnia Tokyo testnet (Hideki, chain 50383).
+// The real venue: dreamDEX perps on one Somnia network, Hideki (50383) unless
+// told otherwise. See networks.ts for Shannon.
 //
 // Reads go through @somnia-chain/markets-sdk. Writes for a linked account go
 // straight to the pool with viem, because the SDK has no perp `...For` writes:
@@ -7,14 +8,12 @@
 // trading-key path of the official dreamDEX bot kit (MIT).
 
 import {
-  SOMNIA_HIDEKI_TESTNET_ADDRESSES,
   SomniaMarkets,
   contractErrorsAbi,
   decodePlaceOrder,
   liquidationEngineEventsAbi,
   marginBankEventsAbi,
 } from "@somnia-chain/markets-sdk";
-import { hidekiTestnet } from "@somnia-chain/markets-sdk/chains";
 import type { LiquidationParams } from "@hoax/core";
 import {
   createPublicClient,
@@ -40,14 +39,9 @@ import type {
   TradingSigner,
   Venue,
 } from "./venue.ts";
+import { HIDEKI, type Network } from "./networks.ts";
 
-export const HIDEKI = {
-  chain: hidekiTestnet,
-  rpcUrl: "https://api.hideki2.infra.testnet.somnia.network",
-  wsUrl: "wss://api.hideki2.infra.testnet.somnia.network/ws",
-  indexerUrl: "https://hideki-dev.smk.somnia.host/v1/graphql",
-  explorer: "https://explorer.testnet.somnia.network/tokyo",
-} as const;
+
 
 /** The selectors "Link a bot" grants, as the OperatorPermissionsRegistry keys them. */
 export const TRADING_KEY_SELECTOR = {
@@ -81,10 +75,13 @@ export interface DreamDexVenueOptions {
   indexerUrl?: string;
   /** Per-request RPC timeout. viem's 10 s default is too short for a cold fork. */
   rpcTimeoutMs?: number;
+  /** Which network's dreamDEX. Defaults to Hideki. */
+  network?: Network;
 }
 
 export class DreamDexVenue implements Venue {
-  readonly name = "dreamdex-hideki";
+  readonly name: string;
+  readonly network: Network;
   private readonly exchange: SomniaMarkets;
   private readonly publicClient: PublicClient;
   private readonly rpcUrl: string;
@@ -94,16 +91,18 @@ export class DreamDexVenue implements Venue {
   private liquidation = new Map<string, { engine: Address; params: LiquidationParams }>();
 
   constructor(opts: DreamDexVenueOptions = {}) {
-    this.rpcUrl = opts.rpcUrl ?? HIDEKI.rpcUrl;
+    this.network = opts.network ?? HIDEKI;
+    this.name = `dreamdex-${this.network.key}`;
+    this.rpcUrl = opts.rpcUrl ?? this.network.rpcUrl;
     this.rpcTimeoutMs = opts.rpcTimeoutMs;
-    this.wsUrl = opts.wsUrl ?? HIDEKI.wsUrl;
+    this.wsUrl = opts.wsUrl ?? this.network.wsUrl;
     this.exchange = new SomniaMarkets({
-      chain: HIDEKI.chain,
+      chain: this.network.chain,
       wsRpcUrl: this.wsUrl,
-      indexerUrl: opts.indexerUrl ?? HIDEKI.indexerUrl,
-      addresses: SOMNIA_HIDEKI_TESTNET_ADDRESSES,
+      indexerUrl: opts.indexerUrl ?? this.network.indexerUrl,
+      addresses: this.network.addresses,
     });
-    this.publicClient = createPublicClient({ chain: HIDEKI.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) }) as PublicClient;
+    this.publicClient = createPublicClient({ chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) }) as PublicClient;
   }
 
   private get client() {
@@ -205,7 +204,7 @@ export class DreamDexVenue implements Venue {
   }
 
   async placeIocFor(signer: TradingSigner, owner: Address, market: MarketInfo, order: IocOrder): Promise<PlaceResult> {
-    const wallet = createWalletClient({ account: signer, chain: HIDEKI.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
+    const wallet = createWalletClient({ account: signer, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const expire = BigInt(Math.floor(Date.now() / 1000) + 3600) * 1_000_000_000n;
     let request;
     try {
@@ -287,8 +286,8 @@ export class DreamDexVenue implements Venue {
   }
 
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {
-    const wallet = createWalletClient({ account: from, chain: HIDEKI.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
-    const hash = await wallet.sendTransaction({ to, value: amount, chain: HIDEKI.chain });
+    const wallet = createWalletClient({ account: from, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
+    const hash = await wallet.sendTransaction({ to, value: amount, chain: this.network.chain });
     await this.publicClient.waitForTransactionReceipt({ hash });
     return hash;
   }
@@ -299,7 +298,7 @@ export class DreamDexVenue implements Venue {
 
   watchAccounts(marginBank: Address, owners: Address[], handlers: AccountEventHandlers): () => void {
     if (owners.length === 0) return () => {};
-    const ws = createPublicClient({ chain: HIDEKI.chain, transport: webSocket(this.wsUrl) });
+    const ws = createPublicClient({ chain: this.network.chain, transport: webSocket(this.wsUrl) });
     const stops: Array<() => void> = [];
     stops.push(
       ws.watchContractEvent({

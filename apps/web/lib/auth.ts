@@ -7,13 +7,13 @@
 // more: the wallet must own the account's Safe, which `controls` checks on chain.
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { DreamDexAccounts, HIDEKI } from "@hoax/chain";
+import { DreamDexAccounts, HIDEKI, networkOf } from "@hoax/chain";
 import { createPublicClient, getAddress, http, type Address, type Hex } from "viem";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60_000;
 const CHALLENGE_TTL_MS = 10 * 60_000;
 
-const g = globalThis as unknown as { __hoaxSecret?: Buffer; __hoaxAccounts?: DreamDexAccounts; __hoaxControls?: Map<string, { ok: boolean; at: number }> };
+const g = globalThis as unknown as { __hoaxSecret?: Buffer; __hoaxAccounts?: Map<number, DreamDexAccounts>; __hoaxControls?: Map<string, { ok: boolean; at: number }> };
 
 function secret(): Buffer {
   if (!g.__hoaxSecret) {
@@ -38,9 +38,16 @@ function sameMac(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export function accountsClient(): DreamDexAccounts {
-  g.__hoaxAccounts ??= new DreamDexAccounts(process.env.RPC_URL || undefined);
-  return g.__hoaxAccounts;
+/** Account reads on one network, Hideki unless asked (RPC_URL / SHANNON_RPC_URL override the RPC). */
+export function accountsClient(chainId: number = HIDEKI.id): DreamDexAccounts {
+  g.__hoaxAccounts ??= new Map();
+  let c = g.__hoaxAccounts.get(chainId);
+  if (!c) {
+    const network = networkOf(chainId);
+    c = new DreamDexAccounts((network.id === HIDEKI.id ? process.env.RPC_URL : process.env.SHANNON_RPC_URL) || undefined, network);
+    g.__hoaxAccounts.set(chainId, c);
+  }
+  return c;
 }
 
 /** The message a wallet signs to sign in. */

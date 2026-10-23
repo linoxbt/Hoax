@@ -81,8 +81,13 @@ export default function PolicyEditor() {
             </span>
           </label>
         </div>
+        {view && !view.protectable && (
+          <p className="note" style={{ marginTop: "2.4rem" }}>
+            This account is on {view.network.name}. Policies run on Somnia Hideki accounts for now.
+          </p>
+        )}
         <div className="row" style={{ marginTop: "3.2rem" }}>
-          <button className="pill" disabled={busy} onClick={save}>
+          <button className="pill" disabled={busy || (view !== null && !view.protectable)} onClick={save}>
             Save policy
           </button>
           <button className="pill ghost" onClick={() => setForm({ ...DEFAULT_POLICY_JSON, enabled: true })}>
