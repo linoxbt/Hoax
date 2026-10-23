@@ -203,6 +203,9 @@ export class Engine {
       const policy = policyBy.get(view.market.symbol)!;
       const key = view.market.symbol;
       this.trackStale(account, mem, view);
+      // Most ticks end here: health is above this policy's trigger, so the book
+      // and the fee approval are not worth a read.
+      if (view.markOk && H > policy.triggerHealth - policy.triggerMargin) continue;
 
       const book = await venue.readBook(view.market, this.deps.config.bookDepth);
       const fee = await this.builderFee(account, view.market, owner);
