@@ -14,6 +14,7 @@ export function Footer() {
           </div>
           <div className="row cap" style={{ gap: 28 }}>
             <Link href="/how-it-works">How it works</Link>
+            <Link href="/markets">Markets</Link>
             <Link href="/security">Security</Link>
             <Link href="/stats">Track record</Link>
             <Link href="/app">Launch app</Link>

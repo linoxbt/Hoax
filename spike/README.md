@@ -11,7 +11,16 @@ Proof scripts for the build spec's spike tests. Each writes a JSON log with bloc
 | `05-latency` | 5 | no | `DATABASE_URL` of a watcher that has made live closes |
 | `06-mark-source` | 6 | no | `MARKET`, `DURATION_S` |
 | `07-subscription` | 7 | no | nothing (probe only) |
+| `08-link-tx` | in-app link | no (eth_estimateGas only) | nothing (finds a recent dreamDEX linker), or `WALLET` |
+| `09-link-fork` | in-app link, executed | on a local fork only | `FORK_RPC` of an Anvil fork of Hideki |
 
 For the order-sending spikes, make a key with `cast wallet new` (or any EOA), link it to a spare dreamDEX wallet with **Link a bot** (Perps ticked, send it gas), open a small leveraged ETH-PERP position in that wallet, then run the script. Without `CONFIRM=yes` the scripts check the link and stop.
 
 Any bug a spike turns up goes into `../feedback/` in the bounty's format.
+
+## The in-app link (08, 09)
+
+dreamDEX accounts are Safe 1.5.0 smart accounts (the SomniaAccountFactory's account at index 0, owned 1-of-1 by the trader's wallet). Decoding recent `OperatorPermissionsRegistry` traffic on Hideki shows dreamDEX's Link a bot is one Safe `execTransaction` through MultiSend: `setOperatorApprovalGlobal(bot, [placeOrderFor, cancelOrderFor, reduceOrderFor])` plus per-pool grants. Hoax sends the per-pool grants on perp pools only, as a pre-validated Safe execution from the owner.
+
+- **08** builds that transaction for a real dreamDEX user's Safe and proves with `eth_estimateGas` that the Safe accepts it from its owner and refuses it from anyone else (GS025). Nothing is sent.
+- **09** runs it on an Anvil fork: a fresh wallet gets a Safe, one transaction links the key on all 21 perp pools for all three selectors, one transaction revokes it.

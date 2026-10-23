@@ -9,7 +9,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ owner: 
   const store = await getStore();
   const account = await store.getAccountByOwner(owner);
   if (!account) return error(404, "no Hoax registration for this wallet");
-  if (!authorized(req, account)) return error(401, "missing or wrong manage token");
+  if (!(await authorized(req, account))) return error(401, "sign in with the wallet that owns this account");
   const body = (await req.json().catch(() => null)) as { paused?: boolean } | null;
   if (typeof body?.paused !== "boolean") return error(400, "paused must be true or false");
   await store.setPaused(account.id, body.paused);

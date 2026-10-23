@@ -1,23 +1,32 @@
 import { randomUUID } from "node:crypto";
+import { bearer, controls, sessionWallet } from "@/lib/auth";
 import { DEMO, error, getStore, hashToken, isAddress, json, newToken, rateLimited } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Register a wallet for protection. The watcher then makes a dedicated Hoax key
- * for it; the response's token is shown once and is what manages Hoax for this
- * wallet afterwards. A registration only becomes active when the wallet's owner
- * links that key in dreamDEX, which nobody else can do.
+ * Register a dreamDEX account for protection. The caller signs in with the
+ * wallet that owns the account's Safe; the watcher then makes a dedicated Hoax
+ * key for it, and the account only becomes active once that wallet links the
+ * key on chain, which nobody else can do. Registering again reuses a
+ * registration that is still waiting for its link.
  */
 export async function POST(req: Request) {
-  if (DEMO) return error(503, "This deployment runs on demo data with no watcher, so it cannot protect a wallet yet. Onboarding opens once the watcher is live.");
+  if (DEMO) return error(503, "The protection engine is offline on this deployment, so it cannot take new accounts yet.");
   if (rateLimited(req, 10, 60 * 60_000)) return error(429, "too many registrations from this address; try again later");
+  const wallet = sessionWallet(bearer(req));
+  if (!wallet) return error(401, "sign in with your wallet first");
   const body = (await req.json().catch(() => null)) as { owner?: string } | null;
   const owner = body?.owner?.trim() ?? "";
   if (!isAddress(owner)) return error(400, "owner must be a 0x address");
+  if (!(await controls(wallet, owner))) return error(403, "this wallet does not own that dreamDEX account");
+
   const store = await getStore();
-  // A wallet may register again (a new key replaces the old one once it is linked).
-  const token = newToken();
-  const account = await store.createAccount({ id: randomUUID(), owner, manageTokenHash: hashToken(token) });
-  return json({ id: account.id, owner: account.owner, status: account.status, token }, { status: 201 });
+  const existing = await store.getAccountByOwner(owner);
+  if (existing && existing.status !== "unlinked") {
+    return json({ id: existing.id, owner: existing.owner, status: existing.status, hoaxKey: existing.hoaxKey });
+  }
+  // The wallet session manages the account; the legacy manage token is random and never shown.
+  const account = await store.createAccount({ id: randomUUID(), owner, manageTokenHash: hashToken(newToken()) });
+  return json({ id: account.id, owner: account.owner, status: account.status, hoaxKey: account.hoaxKey }, { status: 201 });
 }

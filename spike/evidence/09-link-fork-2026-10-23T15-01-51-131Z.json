@@ -1,0 +1,53 @@
+{
+  "spike": "09-link-fork",
+  "sdk": "@somnia-chain/markets-sdk@0.32.1",
+  "network": {
+    "chainId": 50383,
+    "rpc": "https://api.hideki2.infra.testnet.somnia.network"
+  },
+  "startedAt": "2026-10-23T15:01:51.131Z",
+  "finishedAt": "2026-10-23T15:02:22.428Z",
+  "finishedAtBlock": "31156785",
+  "result": {
+    "pass": true,
+    "summary": "one transaction linked the key on all 21 perp pools (all three selectors), and one revoked it"
+  },
+  "entries": [
+    {
+      "at": "2026-10-23T15:01:51.155Z",
+      "event": "fork",
+      "rpc": "http://127.0.0.1:8545",
+      "forkedAtBlock": "31156195"
+    },
+    {
+      "at": "2026-10-23T15:01:53.772Z",
+      "event": "account",
+      "owner": "0x5DA8Bc9e3Cf2a3b1096682b2dC96999e5A062488",
+      "createStatus": "success",
+      "safe": "0x95750C8e0b410432c494735AFA59A41f8149fA25",
+      "controls": true
+    },
+    {
+      "at": "2026-10-23T15:02:21.741Z",
+      "event": "link",
+      "tx": "0x5478ff5d01e311555b2d8a149656c4b9cc90b48930434cbc92cd2d2f088cf046",
+      "status": "success",
+      "gasUsed": "1913179",
+      "poolsLinked": 21,
+      "of": 21,
+      "selectorsOnFirstPool": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "at": "2026-10-23T15:02:21.952Z",
+      "event": "revoke",
+      "tx": "0x3d7059e06790a86f493dea4f816bc51b1b821d07e867c097234b7a9afff7e04a",
+      "status": "success",
+      "gasUsed": "554173",
+      "poolsStillLinked": 0
+    }
+  ]
+}

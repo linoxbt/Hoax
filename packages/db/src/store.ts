@@ -107,6 +107,12 @@ export interface Stats {
 
 export type NewAction = Omit<ActionRow, "createdAt">;
 
+export interface HeartbeatRow {
+  service: string;
+  info: Record<string, unknown>;
+  beatAt: Date;
+}
+
 export interface Store {
   createAccount(a: { id: string; owner: string; manageTokenHash: string }): Promise<AccountRow>;
   getAccount(id: string): Promise<AccountRow | null>;
@@ -143,5 +149,10 @@ export interface Store {
   dripsSince(since: Date, hoaxKey?: string): Promise<bigint>;
 
   stats(): Promise<Stats>;
+
+  /** Record that a service is alive, with whatever it reports about itself. */
+  beat(service: string, info: Record<string, unknown>): Promise<void>;
+  lastBeat(service: string): Promise<HeartbeatRow | null>;
+
   close(): Promise<void>;
 }

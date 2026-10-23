@@ -2,7 +2,10 @@
 // Overview: is Hoax protecting this wallet, how each position stands, and what happened lately.
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { formatEther } from "viem";
 import { AppHead } from "@/components/AppHead";
+import { EngineBadge } from "@/components/EngineBadge";
+import { HealthField } from "@/components/HealthField";
 import { ReceiptTable } from "@/components/ReceiptRow";
 import { useApp } from "@/lib/appContext";
 import { short } from "@/lib/format";
@@ -17,7 +20,19 @@ export default function Overview() {
   }, [session.owner]);
 
   const account = view?.account;
-  const status = account?.status === "active" ? (account.paused ? "Paused" : "Protecting") : account ? account.status.replace("_", " ") : "Loading";
+  const status = !view
+    ? "Loading"
+    : account?.status === "active"
+      ? account.paused
+        ? "Paused"
+        : "Protecting"
+      : account?.status === "pending_key" || account?.status === "pending_link"
+        ? "Setting up"
+        : account?.status === "unlinked"
+          ? "Unlinked"
+          : "Not protected";
+  const linkedCount = view?.links ? Object.values(view.links).filter(Boolean).length : null;
+  const gas = view?.keyBalance ? Number(formatEther(BigInt(view.keyBalance))) : null;
   const lowest = view?.positions.reduce<number | null>((m, p) => (p.health === null ? m : m === null ? p.health : Math.min(m, p.health)), null) ?? null;
 
   return (
@@ -33,10 +48,30 @@ export default function Overview() {
         </div>
       </AppHead>
       <div className="wrap pad-s">
-        {account?.status === "pending_link" && (
-          <p className="note" style={{ marginBottom: 24 }}>
-            Key not linked. <Link href="/start/link" className="accent">Finish setup →</Link>
-          </p>
+        <div className="statusbar">
+          <EngineBadge />
+          <span>
+            <b>{linkedCount === null ? "–" : `${linkedCount}/${view?.markets.length ?? 21}`}</b> markets linked
+          </span>
+          <span>
+            <b>{gas === null ? "–" : gas.toFixed(3)}</b> STT key gas
+          </span>
+          <span>
+            <b>{view ? view.policies.filter((p) => p.enabled).length : "–"}</b> policies on
+          </span>
+        </div>
+        {view && (!account || account.status === "pending_key" || account.status === "pending_link") && (
+          <div className="cta-band">
+            <div>
+              <div className="cap accent">Not protected yet</div>
+              <p className="copy" style={{ marginTop: 6 }}>
+                Link Hoax in one transaction and every position on this account is covered.
+              </p>
+            </div>
+            <Link href={account ? "/start/link" : "/start"} className="pill">
+              Activate protection →
+            </Link>
+          </div>
         )}
         {account?.status === "unlinked" && (
           <p className="note bad" style={{ marginBottom: 24 }}>
@@ -83,9 +118,7 @@ export default function Overview() {
                 </div>
                 <h3 style={{ margin: "10px 0" }}>{p.market}</h3>
                 <div className="num s accent">{p.health === null ? "–" : p.health.toFixed(2)}</div>
-                <div className="cap soft" style={{ marginTop: 8 }}>
-                  health · trigger {policy?.triggerHealth ?? 1.25}
-                </div>
+                <HealthField health={p.health} trigger={policy?.triggerHealth ?? 1.25} target={policy?.targetHealth ?? 1.6} />
                 <div className="go" style={{ marginTop: 14 }}>
                   Open →
                 </div>

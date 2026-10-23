@@ -1,32 +1,41 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { EngineBadge } from "@/components/EngineBadge";
 import { Kicker } from "@/components/Kicker";
 import { StartContext } from "@/lib/startContext";
-import { useAccount, useSession } from "@/lib/useAccount";
+import { useAccount } from "@/lib/useAccount";
+import { useHoax } from "@/lib/wallet";
 
 const STEPS = [
   ["/start", "01 Wallet"],
   ["/start/link", "02 Link"],
   ["/start/gas", "03 Gas"],
-  ["/start/fee", "04 Builder fee"],
-  ["/start/policy", "05 Policy"],
+  ["/start/policy", "04 Policy"],
 ] as const;
 
 export default function StartLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  const [session, setSession] = useSession();
+  const hoax = useHoax();
+  const session = hoax.sample ? null : hoax.session;
   const { view, err, setErr, refresh } = useAccount(session, 2500);
+  const linkedMarkets = view?.links ? Object.values(view.links).filter(Boolean).length : 0;
   const linked = view?.account?.status === "active";
+  const ready = Boolean(session && hoax.signedIn);
   const done = (href: string) =>
-    (href === "/start" && Boolean(session)) || (href === "/start/link" && linked);
-  const reachable = (href: string) => href === "/start" || Boolean(session);
+    (href === "/start" && ready) ||
+    (href === "/start/link" && linked) ||
+    (href === "/start/gas" && linked && Boolean(view?.keyBalance && BigInt(view.keyBalance) > 10n ** 16n));
+  const reachable = (href: string) => href === "/start" || ready;
 
   return (
-    <StartContext.Provider value={{ session, setSession, view, err, setErr, refresh, linked }}>
+    <StartContext.Provider value={{ session, view, err, setErr, refresh, linked, linkedMarkets }}>
       <section className="sec">
         <div className="wrap pad" style={{ paddingBottom: 32 }}>
-          <Kicker>Get protected · 2 min</Kicker>
+          <div className="spread" style={{ alignItems: "center" }}>
+            <Kicker>Get protected · 2 minutes</Kicker>
+            <EngineBadge />
+          </div>
           <h1 className="hero-in">Get protected</h1>
         </div>
         <div className="wrap">

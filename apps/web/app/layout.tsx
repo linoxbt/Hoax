@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Motion } from "@/components/Motion";
+import { Providers } from "@/lib/wallet";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,17 +26,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
       </head>
       <body>
+        <Providers>
         <Header />
         {process.env.HOAX_DEMO === "1" && (
           <div className="sec char" style={{ borderBottom: "1px solid var(--rule-on-char)" }}>
             <div className="wrap cap" style={{ padding: "8px var(--gutter)", textAlign: "center" }}>
-              Demo data · live protection starts once the watcher is connected
+              Engine offline · sample receipts · live markets and wallets
             </div>
           </div>
         )}
         <main>{children}</main>
         <Footer />
         <Motion />
+        </Providers>
       </body>
     </html>
   );

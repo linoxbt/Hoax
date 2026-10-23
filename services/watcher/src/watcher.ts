@@ -131,6 +131,9 @@ export class Watcher {
     this.loop("onboarding", 2_000, () => this.linker.run());
     this.loop("counterfactuals", 2_000, () => this.tracker.run());
     if (this.opts.gas) this.loop("gas", 30_000, () => this.opts.gas!.run());
+    this.loop("heartbeat", 5_000, () =>
+      this.opts.store.beat("watcher", { ...this.status, venue: this.opts.venue.name, gasWallet: this.opts.gas?.address ?? null }),
+    );
     this.loop("prune", 60 * 60_000, () => this.opts.store.pruneHealthTicks(new Date(Date.now() - 24 * 60 * 60_000)));
   }
 

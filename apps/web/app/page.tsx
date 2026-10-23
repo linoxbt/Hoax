@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Bars, Edge } from "@/components/Bars";
 import { CountUp } from "@/components/CountUp";
 import { Kicker, Marquee } from "@/components/Kicker";
+import { MarketTape } from "@/components/LiveMarkets";
+import { LiveSimulator } from "@/components/Simulator";
 import { ScrollText } from "@/components/ScrollText";
 import { StatsGrid } from "@/components/StatsGrid";
 import { getStore } from "@/lib/server";
@@ -20,7 +22,7 @@ const METRICS: Array<{ value: number; decimals?: number; prefix?: string; suffix
 ];
 
 const STEPS: Array<[string, string]> = [
-  ["Link", "A trade-only key, added in dreamDEX in one step."],
+  ["Link", "One transaction from your wallet covers every market."],
   ["Watch", "Account health read every second."],
   ["Trim", "The smallest close that restores your target."],
 ];
@@ -85,6 +87,8 @@ export default async function Landing() {
           <Bars n={240} shape="story" seed={5} height={220} label="Health over time: two slides toward liquidation, each stopped by a small close" />
         </div>
       </section>
+
+      <MarketTape />
 
       <section className="sec alt">
         <Edge seed={4} opacity={0.45} />
@@ -152,6 +156,23 @@ export default async function Landing() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="sec alt">
+        <div className="wrap pad">
+          <div className="spread" style={{ marginBottom: 36 }}>
+            <div>
+              <Kicker>Try it</Kicker>
+              <h2>Run a crash</h2>
+            </div>
+            <p className="copy soft" style={{ maxWidth: 420 }}>
+              The engine&apos;s own sizing function, in your browser, from ETH&apos;s live mark.
+            </p>
+          </div>
+          <div data-reveal>
+            <LiveSimulator />
           </div>
         </div>
       </section>

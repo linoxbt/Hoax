@@ -48,6 +48,7 @@ export interface AccountJson {
   positions: PositionJson[];
   alerts: Array<{ id: number; kind: string; message: string; createdAt: string }>;
   keyBalance: string | null;
+  links: Record<string, boolean> | null;
   builder: { address: string | null; feeBpsTimes1k: number };
   markets: Array<{ symbol: string; pool: string; baseDecimals: number; minQuantity: string }>;
 }
@@ -105,4 +106,43 @@ export interface StatsJson {
   misses: number;
   conflicts: number;
   pending: number;
+}
+
+export interface WalletJson {
+  wallet: string;
+  walletBalance: string;
+  accounts: Array<{ index: number; address: string; deployed: boolean }>;
+  primary: string | null;
+  margin: { equity: string; mmReq: string; health: number | null; positions: number } | null;
+  marginError: string | null;
+}
+
+export interface MarketJson {
+  symbol: string;
+  baseSymbol: string;
+  pool: string;
+  mark: string | null;
+  markOk: boolean;
+  maintenanceMarginBps: number;
+  minQuantity: string;
+  baseDecimals: number;
+}
+
+export interface EngineJson {
+  online: boolean;
+  mode: "demo" | "live";
+  lastBeatAt: string | null;
+  ageSec: number | null;
+  info: Record<string, unknown> | null;
+}
+
+export interface LinkTxJson {
+  to: string;
+  data: string;
+  value: string;
+  from: string;
+  gas: string | null;
+  calls: Array<{ to: string; label: string }>;
+  markets: number;
+  hoaxKey: string;
 }

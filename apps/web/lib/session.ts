@@ -1,36 +1,13 @@
 "use client";
-// The manage token lives in this browser only. Losing it means registering
-// again: a new Hoax key, linked the same way.
+// What the app pages run on: the dreamDEX account Hoax protects and the wallet
+// session token that manages it (empty until the wallet signs in).
 
 export interface Session {
+  /** The dreamDEX account (the wallet's Safe), lowercase. */
   owner: string;
   accountId: string;
+  /** Wallet session token; "" when the wallet has not signed in. */
   token: string;
-}
-
-const KEY = "hoax.session";
-
-export function loadSession(): Session | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveSession(s: Session): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(s));
-  } catch {
-    // private mode: the session lasts as long as the page
-  }
-}
-
-export function clearSession(): void {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {}
 }
 
 export async function api<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {

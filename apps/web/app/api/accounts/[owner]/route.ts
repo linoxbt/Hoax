@@ -12,7 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ owner: s
   const id = url.searchParams.get("account");
   let account = id ? await store.getAccount(id) : await store.getAccountByOwner(owner);
   if (account && account.owner !== owner.toLowerCase()) account = null;
-  const isOwner = account ? authorized(req, account) : false;
+  const isOwner = account ? await authorized(req, account) : false;
   try {
     return json(await accountView(store, owner, account, isOwner));
   } catch (err) {

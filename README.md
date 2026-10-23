@@ -12,7 +12,7 @@ Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dre
 
 ## What it does
 
-1. **Opt in.** Enter your dreamDEX wallet on `/start`. The watcher makes a key just for that wallet; you add its address in dreamDEX with **Link a bot**, Perps ticked. Hoax notices the link on chain.
+1. **Opt in.** Connect the wallet you trade with on `/start` and sign a free sign-in message. Hoax finds the wallet's dreamDEX trading account (the Safe 1.5.0 smart account the account factory derives from it), the watcher makes a key just for that account, and one transaction from your wallet links the key on every perp pool: per-pool `OperatorPermissionsRegistry` grants of `placeOrderFor`, `cancelOrderFor` and `reduceOrderFor`, executed by your own Safe, plus the builder-fee approval if you want it. That is a tighter grant than dreamDEX's own Link a bot, which also adds a registry-wide one. Pasting the key into Link a bot still works. Hoax notices the link on chain.
 2. **Watch.** Every second (and immediately on `PositionUpdated` / `PositionLiquidated`) the watcher reads account health: equity over maintenance margin, where 1.0 is liquidation. It never acts on a mark the pool calls stale.
 3. **Size.** At the trigger it solves for the smallest close that restores the target, using the cross-margin form of the spec's formula:
 
@@ -27,17 +27,20 @@ Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dre
 ## Repo layout
 
 ```
-apps/web/            Next.js app: landing, onboarding, positions, receipts, stats, replay + HTTP API
+apps/web/            Next.js app: wallet connect (wagmi, EIP-6963), sign-in, one-transaction link, positions,
+                     receipts, stats, live markets, crash simulator, replay + HTTP API
 services/watcher/    health loop, executor, reconciler, counterfactual tracker, link detection, gas drips, keystore
 packages/core/       sizing, cost gate, flip guard, decisions, receipts, counterfactual (pure, unit-tested)
-packages/chain/      Venue interface; DreamDexVenue (Hideki, SDK reads, placeOrderFor via viem); SimVenue
+packages/chain/      Venue interface; DreamDexVenue (Hideki, SDK reads, placeOrderFor via viem); SimVenue;
+                     DreamDexAccounts (wallet → dreamDEX Safe, link/revoke transaction, link status)
 packages/db/         Store interface; Postgres and in-memory backends; schema in migrations/
 spike/               proof scripts for the spec's spike tests, with logged evidence in spike/evidence/
+e2e/                 browser end to end: fresh wallet → protected → revoked, on a local fork of Hideki
 feedback/            Feedback-track items in the bounty format
 demo/                replay harness and path recorder
 ```
 
-Stack: TypeScript, Next.js 15, viem 2, `@somnia-chain/markets-sdk@0.32.1`, Postgres, Vitest.
+Stack: TypeScript, Next.js 15, React 19, wagmi 2, viem 2, `@somnia-chain/markets-sdk@0.32.1`, `@somnia-chain/accounts-sdk@0.4.0`, Postgres, Vitest, Playwright.
 
 ## Run it
 
@@ -52,9 +55,13 @@ npm run watcher                 # the watcher; health at http://localhost:8080/h
 npm run web                     # the app at http://localhost:3000
 ```
 
-`DRY_RUN=true` makes the watcher decide and log without sending orders. `HOAX_DEMO=1 npm run web` runs the web app on sample data with no database or chain access; every page says so.
+`DRY_RUN=true` makes the watcher decide and log without sending orders. `HOAX_DEMO=1 npm run web` runs the web app with no database or watcher: receipts and stats are sample data and the engine shows offline, while markets and connected wallets are still read live from chain. Set `HOAX_SESSION_SECRET` (32+ chars) on the web app so wallet sign-ins survive restarts.
 
-To protect a wallet: open `/start`, enter the dreamDEX wallet, copy the Hoax key address, then in the [dreamDEX app](https://app.testnet.dreamdex.io) open the wallet, choose **Link a bot**, paste it, keep **Perps** ticked and **Send it … for gas** on, and press **Add bot**. Then set a policy and turn Hoax on. Use a wallet that holds only what you want protected, such as Wallet 2.
+To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps with, sign the free sign-in message, then on step 02 press **Link Hoax · one transaction**. Step 03 tops the key up with STT (the watcher's gas wallet does it automatically when configured), step 04 sets the policy. Revoke from Settings with one more transaction, or remove the bot in dreamDEX.
+
+### End to end on a fork
+
+`e2e/onboarding.ts` drives the real web app with a scripted wallet against a local Anvil fork of Hideki, with the real watcher running: a fresh wallet gets a dreamDEX Safe, connects, signs in, receives its key, links 21 markets in one transaction, is activated by the watcher, gets gas, sets a policy and revokes. See `e2e/README.md`.
 
 ### Tests and checks
 

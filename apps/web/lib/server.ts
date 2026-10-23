@@ -3,10 +3,16 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { DreamDexVenue, type MarketInfo, type Venue } from "@hoax/chain";
 import { MemoryStore, PgStore, type AccountRow, type Store } from "@hoax/db";
+import { bearer, controls, sessionWallet } from "./auth";
 import { seedDemo } from "./demo";
 
 const g = globalThis as unknown as { __hoaxStore?: Store; __hoaxVenue?: Venue; __hoaxSeeded?: Promise<void> };
 
+/**
+ * Demo mode: no database and no watcher, so the receipts, stats and the sample
+ * account are illustrative. Chain reads (markets, a connected wallet's
+ * positions) stay live either way.
+ */
 export const DEMO = process.env.HOAX_DEMO === "1";
 
 export async function getStore(): Promise<Store> {
@@ -19,9 +25,9 @@ export async function getStore(): Promise<Store> {
   return g.__hoaxStore;
 }
 
-/** The live venue, or null in demo mode where nothing touches the chain. */
+/** The live venue. Null only when HOAX_OFFLINE=1 (no network, e.g. CI). */
 export function getVenue(): Venue | null {
-  if (DEMO) return null;
+  if (process.env.HOAX_OFFLINE === "1") return null;
   if (!g.__hoaxVenue) {
     g.__hoaxVenue = new DreamDexVenue({
       rpcUrl: process.env.RPC_URL || undefined,
@@ -60,14 +66,33 @@ export function newToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-/** True when the request carries the manage token for this account. */
-export function authorized(req: Request, account: AccountRow): boolean {
-  const header = req.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+/**
+ * True when the request may manage this account: a wallet session for a wallet
+ * that owns the account's Safe, or the account's legacy manage token.
+ */
+export async function authorized(req: Request, account: AccountRow): Promise<boolean> {
+  const token = bearer(req);
   if (!token) return false;
+  const wallet = sessionWallet(token);
+  if (wallet) return controls(wallet, account.owner).catch(() => false);
   const a = Buffer.from(hashToken(token));
   const b = Buffer.from(account.manageTokenHash);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Whether the protection engine (the watcher) has reported in recently. */
+export async function engineStatus() {
+  if (DEMO) return { online: false, mode: "demo" as const, lastBeatAt: null, ageSec: null, info: null };
+  const store = await getStore();
+  const beat = await store.lastBeat("watcher").catch(() => null);
+  const ageSec = beat ? Math.round((Date.now() - beat.beatAt.getTime()) / 1000) : null;
+  return {
+    online: ageSec !== null && ageSec < 30,
+    mode: "live" as const,
+    lastBeatAt: beat?.beatAt.toISOString() ?? null,
+    ageSec,
+    info: beat?.info ?? null,
+  };
 }
 
 export function isAddress(s: string): s is `0x${string}` {

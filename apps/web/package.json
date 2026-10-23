@@ -13,11 +13,13 @@
     "@hoax/chain": "*",
     "@hoax/core": "*",
     "@hoax/db": "*",
+    "@tanstack/react-query": "5.103.3",
     "next": "15.5.28",
     "react": "19.1.10",
     "react-dom": "19.1.10",
     "server-only": "^0.0.1",
-    "viem": "^2.21.0"
+    "viem": "^2.21.0",
+    "wagmi": "2.19.5"
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.16.4",

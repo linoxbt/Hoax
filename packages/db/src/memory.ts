@@ -8,6 +8,7 @@ import type {
   AlertRow,
   CounterfactualRow,
   HealthTickRow,
+  HeartbeatRow,
   NewAction,
   PolicyRow,
   Stats,
@@ -202,6 +203,17 @@ export class MemoryStore implements Store {
       conflicts: actions.filter((a) => a.outcome === "conflict").length,
       pending: actions.filter((a) => a.outcome === "pending").length,
     };
+  }
+
+  private beats = new Map<string, HeartbeatRow>();
+
+  async beat(service: string, info: Record<string, unknown>) {
+    this.beats.set(service, { service, info: { ...info }, beatAt: new Date() });
+  }
+
+  async lastBeat(service: string) {
+    const b = this.beats.get(service);
+    return b ? { ...b, info: { ...b.info } } : null;
   }
 
   async close() {}

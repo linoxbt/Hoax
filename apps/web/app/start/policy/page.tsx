@@ -1,5 +1,5 @@
 "use client";
-// Step 5: when Hoax acts, how far it restores, and how much it may close at once.
+// Step 4: when Hoax acts, how far it restores, and how much it may close at once.
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { StepNav } from "@/components/StepNav";
@@ -26,7 +26,7 @@ export default function PolicyStep() {
     setErr(null);
     try {
       for (const m of markets) {
-        await api(`/api/policies/${session.owner}/${m}?account=${session.accountId}`, {
+        await api(`/api/policies/${session.owner}/${m}`, {
           method: "PUT",
           token: session.token,
           body: JSON.stringify({ ...policy, enabled: true }),
@@ -76,7 +76,7 @@ export default function PolicyStep() {
             </div>
           </>
         )}
-        <StepNav back="/start/fee" />
+        <StepNav back="/start/gas" />
       </div>
     </div>
   );

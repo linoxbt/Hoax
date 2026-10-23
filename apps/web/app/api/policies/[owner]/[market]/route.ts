@@ -14,7 +14,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ owner: s
   const id = url.searchParams.get("account");
   const account = id ? await store.getAccount(id) : await store.getAccountByOwner(owner);
   if (!account || account.owner !== owner.toLowerCase()) return error(404, "no Hoax registration for this wallet");
-  if (!authorized(req, account)) return error(401, "missing or wrong manage token");
+  if (!(await authorized(req, account))) return error(401, "sign in with the wallet that owns this account");
 
   const body = (await req.json().catch(() => ({}))) as Partial<Record<keyof Policy, unknown>>;
   const num = (k: keyof Policy, fallback: number) => (body[k] === undefined ? fallback : Number(body[k]));

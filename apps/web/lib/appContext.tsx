@@ -5,7 +5,6 @@ import type { AccountJson, PolicyJson } from "./types";
 
 export interface AppState {
   session: Session;
-  setSession: (s: Session | null) => void;
   view: AccountJson | null;
   err: string | null;
   setErr: (e: string | null) => void;

@@ -2,7 +2,9 @@ import "server-only";
 import { receiptSigner, HIDEKI, type MarketInfo } from "@hoax/chain";
 import type { AccountRow, ActionRow, CounterfactualRow, Store } from "@hoax/db";
 import { getAddress, type Hex } from "viem";
-import { BUILDER, getMarkets, getVenue } from "./server";
+import { accountsClient } from "./auth";
+import { DEMO_OWNER } from "./demo";
+import { BUILDER, DEMO, getMarkets, getVenue } from "./server";
 
 export interface PositionView {
   market: string;
@@ -60,8 +62,10 @@ async function livePositions(owner: string, markets: MarketInfo[]): Promise<Posi
 
 export async function positionsFor(store: Store, owner: string, account: AccountRow | null): Promise<PositionView[]> {
   const markets = await getMarkets();
+  // The demo account is sample data with nothing on chain: show its recorded ticks.
+  const sample = DEMO && owner.toLowerCase() === DEMO_OWNER;
   try {
-    const live = await livePositions(owner, markets);
+    const live = sample ? null : await livePositions(owner, markets);
     if (live) return live;
   } catch {
     // fall back to the watcher's last reading
@@ -92,11 +96,18 @@ export async function positionsFor(store: Store, owner: string, account: Account
 
 export async function accountView(store: Store, owner: string, account: AccountRow | null, isOwner: boolean) {
   const venue = getVenue();
-  const [policies, positions, alerts, keyBalance] = await Promise.all([
+  const markets = await getMarkets();
+  const live = account?.hoaxKey && !(DEMO && owner.toLowerCase() === DEMO_OWNER);
+  const [policies, positions, alerts, keyBalance, links] = await Promise.all([
     account ? store.listPolicies(account.id) : Promise.resolve([]),
     positionsFor(store, owner, account),
     account && isOwner ? store.listAlerts(account.id, 20) : Promise.resolve([]),
     account?.hoaxKey && venue ? venue.nativeBalance(getAddress(account.hoaxKey)).catch(() => null) : Promise.resolve(null),
+    live
+      ? accountsClient()
+          .linkStatus(getAddress(owner), getAddress(account!.hoaxKey!), markets.map((m) => m.pool))
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
   return {
     owner: owner.toLowerCase(),
@@ -114,8 +125,10 @@ export async function accountView(store: Store, owner: string, account: AccountR
     positions,
     alerts,
     keyBalance,
+    /** Per perp pool (lowercase), whether the Hoax key may trade for this account. Null when unknown. */
+    links,
     builder: BUILDER,
-    markets: (await getMarkets()).map((m) => ({ symbol: m.symbol, pool: m.pool, baseDecimals: m.baseDecimals, minQuantity: m.minQuantity })),
+    markets: markets.map((m) => ({ symbol: m.symbol, pool: m.pool, baseDecimals: m.baseDecimals, minQuantity: m.minQuantity })),
   };
 }
 

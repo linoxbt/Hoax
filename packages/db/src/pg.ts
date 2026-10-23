@@ -7,6 +7,7 @@ import type {
   AlertRow,
   CounterfactualRow,
   HealthTickRow,
+  HeartbeatRow,
   NewAction,
   PolicyRow,
   Stats,
@@ -408,6 +409,21 @@ export class PgStore implements Store {
       conflicts: Number(r.conflicts),
       pending: Number(r.pending),
     };
+  }
+
+  async beat(service: string, info: Record<string, unknown>) {
+    await this.pool.query(
+      `INSERT INTO heartbeats (service, info, beat_at) VALUES ($1, $2, now())
+       ON CONFLICT (service) DO UPDATE SET info = EXCLUDED.info, beat_at = EXCLUDED.beat_at`,
+      [service, JSON.stringify(info)],
+    );
+  }
+
+  async lastBeat(service: string) {
+    const { rows } = await this.pool.query(`SELECT service, info, beat_at FROM heartbeats WHERE service = $1`, [service]);
+    const r = rows[0];
+    const row: HeartbeatRow | null = r ? { service: String(r.service), info: r.info as Record<string, unknown>, beatAt: r.beat_at as Date } : null;
+    return row;
   }
 
   async close() {

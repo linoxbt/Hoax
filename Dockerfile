@@ -5,7 +5,8 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages ./packages
 COPY services ./services
 COPY apps/web/package.json ./apps/web/package.json
-RUN npm ci --ignore-scripts --no-audit --no-fund
+# Only the watcher's dependency tree: the web app's wallet libraries stay out of the image.
+RUN npm ci --ignore-scripts --no-audit --no-fund --workspace @hoax/watcher --include-workspace-root
 ENV NODE_ENV=production
 # Mount a volume here: it holds the encrypted per-account Hoax keys.
 ENV KEYSTORE_DIR=/data/keystore

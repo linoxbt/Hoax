@@ -3,10 +3,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
+import { WalletButton } from "./WalletButton";
 
 const PRIMARY = [
   ["/", "Home"],
   ["/how-it-works", "How it works"],
+  ["/markets", "Markets"],
   ["/security", "Security"],
   ["/stats", "Track record"],
   ["/replay", "Replay"],
@@ -54,9 +56,7 @@ export function Header() {
               <Link href="/app" className="pill ghost">
                 Launch app
               </Link>
-              <Link href="/start" className="pill">
-                Get protected
-              </Link>
+              <WalletButton />
             </div>
           </div>
         </div>

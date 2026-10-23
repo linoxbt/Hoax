@@ -139,6 +139,15 @@ function contract(name: string, make: () => Promise<Store>) {
       expect(await store.dripsSince(new Date(Date.now() - 60_000), KEY)).toBeGreaterThanOrEqual(5n * 10n ** 16n);
       expect((await store.listActions({ owner: OWNER, limit: 10 })).length).toBeGreaterThanOrEqual(2);
     });
+
+    it("keeps the newest heartbeat per service", async () => {
+      expect(await store.lastBeat("watcher-test")).toBeNull();
+      await store.beat("watcher-test", { ticks: 1 });
+      await store.beat("watcher-test", { ticks: 2 });
+      const b = await store.lastBeat("watcher-test");
+      expect(b?.info.ticks).toBe(2);
+      expect(Date.now() - b!.beatAt.getTime()).toBeLessThan(60_000);
+    });
   });
 }
 

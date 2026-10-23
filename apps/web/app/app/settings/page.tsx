@@ -1,17 +1,22 @@
 "use client";
-import { useRouter } from "next/navigation";
 import { formatEther } from "viem";
 import { AppHead } from "@/components/AppHead";
 import { CopyButton } from "@/components/CopyButton";
+import { LinkGrid } from "@/components/LinkGrid";
 import { useApp } from "@/lib/appContext";
-import { DREAMDEX_APP } from "@/lib/format";
+import { addressUrl, txUrl } from "@/lib/format";
 import { api } from "@/lib/session";
+import { useLinkTx } from "@/lib/useLinkTx";
+import { useHoax } from "@/lib/wallet";
 
 export default function Settings() {
-  const router = useRouter();
-  const { session, setSession, view, refresh, setErr } = useApp();
+  const hoax = useHoax();
+  const { session, view, refresh, setErr } = useApp();
   const account = view?.account;
   const gas = view?.keyBalance ? BigInt(view.keyBalance) : null;
+  const revoke = useLinkTx();
+  const anyLinked = view?.links ? Object.values(view.links).some(Boolean) : false;
+  const canManage = hoax.sample || hoax.signedIn;
 
   async function setPaused(paused: boolean) {
     try {
@@ -29,37 +34,86 @@ export default function Settings() {
         <div className="grid g2" style={{ gap: 24 }}>
           <div className="card">
             <div className="cap soft">Protection</div>
-            <h3 style={{ margin: "10px 0" }}>{account?.paused ? "Paused" : "On"}</h3>
-            <p className="copy soft">Stops all closes instantly.</p>
+            <h3 style={{ margin: "10px 0" }}>{!account ? "Not set up" : account.paused ? "Paused" : "On"}</h3>
+            <p className="copy soft">Pausing stops every close at once. The key stays linked.</p>
             {account && (
-              <button className={`pill${account.paused ? "" : " ghost"}`} style={{ marginTop: 16 }} onClick={() => setPaused(!account.paused)}>
+              <button
+                className={`pill${account.paused ? "" : " ghost"}`}
+                style={{ marginTop: 16 }}
+                disabled={!canManage}
+                onClick={() => setPaused(!account.paused)}
+              >
                 {account.paused ? "Resume Hoax" : "Pause Hoax"}
               </button>
             )}
           </div>
           <div className="card">
             <div className="cap soft">Revoke completely</div>
-            <h3 style={{ margin: "10px 0" }}>Unlink the bot</h3>
-            <p className="copy soft">Remove the key in dreamDEX → Bots. Instant.</p>
-            <a href={DREAMDEX_APP} className="pill ghost" style={{ marginTop: 16 }}>
-              Open dreamDEX ↗
-            </a>
+            <h3 style={{ margin: "10px 0" }}>Unlink the Hoax key</h3>
+            <p className="copy soft">One transaction from your wallet removes trade access on every market.</p>
+            {revoke.phase === "done" ? (
+              <p className="note" style={{ marginTop: 16 }}>
+                Revoked.{" "}
+                {revoke.hash && (
+                  <a className="accent" href={txUrl(revoke.hash)} target="_blank" rel="noreferrer">
+                    View tx ↗
+                  </a>
+                )}
+              </p>
+            ) : (
+              <button
+                className="pill ghost"
+                style={{ marginTop: 16 }}
+                disabled={hoax.sample || !account?.hoaxKey || !anyLinked || ["building", "confirm", "mining"].includes(revoke.phase)}
+                onClick={async () => {
+                  if (await revoke.send({ approved: false, builderFee: true })) await refresh();
+                }}
+              >
+                {revoke.phase === "confirm" ? "Confirm in wallet…" : revoke.phase === "mining" ? "Revoking…" : "Revoke access"}
+              </button>
+            )}
+            {revoke.err && (
+              <p className="note bad" style={{ marginTop: 12 }}>
+                {revoke.err}
+              </p>
+            )}
           </div>
         </div>
 
-        <h3 style={{ margin: "48px 0 14px" }}>This wallet</h3>
+        <div className="card" style={{ marginTop: 24 }}>
+          <LinkGrid view={view} />
+        </div>
+
+        <h3 style={{ margin: "48px 0 14px" }}>Addresses</h3>
         <div className="rows">
           <div className="r">
-            <span>dreamDEX wallet</span>
-            <span>{session.owner}</span>
+            <span>Wallet</span>
+            <span className="mono">{hoax.wallet ?? (hoax.sample ? "sample" : "–")}</span>
+          </div>
+          <div className="r">
+            <span>dreamDEX account</span>
+            <a className="mono" href={addressUrl(session.owner)} target="_blank" rel="noreferrer">
+              {session.owner}
+            </a>
           </div>
           <div className="r">
             <span>Hoax key</span>
-            <span>{account?.hoaxKey ?? "–"}</span>
+            <span className="row" style={{ gap: 10 }}>
+              {account?.hoaxKey ? (
+                <>
+                  <a className="mono" href={addressUrl(account.hoaxKey)} target="_blank" rel="noreferrer">
+                    {account.hoaxKey}
+                  </a>
+                  <CopyButton text={account.hoaxKey} ghost />
+                </>
+              ) : (
+                "–"
+              )}
+            </span>
           </div>
           <div className="r">
             <span>Status</span>
-            <span>{account?.status.replace("_", " ") ?? "–"}</span>
+            <span>{account?.status.replace("_", " ") ?? "not registered"}</span>
           </div>
           <div className="r">
             <span>Key gas</span>
@@ -71,28 +125,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <h3 style={{ margin: "48px 0 14px" }}>Manage token</h3>
-        <div className="panel">
-          <div className="spread" style={{ alignItems: "center" }}>
-            <div>
-              <div className="cap soft">Stored in this browser only</div>
-              <code className="mono" style={{ fontSize: 14 }}>
-                {session.token}
-              </code>
-            </div>
-            <CopyButton text={session.token} />
-          </div>
-        </div>
-
         <div className="row" style={{ marginTop: 40 }}>
-          <button
-            className="pill ghost"
-            onClick={() => {
-              setSession(null);
-              router.push("/");
-            }}
-          >
-            Forget this wallet on this browser
+          <button className="pill ghost" onClick={hoax.disconnect}>
+            {hoax.sample ? "Leave the sample account" : "Disconnect wallet"}
           </button>
         </div>
       </div>

@@ -1,0 +1,72 @@
+{
+  "spike": "08-link-tx",
+  "sdk": "@somnia-chain/markets-sdk@0.32.1",
+  "network": {
+    "chainId": 50383,
+    "rpc": "https://api.hideki2.infra.testnet.somnia.network"
+  },
+  "startedAt": "2026-10-23T14:50:49.864Z",
+  "finishedAt": "2026-10-23T14:50:55.038Z",
+  "finishedAtBlock": "31149913",
+  "result": {
+    "pass": true,
+    "summary": "0x649a9d82143C50642CEF27D5965be702D00D434A (owned by 0x64C4b28753b3a35F22425feD179573684da250BB) accepts the 21-call link batch from its owner; gas with headroom 33458113"
+  },
+  "entries": [
+    {
+      "at": "2026-10-23T14:50:51.881Z",
+      "event": "registry",
+      "registry": "0x6B2FbfeD328FF5F20C0BE7D3C3437613aFFE8D3a",
+      "perpPools": 21
+    },
+    {
+      "at": "2026-10-23T14:50:53.881Z",
+      "event": "accounts",
+      "wallet": "0x64C4b28753b3a35F22425feD179573684da250BB",
+      "slots": [
+        {
+          "index": 0,
+          "address": "0x649a9d82143C50642CEF27D5965be702D00D434A",
+          "deployed": true
+        },
+        {
+          "index": 1,
+          "address": "0xf1DE4eA2e90fe120Cc7CE6B99cc57C45E08B4312",
+          "deployed": false
+        },
+        {
+          "index": 2,
+          "address": "0x1bB1EcB3e214F930CCaA33459B659215258Cc339",
+          "deployed": false
+        },
+        {
+          "index": 3,
+          "address": "0x953E31b6C87182e6ADa51D7E136bD93cacEc58Ce",
+          "deployed": false
+        }
+      ]
+    },
+    {
+      "at": "2026-10-23T14:50:54.726Z",
+      "event": "negative-control",
+      "stranger": "0xbd15AF102C1a1b8a7c3E37a475022F6f123CD129",
+      "refused": true
+    },
+    {
+      "at": "2026-10-23T14:50:54.885Z",
+      "event": "link-tx",
+      "account": "0x649a9d82143C50642CEF27D5965be702D00D434A",
+      "controls": true,
+      "operator": "0x186Ad783fD89B6e0730B7fc245d1945641b8769B",
+      "calls": 21,
+      "calldataBytes": 7844,
+      "estimatedGasWithHeadroom": "33458113",
+      "accepted": true,
+      "linkedBefore": {
+        "0x352636ab146039851ef06d6367a106d5fb4e6409": false,
+        "0x2a1822b02039ddf0e293f3f7243673fc03eaf16c": false,
+        "0xdcb0ad226727b2ce92857f0af5751389d42b2a3f": false
+      }
+    }
+  ]
+}

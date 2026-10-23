@@ -1,22 +1,10 @@
 "use client";
-// The wallet this browser manages, and its live state from the API, shared by
-// every page of the app and the onboarding flow.
+// The protected account's live state from the API, shared by every page of the
+// app and the onboarding flow. The session comes from the wallet (useHoax).
 
 import { useCallback, useEffect, useState } from "react";
-import { api, clearSession, loadSession, saveSession, type Session } from "./session";
+import { api, type Session } from "./session";
 import type { AccountJson } from "./types";
-
-/** undefined while loading from storage, null when this browser manages no wallet. */
-export function useSession() {
-  const [session, setSessionState] = useState<Session | null | undefined>(undefined);
-  useEffect(() => setSessionState(loadSession()), []);
-  const setSession = useCallback((s: Session | null) => {
-    if (s) saveSession(s);
-    else clearSession();
-    setSessionState(s);
-  }, []);
-  return [session, setSession] as const;
-}
 
 export function useAccount(session: Session | null | undefined, everyMs = 5000) {
   const [view, setView] = useState<AccountJson | null>(null);
@@ -26,7 +14,7 @@ export function useAccount(session: Session | null | undefined, everyMs = 5000) 
     if (!session) return;
     const q = session.accountId ? `?account=${session.accountId}` : "";
     try {
-      setView(await api<AccountJson>(`/api/accounts/${session.owner}${q}`, { token: session.token }));
+      setView(await api<AccountJson>(`/api/accounts/${session.owner}${q}`, { token: session.token || undefined }));
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);

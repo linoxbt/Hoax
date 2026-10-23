@@ -1,100 +1,119 @@
 "use client";
-// Step 1: which dreamDEX wallet Hoax protects.
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { CopyButton } from "@/components/CopyButton";
+// Step 1: connect the wallet, verify it, and find its dreamDEX trading account.
 import { StepNav } from "@/components/StepNav";
-import { api } from "@/lib/session";
-import { useStart } from "@/lib/startContext";
-
-type Eth = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
+import { Avatar } from "@/components/WalletButton";
+import { DREAMDEX_APP, addressUrl, health, short, usd } from "@/lib/format";
+import { useHoax } from "@/lib/wallet";
 
 export default function WalletStep() {
-  const router = useRouter();
-  const { session, setSession, setErr } = useStart();
-  const [owner, setOwner] = useState("");
-  const [busy, setBusy] = useState(false);
+  const hoax = useHoax();
+  const info = hoax.walletInfo;
+  const margin = info?.margin ?? null;
 
-  async function connect() {
-    const provider = (window as unknown as { ethereum?: Eth }).ethereum;
-    if (!provider) {
-      setErr("No browser wallet found. Paste your dreamDEX wallet address instead.");
-      return;
-    }
-    const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-    if (accounts[0]) setOwner(accounts[0]);
-  }
-
-  async function register() {
-    setBusy(true);
-    setErr(null);
-    try {
-      const r = await api<{ id: string; owner: string; token: string }>("/api/accounts", {
-        method: "POST",
-        body: JSON.stringify({ owner: owner.trim() }),
-      });
-      setSession({ owner: r.owner, accountId: r.id, token: r.token });
-      router.push("/start/link");
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (session === undefined) return null;
+  const rows: Array<{ k: string; ok: boolean; v: React.ReactNode; act?: React.ReactNode }> = [
+    {
+      k: "Wallet",
+      ok: Boolean(hoax.wallet),
+      v: hoax.wallet ? (
+        <span className="row" style={{ gap: 8 }}>
+          <Avatar address={hoax.wallet} /> <span className="mono">{short(hoax.wallet)}</span>
+        </span>
+      ) : (
+        "Not connected"
+      ),
+      act: !hoax.wallet && (
+        <button className="pill" onClick={hoax.openConnect}>
+          Connect wallet
+        </button>
+      ),
+    },
+    {
+      k: "Network",
+      ok: Boolean(hoax.wallet) && hoax.onHideki,
+      v: "Somnia Hideki · 50383",
+      act: hoax.wallet && !hoax.onHideki && (
+        <button className="pill" onClick={() => void hoax.ensureChain().catch(() => {})}>
+          Switch
+        </button>
+      ),
+    },
+    {
+      k: "Verified",
+      ok: hoax.signedIn,
+      v: hoax.signedIn ? "Signed in" : "Free signature, no transaction",
+      act: hoax.wallet && hoax.onHideki && !hoax.signedIn && (
+        <button className="pill" onClick={hoax.openConnect}>
+          Verify
+        </button>
+      ),
+    },
+    {
+      k: "dreamDEX account",
+      ok: Boolean(hoax.account),
+      v: hoax.account ? (
+        <a className="mono" href={addressUrl(hoax.account)} target="_blank" rel="noreferrer">
+          {short(hoax.account)} ↗
+        </a>
+      ) : !hoax.wallet ? (
+        "–"
+      ) : info ? (
+        "None found for this wallet"
+      ) : (
+        "Reading chain…"
+      ),
+      act: info && !info.primary && (
+        <a className="pill ghost" href={DREAMDEX_APP} target="_blank" rel="noreferrer">
+          Open dreamDEX ↗
+        </a>
+      ),
+    },
+  ];
 
   return (
     <div className="grid g-aside" style={{ gap: 48 }}>
       <div>
         <h2>Your dreamDEX wallet</h2>
         <p className="copy soft" style={{ marginTop: 20 }}>
-          Use a dedicated wallet. Hoax can trade it, never withdraw.
+          Connect the wallet you trade perps with. Hoax finds its trading account on chain.
         </p>
       </div>
       <div>
-        {session ? (
-          <>
+        <div className="checklist">
+          {rows.map((r) => (
+            <div key={r.k} className={r.ok ? "ok" : ""}>
+              <span className="dot">{r.ok ? "✓" : ""}</span>
+              <span className="cap soft">{r.k}</span>
+              <span>{r.v}</span>
+              <span>{r.act}</span>
+            </div>
+          ))}
+        </div>
+
+        {hoax.account && margin && (
+          <div className="grid g3" style={{ marginTop: 24 }}>
             <div className="card">
-              <div className="cap soft">This browser manages</div>
-              <div className="mono" style={{ fontSize: 15, marginTop: 6 }}>
-                {session.owner}
+              <div className="cap soft">Equity</div>
+              <div className="num s" style={{ marginTop: 8 }}>
+                {usd(margin.equity)}
+                <small>USDso</small>
               </div>
             </div>
-            <div className="card" style={{ marginTop: 16 }}>
-              <div className="spread" style={{ alignItems: "center" }}>
-                <div>
-                  <div className="cap soft">Manage token · kept in this browser</div>
-                  <code className="mono" style={{ fontSize: 14 }}>
-                    {session.token}
-                  </code>
-                </div>
-                <CopyButton text={session.token} ghost />
+            <div className="card">
+              <div className="cap soft">Account health</div>
+              <div className="num s accent" style={{ marginTop: 8 }}>
+                {health(margin.health)}
               </div>
             </div>
-            <div className="row" style={{ marginTop: 16 }}>
-              <button className="pill ghost" onClick={() => setSession(null)}>
-                Use a different wallet
-              </button>
+            <div className="card">
+              <div className="cap soft">Open positions</div>
+              <div className="num s" style={{ marginTop: 8 }}>
+                {margin.positions}
+              </div>
             </div>
-            <StepNav next="/start/link" nextLabel="Link the key" />
-          </>
-        ) : (
-          <>
-            <label className="field">
-              <span>The wallet address you trade perps from in dreamDEX</span>
-              <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="0x…" spellCheck={false} />
-            </label>
-            <div className="row" style={{ marginTop: 20 }}>
-              <button className="pill" disabled={busy || !/^0x[0-9a-fA-F]{40}$/.test(owner.trim())} onClick={register}>
-                Make my Hoax key
-              </button>
-              <button className="pill ghost" onClick={connect}>
-                Use connected wallet
-              </button>
-            </div>
-          </>
+          </div>
         )}
+
+        <StepNav next="/start/link" nextLabel="Link Hoax" nextDisabled={!(hoax.account && hoax.signedIn)} />
       </div>
     </div>
   );

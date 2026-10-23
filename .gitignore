@@ -7,3 +7,4 @@ keystore/
 next-env.d.ts
 demo/out/
 .netlify
+e2e/out/
