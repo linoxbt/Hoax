@@ -31,7 +31,7 @@ await anvil("anvil_setBlockTimestampInterval", [1]);
 const forkBlock = await fork.getBlockNumber();
 ev.log("fork", { rpc, forkBlock });
 
-const venue = new DreamDexVenue({ rpcUrl: rpc, wsUrl: rpc.replace(/^http/, "ws") });
+const venue = new DreamDexVenue({ rpcUrl: rpc, wsUrl: rpc.replace(/^http/, "ws"), rpcTimeoutMs: 180_000 });
 const accounts = new DreamDexAccounts(rpc);
 const wallet = getAddress(process.env.WALLET ?? "0x64C4b28753b3a35F22425feD179573684da250BB");
 const safe = (await accounts.tradingAccounts(wallet)).find((s) => s.deployed)?.address;

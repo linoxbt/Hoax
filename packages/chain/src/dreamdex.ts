@@ -79,6 +79,8 @@ export interface DreamDexVenueOptions {
   rpcUrl?: string;
   wsUrl?: string;
   indexerUrl?: string;
+  /** Per-request RPC timeout. viem's 10 s default is too short for a cold fork. */
+  rpcTimeoutMs?: number;
 }
 
 export class DreamDexVenue implements Venue {
@@ -86,12 +88,14 @@ export class DreamDexVenue implements Venue {
   private readonly exchange: SomniaMarkets;
   private readonly publicClient: PublicClient;
   private readonly rpcUrl: string;
+  private readonly rpcTimeoutMs: number | undefined;
   private readonly wsUrl: string;
   private markets: { at: number; list: MarketInfo[] } | null = null;
   private liquidation = new Map<string, { engine: Address; params: LiquidationParams }>();
 
   constructor(opts: DreamDexVenueOptions = {}) {
     this.rpcUrl = opts.rpcUrl ?? HIDEKI.rpcUrl;
+    this.rpcTimeoutMs = opts.rpcTimeoutMs;
     this.wsUrl = opts.wsUrl ?? HIDEKI.wsUrl;
     this.exchange = new SomniaMarkets({
       chain: HIDEKI.chain,
@@ -99,7 +103,7 @@ export class DreamDexVenue implements Venue {
       indexerUrl: opts.indexerUrl ?? HIDEKI.indexerUrl,
       addresses: SOMNIA_HIDEKI_TESTNET_ADDRESSES,
     });
-    this.publicClient = createPublicClient({ chain: HIDEKI.chain, transport: http(this.rpcUrl) }) as PublicClient;
+    this.publicClient = createPublicClient({ chain: HIDEKI.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) }) as PublicClient;
   }
 
   private get client() {
@@ -201,7 +205,7 @@ export class DreamDexVenue implements Venue {
   }
 
   async placeIocFor(signer: TradingSigner, owner: Address, market: MarketInfo, order: IocOrder): Promise<PlaceResult> {
-    const wallet = createWalletClient({ account: signer, chain: HIDEKI.chain, transport: http(this.rpcUrl) });
+    const wallet = createWalletClient({ account: signer, chain: HIDEKI.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const expire = BigInt(Math.floor(Date.now() / 1000) + 3600) * 1_000_000_000n;
     let request;
     try {
@@ -283,7 +287,7 @@ export class DreamDexVenue implements Venue {
   }
 
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {
-    const wallet = createWalletClient({ account: from, chain: HIDEKI.chain, transport: http(this.rpcUrl) });
+    const wallet = createWalletClient({ account: from, chain: HIDEKI.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const hash = await wallet.sendTransaction({ to, value: amount, chain: HIDEKI.chain });
     await this.publicClient.waitForTransactionReceipt({ hash });
     return hash;
