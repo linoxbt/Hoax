@@ -5,11 +5,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { pgConfig } from "./connection.ts";
 
 export async function migrate(connectionString: string): Promise<string[]> {
   const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
   const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-  const client = new pg.Client({ connectionString });
+  const client = new pg.Client(pgConfig(connectionString));
   await client.connect();
   try {
     await client.query("SELECT pg_advisory_lock(4884)");

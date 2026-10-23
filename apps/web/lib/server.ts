@@ -139,15 +139,40 @@ export function error(status: number, message: string): Response {
   return json({ error: message }, { status });
 }
 
-/** A small per-IP limiter for registrations, so nobody can mint keys in bulk. */
+/**
+ * The caller's address. Netlify's own header comes first: the first entry of
+ * X-Forwarded-For is whatever the client sent, so only the last one, added by
+ * the nearest proxy, is used as a fallback.
+ */
+export function clientIp(req: Request): string {
+  const h = req.headers;
+  const forwarded = (h.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return h.get("x-nf-client-connection-ip") ?? h.get("x-real-ip") ?? forwarded[forwarded.length - 1] ?? "local";
+}
+
 const hits = new Map<string, number[]>();
-export function rateLimited(req: Request, max: number, windowMs: number): boolean {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+function memoryHit(bucket: string, windowMs: number): number {
   const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < windowMs);
+  const recent = (hits.get(bucket) ?? []).filter((t) => now - t < windowMs);
   recent.push(now);
-  hits.set(ip, recent);
-  return recent.length > max;
+  hits.set(bucket, recent);
+  return recent.length;
+}
+
+/**
+ * Counts a hit on `bucket` and says whether it is over `max` in the window.
+ * Counted in the database, because serverless instances share no memory; this
+ * instance's memory stands in when the database cannot count (say, before the
+ * watcher has applied migration 004).
+ */
+export async function rateLimited(bucket: string, max: number, windowMs: number): Promise<boolean> {
+  let n: number;
+  try {
+    n = await (await getStore()).rateHit(bucket, windowMs);
+  } catch {
+    n = memoryHit(bucket, windowMs);
+  }
+  return n > max;
 }
 
 export const BUILDER = {

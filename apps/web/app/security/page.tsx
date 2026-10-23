@@ -50,8 +50,9 @@ export default function Security() {
           <div>
             <h2 className="h2">One transaction. Less than dreamDEX asks.</h2>
             <p className="txt" style={{ marginTop: "2.4rem", maxWidth: "52rem" }}>
-              dreamDEX&apos;s own Link a bot adds a registry-wide grant. Hoax grants per perp pool only, from your wallet to your dreamDEX Safe. Verified on a
-              fork of Hideki: 21 pools linked in one transaction, revoked in one, and refused from anyone but the owner.
+              dreamDEX&apos;s own Link a bot adds a registry-wide grant. For a dreamDEX Safe, Hoax grants per perp pool only, from your wallet to your Safe.
+              Verified on a fork of Hideki: 21 pools linked in one transaction, revoked in one, and refused from anyone but the owner. A wallet that
+              trades without a Safe gets the same registry-wide grant Link a bot gives, and the link step says so before you sign.
             </p>
           </div>
         </div>

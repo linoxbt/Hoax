@@ -1,10 +1,22 @@
+// The hosts a sign-in message may name (lib/auth.ts): HOAX_SITE_HOSTS, plus the
+// URLs Netlify sets at build time. Captured here because Netlify only sets them for the build.
+const allowedHosts = [
+  process.env.HOAX_SITE_HOSTS,
+  process.env.URL,
+  process.env.DEPLOY_PRIME_URL,
+  process.env.DEPLOY_URL,
+  process.env.SITE_NAME ? `${process.env.SITE_NAME}.netlify.app` : "",
+]
+  .filter(Boolean)
+  .join(",");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@hoax/core", "@hoax/db", "@hoax/chain"],
   serverExternalPackages: ["pg", "@somnia-chain/markets-sdk", "@somnia-chain/accounts-sdk", "ws"],
   poweredByHeader: false,
   // The client reads demo mode to offer the sample account.
-  env: { NEXT_PUBLIC_HOAX_DEMO: process.env.HOAX_DEMO === "1" ? "1" : "" },
+  env: { NEXT_PUBLIC_HOAX_DEMO: process.env.HOAX_DEMO === "1" ? "1" : "", HOAX_ALLOWED_HOSTS: allowedHosts },
   webpack: (config) => {
     // Optional dependencies of WalletConnect's logger and storage that never run in the browser.
     config.externals.push("pino-pretty", "lokijs", "encoding");

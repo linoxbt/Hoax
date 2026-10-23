@@ -141,7 +141,10 @@ export interface Store {
   updateActionOutcome(id: string, outcome: Outcome, reason?: string | null): Promise<void>;
   getAction(id: string): Promise<ActionRow | null>;
   listActions(opts: { owner?: string; limit: number }): Promise<ActionRow[]>;
-  listPendingActions(): Promise<ActionRow[]>;
+  /** Actions still waiting on their counterfactual, on one network when chainId is given. */
+  listPendingActions(chainId?: number): Promise<ActionRow[]>;
+  /** Whether the account has a "missed" receipt on this pool created after `after`. */
+  liquidatedAfter(accountId: string, pool: string, after: Date): Promise<boolean>;
   lastActionAt(accountId: string, market: string): Promise<Date | null>;
 
   upsertCounterfactual(c: CounterfactualRow): Promise<void>;
@@ -154,6 +157,10 @@ export interface Store {
   dripsSince(since: Date, hoaxKey?: string): Promise<bigint>;
 
   stats(): Promise<Stats>;
+
+  /** Count a hit on a rate-limit bucket; returns the hits in the window, this one included. */
+  rateHit(bucket: string, windowMs: number): Promise<number>;
+  pruneRateHits(olderThan: Date): Promise<number>;
 
   /** Record that a service is alive, with whatever it reports about itself. */
   beat(service: string, info: Record<string, unknown>): Promise<void>;

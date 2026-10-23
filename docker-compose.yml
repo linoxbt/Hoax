@@ -1,12 +1,13 @@
 # Hoax watcher + Postgres on one machine (a VPS). Secrets come from .env
 # (deploy/vps-setup.sh writes it). The web app on Netlify connects to this
-# Postgres over the public port with the same password, over TLS (the script
-# makes a self-signed certificate in deploy/pg-certs).
+# Postgres over the public port with the same password, over TLS only (the
+# script makes a self-signed certificate in deploy/pg-certs, which the web app
+# pins through DATABASE_CA_CERT; deploy/pg_hba.conf refuses plain connections).
 services:
   db:
     image: postgres:16
     restart: always
-    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/certs/server.crt", "-c", "ssl_key_file=/certs/server.key"]
+    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/certs/server.crt", "-c", "ssl_key_file=/certs/server.key", "-c", "hba_file=/etc/hoax/pg_hba.conf"]
     environment:
       POSTGRES_USER: hoax
       POSTGRES_DB: hoax
@@ -16,6 +17,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./deploy/pg-certs:/certs:ro
+      - ./deploy/pg_hba.conf:/etc/hoax/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hoax -d hoax"]
       interval: 5s
@@ -32,7 +34,9 @@ services:
         condition: service_healthy
     environment: &watcher-env
       NETWORK: hideki
-      DATABASE_URL: postgres://hoax:${POSTGRES_PASSWORD}@db:5432/hoax
+      # TLS because pg_hba.conf requires it; unverified because this hop never
+      # leaves the compose network.
+      DATABASE_URL: postgres://hoax:${POSTGRES_PASSWORD}@db:5432/hoax?sslmode=no-verify
       HOAX_KEYSTORE_SECRET: ${HOAX_KEYSTORE_SECRET:?set HOAX_KEYSTORE_SECRET in .env}
       KEYSTORE_DIR: /data/keystore
       GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY:-}

@@ -23,6 +23,7 @@ export class MemoryStore implements Store {
   counterfactuals = new Map<string, CounterfactualRow>();
   alerts: AlertRow[] = [];
   drips: Array<{ hoaxKey: string; amount: bigint; txHash: string; at: Date }> = [];
+  rateHits = new Map<string, number[]>();
 
   async createAccount(a: { id: string; owner: string; manageTokenHash: string; chainId?: number }): Promise<AccountRow> {
     const row: AccountRow = {
@@ -145,8 +146,36 @@ export class MemoryStore implements Store {
       .map((a) => ({ ...a }));
   }
 
-  async listPendingActions() {
-    return [...this.actions.values()].filter((a) => a.outcome === "pending").map((a) => ({ ...a }));
+  async listPendingActions(chainId?: number) {
+    return [...this.actions.values()]
+      .filter((a) => a.outcome === "pending" && (chainId === undefined || this.accounts.get(a.accountId)?.chainId === chainId))
+      .map((a) => ({ ...a }));
+  }
+
+  async liquidatedAfter(accountId: string, pool: string, after: Date) {
+    for (const a of this.actions.values()) {
+      if (a.accountId === accountId && a.pool.toLowerCase() === pool.toLowerCase() && a.outcome === "missed" && a.createdAt > after) return true;
+    }
+    return false;
+  }
+
+  async rateHit(bucket: string, windowMs: number) {
+    const now = Date.now();
+    const hits = (this.rateHits.get(bucket) ?? []).filter((t) => now - t < windowMs);
+    hits.push(now);
+    this.rateHits.set(bucket, hits);
+    return hits.length;
+  }
+
+  async pruneRateHits(olderThan: Date) {
+    let n = 0;
+    for (const [bucket, hits] of this.rateHits) {
+      const kept = hits.filter((t) => t >= olderThan.getTime());
+      n += hits.length - kept.length;
+      if (kept.length === 0) this.rateHits.delete(bucket);
+      else this.rateHits.set(bucket, kept);
+    }
+    return n;
   }
 
   async lastActionAt(accountId: string, market: string) {

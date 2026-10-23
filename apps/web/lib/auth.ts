@@ -7,7 +7,7 @@
 // more: the wallet must own the account's Safe, which `controls` checks on chain.
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { DreamDexAccounts, HIDEKI, networkOf } from "@hoax/chain";
+import { DreamDexAccounts, HIDEKI, isNetworkId, networkOf, type Network } from "@hoax/chain";
 import { createPublicClient, getAddress, http, type Address, type Hex } from "viem";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -44,17 +44,24 @@ export function accountsClient(chainId: number = HIDEKI.id): DreamDexAccounts {
   let c = g.__hoaxAccounts.get(chainId);
   if (!c) {
     const network = networkOf(chainId);
-    c = new DreamDexAccounts((network.id === HIDEKI.id ? process.env.RPC_URL : process.env.SHANNON_RPC_URL) || undefined, network);
+    c = new DreamDexAccounts(rpcOverride(network), network);
     g.__hoaxAccounts.set(chainId, c);
   }
   return c;
 }
 
-/** The message a wallet signs to sign in. */
-export function challenge(wallet: Address, host: string): { message: string; expiresAt: string } {
+function rpcOverride(network: Network): string | undefined {
+  return (network.id === HIDEKI.id ? process.env.RPC_URL : process.env.SHANNON_RPC_URL) || undefined;
+}
+
+/**
+ * The message a wallet signs to sign in, for the network the wallet is on
+ * (Hideki unless given): a smart wallet's signature is checked on that chain.
+ */
+export function challenge(wallet: Address, host: string, chainId: number = HIDEKI.id): { message: string; expiresAt: string } {
   const exp = Date.now() + CHALLENGE_TTL_MS;
   const raw = randomBytes(12).toString("base64url");
-  const nonce = `${raw}.${exp}.${mac(`${raw}.${exp}.${wallet.toLowerCase()}`)}`;
+  const nonce = `${raw}.${exp}.${mac(`${raw}.${exp}.${wallet.toLowerCase()}.${chainId}`)}`;
   const message = [
     `${host} wants you to sign in with your wallet:`,
     getAddress(wallet),
@@ -62,7 +69,7 @@ export function challenge(wallet: Address, host: string): { message: string; exp
     "Sign in to Hoax. This proves you control this wallet. It is free and sends no transaction.",
     "",
     `URI: https://${host}`,
-    `Chain ID: ${HIDEKI.chain.id}`,
+    `Chain ID: ${chainId}`,
     `Nonce: ${nonce}`,
     `Issued At: ${new Date().toISOString()}`,
     `Expiration Time: ${new Date(exp).toISOString()}`,
@@ -76,13 +83,18 @@ export async function verify(message: string, signature: Hex, host: string): Pro
   if (lines[0] !== `${host} wants you to sign in with your wallet:`) throw new Error("this sign-in message was made for another site");
   const wallet = getAddress(lines[1] ?? "");
   const nonce = lines.find((l) => l.startsWith("Nonce: "))?.slice(7) ?? "";
+  const chainId = Number(lines.find((l) => l.startsWith("Chain ID: "))?.slice(10));
   const [raw, expStr, nonceMac] = nonce.split(".");
   const exp = Number(expStr);
-  if (!raw || !nonceMac || !sameMac(nonceMac, mac(`${raw}.${expStr}.${wallet.toLowerCase()}`))) throw new Error("sign-in message was not issued by Hoax");
+  if (!raw || !nonceMac || !isNetworkId(chainId) || !sameMac(nonceMac, mac(`${raw}.${expStr}.${wallet.toLowerCase()}.${chainId}`))) {
+    throw new Error("sign-in message was not issued by Hoax");
+  }
   if (!Number.isFinite(exp) || exp < Date.now()) throw new Error("sign-in message expired; try again");
 
-  // verifyMessage covers plain keys, ERC-1271 smart wallets and ERC-6492 undeployed ones.
-  const client = createPublicClient({ chain: HIDEKI.chain, transport: http(process.env.RPC_URL || HIDEKI.rpcUrl) });
+  // verifyMessage covers plain keys, ERC-1271 smart wallets and ERC-6492 undeployed
+  // ones; a smart wallet answers on the chain it lives on, the one the message names.
+  const network = networkOf(chainId);
+  const client = createPublicClient({ chain: network.chain, transport: http(rpcOverride(network) ?? network.rpcUrl) });
   const ok = await client.verifyMessage({ address: wallet, message, signature });
   if (!ok) throw new Error("signature does not match the wallet");
 
@@ -122,7 +134,33 @@ export async function controls(wallet: Address, owner: string, chainId: number =
   return ok;
 }
 
-/** The request's host, as the browser saw it (for binding sign-in messages). */
-export function requestHost(req: Request): string {
-  return req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host;
+/**
+ * The hosts a sign-in message may name: HOAX_SITE_HOSTS plus the site URLs
+ * Netlify sets, captured at build time (next.config.mjs). Empty in local
+ * development, where any host is accepted.
+ */
+function allowedHosts(): Set<string> {
+  const hosts = new Set<string>();
+  for (const part of (process.env.HOAX_ALLOWED_HOSTS ?? "").split(",")) {
+    const s = part.trim();
+    if (!s) continue;
+    try {
+      hosts.add(new URL(s.includes("://") ? s : `https://${s}`).host.toLowerCase());
+    } catch {
+      // not a host; ignore it
+    }
+  }
+  return hosts;
+}
+
+/**
+ * The request's host, as the browser saw it (for binding sign-in messages), or
+ * null when it is not one of this site's hosts. The headers are the client's to
+ * set, so without the check a phishing site could get messages that name it,
+ * which a wallet would show without a domain warning, and trade them for sessions here.
+ */
+export function requestHost(req: Request): string | null {
+  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host).toLowerCase();
+  const allowed = allowedHosts();
+  return allowed.size === 0 || allowed.has(host) ? host : null;
 }

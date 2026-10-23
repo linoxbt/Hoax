@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { DEFAULT_POLICY, type Receipt } from "@hoax/core";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MemoryStore, PgStore, migrate, type NewAction, type Store } from "../src/index.ts";
+import { MemoryStore, PgStore, migrate, pgConfig, type NewAction, type Store } from "../src/index.ts";
 
 const OWNER = "0xAbC0000000000000000000000000000000000001";
 const KEY = "0xdef0000000000000000000000000000000000002";
@@ -158,6 +158,45 @@ function contract(name: string, make: () => Promise<Store>) {
       expect((await store.listAccounts("active")).map((x) => x.id)).toEqual(expect.arrayContaining([hideki, shannon]));
     });
 
+    it("finds pending actions per network and a liquidation after a close", async () => {
+      const owner = "0x00000000000000000000000000000000000000cc";
+      const hideki = randomUUID();
+      const shannon = randomUUID();
+      await store.createAccount({ id: hideki, owner, manageTokenHash: "h" });
+      await store.createAccount({ id: shannon, owner, manageTokenHash: "h", chainId: 50312 });
+      // The same pool address on both networks.
+      const onHideki = await store.insertAction(action(hideki, { owner }));
+      const onShannon = await store.insertAction(action(shannon, { owner }));
+      const hidekiPending = (await store.listPendingActions(50383)).map((x) => x.id);
+      expect(hidekiPending).toContain(onHideki.id);
+      expect(hidekiPending).not.toContain(onShannon.id);
+      expect((await store.listPendingActions()).map((x) => x.id)).toEqual(expect.arrayContaining([onHideki.id, onShannon.id]));
+
+      expect(await store.liquidatedAfter(hideki, onHideki.pool, onHideki.createdAt)).toBe(false);
+      await new Promise((r) => setTimeout(r, 5));
+      // A miss on the other network's account does not count.
+      await store.insertAction(action(shannon, { owner, outcome: "missed" }));
+      expect(await store.liquidatedAfter(hideki, onHideki.pool, onHideki.createdAt)).toBe(false);
+      // Nor do newer receipts crowding it out: the lookup is exact, not the last N.
+      for (let i = 0; i < 3; i++) await store.insertAction(action(hideki, { owner, outcome: "skipped" }));
+      await store.insertAction(action(hideki, { owner, outcome: "missed", pool: `0x${onHideki.pool.slice(2).toUpperCase()}` }));
+      for (let i = 0; i < 3; i++) await store.insertAction(action(hideki, { owner, outcome: "skipped" }));
+      expect(await store.liquidatedAfter(hideki, onHideki.pool, onHideki.createdAt)).toBe(true);
+      expect(await store.liquidatedAfter(hideki, "0x0000000000000000000000000000000000000001", onHideki.createdAt)).toBe(false);
+    });
+
+    it("counts rate-limit hits per bucket within the window", async () => {
+      const bucket = `test:${randomUUID()}`;
+      expect(await store.rateHit(bucket, 60_000)).toBe(1);
+      expect(await store.rateHit(bucket, 60_000)).toBe(2);
+      expect(await store.rateHit(`${bucket}:other`, 60_000)).toBe(1);
+      await new Promise((r) => setTimeout(r, 30));
+      expect(await store.rateHit(bucket, 10)).toBe(1);
+      // How many rows remain to prune differs: the memory store drops expired hits as it counts.
+      expect(await store.pruneRateHits(new Date(Date.now() + 1000))).toBeGreaterThan(0);
+      expect(await store.rateHit(bucket, 60_000)).toBe(1);
+    });
+
     it("keeps the newest heartbeat per service", async () => {
       expect(await store.lastBeat("watcher-test")).toBeNull();
       await store.beat("watcher-test", { ticks: 1 });
@@ -174,7 +213,7 @@ contract("MemoryStore", async () => new MemoryStore());
 const url = process.env.TEST_DATABASE_URL;
 if (url) {
   contract("PgStore", async () => {
-    const admin = new pg.Client({ connectionString: url });
+    const admin = new pg.Client(pgConfig(url));
     await admin.connect();
     await admin.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
     await admin.end();

@@ -12,7 +12,7 @@ Built for the [dreamDEX Perps Builder Bounty](https://dorahacks.io/hackathon/dre
 
 ## What it does
 
-1. **Opt in.** Connect the wallet you trade with on `/start` and sign a free sign-in message. Hoax finds the wallet's dreamDEX trading account (the Safe 1.5.0 smart account the account factory derives from it), the watcher makes a key just for that account, and one transaction from your wallet links the key on every perp pool: per-pool `OperatorPermissionsRegistry` grants of `placeOrderFor`, `cancelOrderFor` and `reduceOrderFor`, executed by your own Safe, plus the builder-fee approval if you want it. That is a tighter grant than dreamDEX's own Link a bot, which also adds a registry-wide one. Pasting the key into Link a bot still works. Hoax notices the link on chain.
+1. **Opt in.** Connect the wallet you trade with on `/start` and sign a free sign-in message. Hoax finds the wallet's dreamDEX trading account (the Safe 1.5.0 smart account the account factory derives from it), the watcher makes a key just for that account, and one transaction from your wallet links the key on every perp pool: per-pool `OperatorPermissionsRegistry` grants of `placeOrderFor`, `cancelOrderFor` and `reduceOrderFor`, executed by your own Safe, plus the builder-fee approval if you want it. For a Safe that is a tighter grant than dreamDEX's own Link a bot, which also adds a registry-wide one. A trader who trades from the wallet itself has no Safe to batch through, so Hoax gives that wallet the same registry-wide grant Link a bot does (the three order permissions on every pool, spot included) and says so before the wallet signs; the engine only ever trades perps. Pasting the key into Link a bot still works. Hoax notices the link on chain.
 2. **Watch.** Every second (and immediately on `PositionUpdated` / `PositionLiquidated`) the watcher reads account health: equity over maintenance margin, where 1.0 is liquidation. It never acts on a mark the pool calls stale.
 3. **Size.** At the trigger it solves for the smallest close that restores the target, using the cross-margin form of the spec's formula:
 
@@ -70,7 +70,7 @@ To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps 
 ### Tests and checks
 
 ```sh
-npm test                                         # 41 unit and end-to-end tests
+npm test                                         # 45 unit and end-to-end tests
 TEST_DATABASE_URL=postgres://… npm test          # also runs the store contract against Postgres
 npm run typecheck
 npm run build -w @hoax/web
@@ -80,8 +80,9 @@ The watcher's end-to-end tests drive the real engine against `SimVenue`: onboard
 
 ## Deploy
 
-- **Watcher on Railway.** `railway.toml` builds the root `Dockerfile`. Set `DATABASE_URL` (a Railway Postgres), `HOAX_KEYSTORE_SECRET`, optionally `GAS_WALLET_PRIVATE_KEY`, `HOAX_BUILDER_ADDRESS` and `HOAX_BUILDER_FEE_BPS_1K`, and mount a volume at `/data` for the keystore. It runs the migrations on start.
-- **Web on Vercel.** Root directory `apps/web` (`vercel.json` installs from the repo root). Set the same `DATABASE_URL`, plus `HOAX_BUILDER_ADDRESS` and `HOAX_BUILDER_FEE_BPS_1K` if a fee is charged.
+- **Engines and Postgres on a server.** `deploy/vps-setup.sh` runs `docker-compose.yml`: Postgres 16 (TLS only, with a self-signed certificate) and one engine per network, Hideki and Shannon, sharing the database, the keystore volume and the gas wallet. The engines run the migrations on start. See [deploy/README.md](deploy/README.md).
+- **Web on Netlify.** `netlify.toml` builds `apps/web` with the Next.js runtime. Set `DATABASE_URL` and `DATABASE_CA_CERT` (both printed by the setup script; the second pins the database's certificate), `HOAX_SESSION_SECRET`, `HOAX_SITE_HOSTS` for a custom domain, and `HOAX_BUILDER_ADDRESS` / `HOAX_BUILDER_FEE_BPS_1K` if a fee is charged.
+- Other hosts still work but are not what runs: `railway.toml` builds the same engine image (one network per service, a volume at `/data`), and `apps/web/vercel.json` deploys the web app to Vercel.
 
 ## Spike tests
 
@@ -116,7 +117,8 @@ Each script writes block numbers, the SDK version and every tx hash to `spike/ev
 - Hoax fails closed: no order on a stale mark or after a read error. Repeated read failures alert the trader.
 - Fees come only from the on-chain approval and the pool's cap, and are shown on every receipt. Paper USDso accounts are never charged.
 - Gas drips go only to keys with a confirmed link, under per-key and daily caps.
-- Management: registering a wallet returns a manage token (stored hashed). A registration only becomes active when its owner links the Hoax key in dreamDEX, which nobody else can do.
+- Management: the trader signs in with their wallet (a free signed message, bound to this site's address and checked on the wallet's own network), and every change is checked on chain against the owners of the dreamDEX Safe. A registration only becomes active when its owner links the Hoax key, which nobody else can do. Registrations and sign-ins are rate-limited per address, per wallet and overall, counted in the database.
+- The web app reaches Postgres over TLS only and trusts exactly one certificate, the database's own (`DATABASE_CA_CERT`).
 - Vulnerabilities found in dreamDEX contracts go privately to security@dreamdex.io, not into this repo.
 
 ## Where v1 differs from the spec
@@ -124,7 +126,7 @@ Each script writes block numbers, the SDK version and every tx hash to `spike/ev
 - **Plain SQL over `pg` instead of Prisma.** It is the same tables; the store is an interface with Postgres and in-memory backends, so tests and the replay run without a database.
 - **No on-chain `HoaxHandler`.** Spike 1b and 7 were not passed, so the spec's fallback applies: an off-chain watcher with a bot key.
 - **Event push uses `eth_subscribe` logs** for `PositionUpdated` and `PositionLiquidated`, with the 1-second clock as the backbone.
-- **Management uses a token, not wallet signatures.** dreamDEX wallets are app-managed Somnia Accounts that a browser wallet usually cannot sign for. Linking the key is the proof of control.
+- **Management is by wallet sign-in, not by the account's own signature.** dreamDEX accounts are Safes that a browser wallet does not sign for directly, so the wallet signs in and Hoax checks on chain that it owns the Safe. Linking the key is the proof of control that activates protection.
 - **Equity preserved does not subtract the close cost a second time.** The cost was already paid out of the equity being compared.
 
 ## Feedback track
@@ -143,4 +145,4 @@ Five verified items are in [feedback/](feedback/):
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE](LICENSE).

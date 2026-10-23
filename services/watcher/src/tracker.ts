@@ -18,7 +18,8 @@ export class CounterfactualTracker {
   ) {}
 
   async run(): Promise<number> {
-    const pending = await this.store.listPendingActions();
+    // Only this network's actions: the same pool address can exist on both networks.
+    const pending = await this.store.listPendingActions(this.venue.chainId);
     if (pending.length === 0) return 0;
     const markets = await this.venue.listMarkets();
     const byPool = new Map(markets.map((m) => [m.pool.toLowerCase(), m]));
@@ -40,14 +41,7 @@ export class CounterfactualTracker {
 
         // The engine writes a "missed" receipt for every liquidation of a
         // protected account, so the store answers this without scanning logs.
-        const later = await this.store.listActions({ owner: action.owner, limit: 50 });
-        const liquidatedSince = later.some(
-          (a) =>
-            a.outcome === "missed" &&
-            a.pool.toLowerCase() === action.pool.toLowerCase() &&
-            a.createdAt > action.createdAt &&
-            a.id !== action.id,
-        );
+        const liquidatedSince = await this.store.liquidatedAfter(action.accountId, action.pool, action.createdAt);
         const verdict = evaluateTracking({
           side: action.side,
           originalLiquidationPrice: action.liqPriceBefore,

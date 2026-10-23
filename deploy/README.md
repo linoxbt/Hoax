@@ -10,7 +10,7 @@ machine you control; the web app reaches that Postgres over TLS.
 Any small VPS works (1 vCPU, 1 GB RAM). As root:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/linoxbt/Hoax/ccr-401058ee-123g91/deploy/vps-setup.sh -o vps-setup.sh
+curl -fsSL https://raw.githubusercontent.com/linoxbt/Hoax/main/deploy/vps-setup.sh -o vps-setup.sh
 bash vps-setup.sh
 ```
 
@@ -51,7 +51,12 @@ Netlify has to reach port 5432 on that machine, so forward it on your router
 In Project configuration > Environment variables:
 
 1. Add `DATABASE_URL = postgres://hoax:<password>@<server>:5432/hoax?sslmode=no-verify`,
-   marked secret.
+   marked secret, and `DATABASE_CA_CERT = <the base64 line the script printed>`.
+   The second is the database's public certificate: with it the web app trusts
+   that certificate and no other, so nobody can sit between Netlify and the
+   database. Postgres refuses connections without TLS either way.
+   On a custom domain, also add `HOAX_SITE_HOSTS = your.domain` (sign-in
+   messages are only issued for the site's own addresses).
 2. Delete `HOAX_DEMO`.
 3. Redeploy.
 

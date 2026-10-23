@@ -136,7 +136,11 @@ export class Watcher {
     this.loop("heartbeat", 5_000, () =>
       this.opts.store.beat(this.opts.service ?? "watcher", { ...this.status, venue: this.opts.venue.name, gasWallet: this.opts.gas?.address ?? null }),
     );
-    this.loop("prune", 60 * 60_000, () => this.opts.store.pruneHealthTicks(new Date(Date.now() - 24 * 60 * 60_000)));
+    this.loop("prune", 60 * 60_000, async () => {
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60_000);
+      await this.opts.store.pruneHealthTicks(dayAgo);
+      await this.opts.store.pruneRateHits(dayAgo);
+    });
   }
 
   async stop(): Promise<void> {

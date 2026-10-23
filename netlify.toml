@@ -1,4 +1,5 @@
-# The Hoax web app (apps/web) on Netlify. The watcher runs on Railway.
+# The Hoax web app (apps/web) on Netlify. The engines and Postgres run on a
+# server of their own: see deploy/README.md.
 [build]
   base = "apps/web"
   command = "npm run build"

@@ -1,5 +1,6 @@
 import type { Outcome, Policy } from "@hoax/core";
 import pg from "pg";
+import { pgConfig } from "./connection.ts";
 import type {
   AccountRow,
   AccountStatus,
@@ -125,7 +126,7 @@ export class PgStore implements Store {
   readonly pool: pg.Pool;
 
   constructor(connectionString: string) {
-    this.pool = new pg.Pool({ connectionString, max: 10 });
+    this.pool = new pg.Pool({ ...pgConfig(connectionString), max: 10 });
   }
 
   private async q(sql: string, params: unknown[] = []): Promise<Row[]> {
@@ -318,8 +319,27 @@ export class PgStore implements Store {
     return rows.map(toAction);
   }
 
-  async listPendingActions() {
-    return (await this.q(`SELECT * FROM actions WHERE outcome = 'pending' ORDER BY created_at`)).map(toAction);
+  async listPendingActions(chainId?: number) {
+    const rows =
+      chainId === undefined
+        ? await this.q(`SELECT * FROM actions WHERE outcome = 'pending' ORDER BY created_at`)
+        : await this.q(
+            `SELECT a.* FROM actions a JOIN accounts c ON c.id = a.account_id
+             WHERE a.outcome = 'pending' AND c.chain_id = $1 ORDER BY a.created_at`,
+            [chainId],
+          );
+    return rows.map(toAction);
+  }
+
+  async liquidatedAfter(accountId: string, pool: string, after: Date) {
+    const [r] = await this.q(
+      `SELECT EXISTS (
+         SELECT 1 FROM actions
+         WHERE account_id = $1 AND lower(pool) = lower($2) AND outcome = 'missed' AND created_at > $3
+       ) AS hit`,
+      [accountId, pool, after],
+    );
+    return r?.hit === true;
   }
 
   async lastActionAt(accountId: string, market: string) {
@@ -414,6 +434,21 @@ export class PgStore implements Store {
       conflicts: Number(r.conflicts),
       pending: Number(r.pending),
     };
+  }
+
+  async rateHit(bucket: string, windowMs: number) {
+    // The window is measured on the database's clock, the one that stamps the rows.
+    await this.q(`INSERT INTO rate_hits (bucket) VALUES ($1)`, [bucket]);
+    const [r] = await this.q(
+      `SELECT count(*)::int AS n FROM rate_hits WHERE bucket = $1 AND at >= now() - make_interval(secs => $2::double precision / 1000)`,
+      [bucket, windowMs],
+    );
+    return Number(r?.n ?? 0);
+  }
+
+  async pruneRateHits(olderThan: Date) {
+    const res = await this.pool.query(`DELETE FROM rate_hits WHERE at < $1`, [olderThan]);
+    return res.rowCount ?? 0;
   }
 
   async beat(service: string, info: Record<string, unknown>) {

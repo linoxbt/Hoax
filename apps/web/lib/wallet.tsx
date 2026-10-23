@@ -208,7 +208,9 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     if (!address || signing.current) return false;
     signing.current = true;
     try {
-      const { message } = await api<{ message: string }>("/api/auth/challenge", { method: "POST", body: JSON.stringify({ address }) });
+      // The wallet's own network, when Hoax serves it: a smart wallet's signature is checked there.
+      const chain = chainId === hideki.id || chainId === shannon.id ? chainId : hideki.id;
+      const { message } = await api<{ message: string }>("/api/auth/challenge", { method: "POST", body: JSON.stringify({ address, chain }) });
       const signature = await signMessage(wagmiConfig(), { account: address, message });
       const r = await api<{ wallet: string; token: string; expiresAt: string }>("/api/auth/verify", {
         method: "POST",
@@ -221,7 +223,7 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     } finally {
       signing.current = false;
     }
-  }, [address]);
+  }, [address, chainId]);
 
   const disconnect = useCallback(() => {
     if (address) writeAuth(null, address);
