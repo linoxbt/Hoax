@@ -278,7 +278,9 @@ export class Engine {
     const pools = byPool ?? new Map((await venue.listMarkets()).map((m) => [m.pool.toLowerCase(), m]));
     // Pauses and alerts go to the registration protecting the owner now, whoever sent the order.
     const owner = await store.getAccountByOwner(account.owner, chainId);
-    const current = owner && owner.status === "active" ? owner : account;
+    // The caller's own object when it is the protecting one, so a pause made
+    // here is seen by the rest of this tick, not only by the next.
+    const current = owner && owner.status === "active" && owner.id !== account.id ? owner : account;
     // Called for an inactive registration (the orphan sweep), only orders of
     // inactive registrations: the active one's are confirmed in its own tick.
     const sweeping = account.status !== "active";
@@ -339,6 +341,8 @@ export class Engine {
       // and the fee approval are not worth a read.
       if (view.markOk && H > policy.triggerHealth - policy.triggerMargin) continue;
       if (blocked.has(key)) {
+        // Below the trigger and held: said on the record and to the trader (rate-limited), never silent.
+        await this.skipReceipt(account, mem, view, margin.equity, margin.mmReq, H, "an earlier order on this market is not confirmed yet", true);
         lastSkip = { kind: "skip", reason: "an earlier order is not confirmed yet" };
         continue;
       }
@@ -513,6 +517,11 @@ export class Engine {
     if (!signer) {
       await this.alert(account, "key", "Hoax's key for this account is missing from the keystore, so it cannot act.");
       return { kind: "skip", reason: "key missing" };
+    }
+    // Paused now (by the trader, or by a confirmation earlier in this tick)? The store says, not the copy in hand.
+    if ((await this.deps.store.getAccount(account.id))?.paused) {
+      account.paused = true;
+      return { kind: "idle", reason: "paused" };
     }
 
     // Size from a fresh read, immediately before sending.
@@ -747,7 +756,10 @@ export class Engine {
       await this.stuckForGood(current, mem, action, hash, "it filled but its key is missing from the keystore, so its receipt cannot be signed");
       return false;
     }
-    mem.lastActionAt.set(market.symbol, Math.max(mem.lastActionAt.get(market.symbol) ?? 0, Date.parse(action.receipt.createdAt) || 0));
+    // The cooldown runs from this fill for whichever registration protects the owner now.
+    for (const m of new Set([mem, this.mem(current.id)])) {
+      m.lastActionAt.set(market.symbol, Math.max(m.lastActionAt.get(market.symbol) ?? 0, Date.parse(action.receipt.createdAt) || 0));
+    }
     const liquidation = await venue.liquidationParams(market.marginBank);
     const { createdAt: _created, ...draft } = action;
     const pending: Pending = { draft, market, isBid: action.side === "short", fee: action.builderFee1k, penaltyBps: liquidation.penaltyBps, slippageBps: 0 };
@@ -759,9 +771,17 @@ export class Engine {
    * An order Hoax cannot settle on its own: pause the account now protecting
    * this owner and tell the trader, once per order. The market stays held.
    */
-  private async stuckForGood(current: AccountRow, mem: AccountMemory, action: ActionRow, hash: Hex, why: string): Promise<void> {
+  private async stuckForGood(current: AccountRow, _mem: AccountMemory, action: ActionRow, hash: Hex, why: string): Promise<void> {
+    // Once per protecting account and order, remembered in the store (its own
+    // alerts), so a restart does not pause again an account the trader resumed,
+    // and a newer registration is told even if an older one already was.
+    const mem = this.mem(current.id);
     const key = `stuck:${action.id}`;
     if (mem.lastSkipReceipt.has(key)) return;
+    if ((await this.deps.store.listAlerts(current.id, 200)).some((a) => a.kind === "paused" && a.message.includes(hash))) {
+      mem.lastSkipReceipt.set(key, this.now());
+      return;
+    }
     mem.lastSkipReceipt.set(key, this.now());
     await this.pause(
       current,

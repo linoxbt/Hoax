@@ -72,7 +72,7 @@ To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps 
 ### Tests and checks
 
 ```sh
-npm test                                         # 86 unit and end-to-end tests
+npm test                                         # 88 unit and end-to-end tests
 TEST_DATABASE_URL=postgres://… npm test          # also runs the store contract against Postgres
 npm run typecheck
 npm run build -w @hoax/web

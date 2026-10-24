@@ -582,3 +582,52 @@ describe("round four", () => {
     expect(settled.signature).toMatch(/^0x/);
   });
 });
+
+describe("round five", () => {
+  it("does not trade in the same tick that a late confirmation paused the account", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown";
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    const afterHoax = (await w.venue.readPosition(ETH, PROTECTED)).size;
+    w.venue.externalTrade(PROTECTED, ETH.pool, false, afterHoax + eth(1)); // the trader reverses to 1 short
+    w.clock.now += 60 * 60_000; // long past the cooldown; health is under the trigger
+    expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "idle", reason: "paused" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(-eth(1));
+    expect((await w.store.getAccount(w.account.id))!.paused).toBe(true);
+  });
+
+  it("pauses and tells a newer registration about an older one's stuck order, once", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown-dropped";
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    w.venue.cancelNonce = async () => {
+      throw new Error("insufficient funds for gas");
+    };
+    for (let i = 0; i < 6; i++) {
+      w.clock.now += DEFAULT_ENGINE_CONFIG.confirmTimeoutMs;
+      await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    }
+    expect((await w.store.getAccount(w.account.id))!.paused).toBe(true); // A was told
+    // The trader re-registers as B after that alert.
+    const b = await w.store.createAccount({ id: "acct-2", owner: PROTECTED });
+    (w.store.accounts.get("acct-2") as AccountRow).createdAt = new Date(w.clock.now);
+    await w.linker.run();
+    w.venue.link(PROTECTED, getAddress((await w.store.getAccount(b.id))!.hoaxKey!));
+    await w.linker.run();
+    await w.store.upsertPolicy(b.id, "ETH-PERP", DEFAULT_POLICY);
+    for (let i = 0; i < 6; i++) {
+      w.clock.now += DEFAULT_ENGINE_CONFIG.confirmTimeoutMs;
+      expect((await w.engine.tick((await w.store.getAccount(b.id))!)).kind).not.toBe("acted");
+    }
+    expect((await w.store.getAccount(b.id))!.paused).toBe(true);
+    expect(w.store.alerts.filter((a) => a.accountId === b.id && a.kind === "paused")).toHaveLength(1);
+    // A restarted engine does not pause B again once the trader resumes.
+    await w.store.setPaused(b.id, false);
+    const restarted = new Engine({ venue: w.venue, store: w.store, keys: w.keys, log: silentLogger, config: DEFAULT_ENGINE_CONFIG, now: () => w.clock.now });
+    await restarted.tick((await w.store.getAccount(b.id))!);
+    expect((await w.store.getAccount(b.id))!.paused).toBe(false);
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1)); // still held: no second close
+  });
+});
