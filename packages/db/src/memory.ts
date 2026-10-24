@@ -186,9 +186,16 @@ export class MemoryStore implements Store {
 
   async liquidatedAfter(accountId: string, pool: string, afterBlock: bigint) {
     for (const l of this.liquidations.values()) {
-      if (l.accountId === accountId && l.pool === pool.toLowerCase() && l.block > afterBlock) return true;
+      if (l.accountId === accountId && l.pool === pool.toLowerCase() && l.block >= afterBlock) return true;
     }
     return false;
+  }
+
+  async listUnconfirmedForOwner(owner: string, chainId: number) {
+    return [...this.actions.values()]
+      .filter((a) => a.outcome === "unconfirmed" && a.owner === owner.toLowerCase() && this.accounts.get(a.accountId)?.chainId === chainId)
+      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
+      .map((a) => ({ ...a }));
   }
 
   async listUnconfirmedOnChain(chainId?: number) {

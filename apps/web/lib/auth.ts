@@ -171,7 +171,8 @@ export async function verify(
   // Spent only once the signature is good, so a bad attempt does not burn a real one.
   if (!(await useNonce(m.nonce, new Date(exp + 60_000)))) throw new SignInError("this sign-in message was already used; sign in again");
 
-  const code = await client.getCode({ address: wallet }).catch(() => undefined);
+  // Unknown is not "a plain key": a smart wallet must never get a session that works on every network.
+  const code = await client.getCode({ address: wallet });
   const contract = (code !== undefined && code !== "0x") || signature.toLowerCase().endsWith(ERC6492_SUFFIX);
   const now = Date.now();
   const sessionExp = now + SESSION_TTL_MS;

@@ -172,13 +172,19 @@ export interface Store {
   listPendingActions(chainId?: number): Promise<ActionRow[]>;
   /** Record liquidation events (each once, however often it is scanned). */
   recordLiquidations(rows: Array<{ accountId: string; pool: string; block: bigint; txHash: string; sizeDelta: bigint }>): Promise<void>;
-  /** Whether the account was liquidated on this pool in a block after `afterBlock`. */
+  /**
+   * Whether the account was liquidated on this pool at or after `afterBlock`
+   * (the close's own block counts: within a block the order is unknown, and
+   * a save is never credited on a guess).
+   */
   liquidatedAfter(accountId: string, pool: string, afterBlock: bigint): Promise<boolean>;
   /**
    * When Hoax last sent an order for this owner on this market and network, on
    * the engine's own clock (the receipt's createdAt), across re-registrations.
    */
   lastActionAt(owner: string, chainId: number, market: string): Promise<Date | null>;
+  /** Unconfirmed orders for an owner on a network, from every registration it has had. */
+  listUnconfirmedForOwner(owner: string, chainId: number): Promise<ActionRow[]>;
   /** Unconfirmed orders on a network, whatever the account's status now. */
   listUnconfirmedOnChain(chainId?: number): Promise<ActionRow[]>;
   /** When the newest "missed" receipt on this pool was written. */

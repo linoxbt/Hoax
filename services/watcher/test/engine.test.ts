@@ -491,3 +491,59 @@ describe("round two", () => {
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
   });
 });
+
+describe("round three", () => {
+  it("stays paused, with the close on record as a flip, when the flatten's reads fail", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.beforeNextOrder = () => w.venue.externalTrade(PROTECTED, ETH.pool, false, eth(0.9));
+    const place = w.venue.placeIocFor.bind(w.venue);
+    const readMargin = w.venue.readMargin.bind(w.venue);
+    let calls = 0;
+    w.venue.placeIocFor = async (...args) => {
+      const r = await place(...args);
+      if (++calls === 2) w.venue.readMargin = async () => Promise.reject(new Error("rpc timeout")); // after the flatten fills
+      return r;
+    };
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    expect((await w.store.getAccount(w.account.id))!.paused).toBe(true);
+    const close = [...w.store.actions.values()].find((a) => a.txHash && !a.reason?.startsWith("flatten:"))!;
+    expect(close.outcome).toBe("conflict"); // never a normal close
+    const flatten = [...w.store.actions.values()].find((a) => a.reason?.startsWith("flatten:"))!;
+    expect(flatten.outcome).toBe("unconfirmed"); // its reads failed: confirmed on the next tick
+    // Reads recover; every record settles as a conflict, none as a normal close.
+    w.venue.readMargin = readMargin;
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    const rows = [...w.store.actions.values()].filter((a) => a.txHash);
+    expect(rows.every((a) => a.outcome === "conflict")).toBe(true);
+    expect((await w.store.getAccount(w.account.id))!.paused).toBe(true);
+    expect(w.store.counterfactuals.size).toBe(0);
+  });
+
+  it("holds the market for a new registration while a retired one's order is stuck", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown-dropped";
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    // The trader registers again and links a new key: the old registration retires.
+    await w.store.setStatus(w.account.id, "retired");
+    const b = await w.store.createAccount({ id: "acct-2", owner: PROTECTED });
+    await w.linker.run();
+    w.venue.link(PROTECTED, getAddress((await w.store.getAccount(b.id))!.hoaxKey!));
+    await w.linker.run();
+    await w.store.upsertPolicy(b.id, "ETH-PERP", DEFAULT_POLICY);
+    w.clock.now += 60_000;
+    expect(await w.engine.tick((await w.store.getAccount(b.id))!)).toEqual({ kind: "skip", reason: "an earlier order is not confirmed yet" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
+  });
+
+  it("sends nothing when the order cannot be put on record first", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    const insert = w.store.insertAction.bind(w.store);
+    w.store.insertAction = async (a) => (a.outcome === "unconfirmed" ? Promise.reject(new Error("db down")) : insert(a));
+    const r = await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    expect(r).toEqual({ kind: "skip", reason: "order rejected" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
+  });
+});

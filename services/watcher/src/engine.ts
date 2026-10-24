@@ -152,6 +152,8 @@ interface Pending {
 
 /** Reasons on a flatten's own record start with this. */
 const FLATTEN = "flatten:";
+/** Reasons on a close that flipped the position start with this. */
+const FLIP = "flip:";
 
 export class Engine {
   private readonly memory = new Map<string, AccountMemory>();
@@ -263,15 +265,24 @@ export class Engine {
     return outcome;
   }
 
-  /** Confirm this account's unconfirmed orders; the markets still waiting on one. Also used for accounts no longer active. */
+  /**
+   * Confirm the unconfirmed orders of this owner on this network, from every
+   * registration it has had (a retired one's key can still be linked, and its
+   * stuck order can still land); the markets still waiting on one. A late
+   * confirmation that needs a pause pauses `account`, the one now protecting.
+   * Also used for accounts no longer active.
+   */
   async confirmOutstanding(account: AccountRow, byPool?: Map<string, MarketInfo>): Promise<Set<string>> {
-    const mem = this.mem(account.id);
-    const pools = byPool ?? new Map((await this.deps.venue.listMarkets()).map((m) => [m.pool.toLowerCase(), m]));
+    const { store, venue } = this.deps;
+    const pools = byPool ?? new Map((await venue.listMarkets()).map((m) => [m.pool.toLowerCase(), m]));
     const blocked = new Set<string>();
-    for (const action of await this.deps.store.listUnconfirmedActions(account.id)) {
+    const rows = await store.listUnconfirmedForOwner(account.owner, venue.chainId ?? account.chainId);
+    for (const action of rows) {
       const market = pools.get(action.pool.toLowerCase());
       if (!market) continue;
-      const settled = await this.confirm(account, mem, action, market);
+      const sender = action.accountId === account.id ? account : await store.getAccount(action.accountId);
+      if (!sender) continue;
+      const settled = await this.confirm(sender, this.mem(sender.id), action, market, account);
       if (!settled) blocked.add(market.symbol);
     }
     return blocked;
@@ -631,19 +642,15 @@ export class Engine {
     let recorded = false;
     try {
       const result = await venue.placeIocFor(signer, getAddress(account.owner), market, order, async (hash, nonce) => {
-        // From here the order may land whatever happens next: count it for
-        // the cooldown and put it on record before it is broadcast.
-        recorded = true;
-        mem.lastActionAt.set(key, this.now());
+        // Signed, not yet broadcast: it goes on record first, or not at all.
+        // A store that cannot take it throws here, and nothing is sent.
         draft.txHash = hash;
         draft.txNonce = nonce;
         draft.receipt = { ...draft.receipt, txHash: hash };
-        try {
-          await store.insertAction(draft);
-        } catch (err) {
-          mem.unsaved.set(draft.id, draft); // retried every tick until the store takes it
-          log.error("could not record a sent order yet; retrying", { tx: hash, error: String(err).slice(0, 200) });
-        }
+        await store.insertAction(draft);
+        // From here the order may land whatever happens next.
+        recorded = true;
+        mem.lastActionAt.set(key, this.now());
       });
       return { kind: "sent", result };
     } catch (err) {
@@ -674,7 +681,7 @@ export class Engine {
    * receipt is never written off while it might land: past the timeout its
    * nonce is taken by an empty transaction first, so it cannot.
    */
-  private async confirm(account: AccountRow, mem: AccountMemory, action: ActionRow, market: MarketInfo): Promise<boolean> {
+  private async confirm(account: AccountRow, mem: AccountMemory, action: ActionRow, market: MarketInfo, current: AccountRow = account): Promise<boolean> {
     const { venue, log } = this.deps;
     if (!action.txHash) {
       await this.settleWithoutFill(account, mem, action, null, "the order was never sent", false);
@@ -696,10 +703,15 @@ export class Engine {
         return true;
       }
       if ((await venue.minedNonce(signer.address)) > action.txNonce) {
-        // The nonce is used and this hash has no receipt: something else took
-        // the slot (the cancel below), so this order can never land.
-        await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never landed; its slot was cancelled", true);
-        return true;
+        // The nonce is used. Asked again now: the order itself may have landed
+        // between the two reads. Only with still no receipt did something else
+        // take the slot (the cancel below), and this order can never land.
+        const again = await venue.orderResult(hash, market);
+        if (again === null) {
+          await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never landed; its slot was cancelled", true);
+          return true;
+        }
+        return this.confirm(account, mem, action, market, current);
       }
       const cancelledAt = mem.cancelled.get(action.id);
       if (cancelledAt === undefined || this.now() - cancelledAt > timeout) {
@@ -729,7 +741,7 @@ export class Engine {
     const liquidation = await venue.liquidationParams(market.marginBank);
     const { createdAt: _created, ...draft } = action;
     const pending: Pending = { draft, market, isBid: action.side === "short", fee: action.builderFee1k, penaltyBps: liquidation.penaltyBps, slippageBps: 0 };
-    await this.finalize(account, mem, pending, result, signer, true);
+    await this.finalize(account, mem, pending, result, signer, true, current);
     return true;
   }
 
@@ -779,13 +791,23 @@ export class Engine {
    * the chain reports it, and a position on the other side only pauses the
    * account and tells the trader.
    */
-  private async finalize(account: AccountRow, mem: AccountMemory, p: Pending, result: PlaceResult, signer: TradingSigner, late: boolean): Promise<TickOutcome> {
+  private async finalize(
+    account: AccountRow,
+    mem: AccountMemory,
+    p: Pending,
+    result: PlaceResult,
+    signer: TradingSigner,
+    late: boolean,
+    current: AccountRow = account,
+  ): Promise<TickOutcome> {
     const { venue, log, store } = this.deps;
     const owner = getAddress(account.owner);
     const { market, draft } = p;
     const key = market.symbol;
     const hash = result.hash as Hex;
     const isFlatten = draft.reason?.startsWith(FLATTEN) ?? false;
+    // A close that flipped and was being flattened when the process stopped.
+    const wasFlip = draft.reason?.startsWith(FLIP) ?? false;
 
     if (result.fills.length === 0) {
       await this.settleWithoutFill(account, mem, draft, hash, "no liquidity within max slippage", true);
@@ -806,29 +828,43 @@ export class Engine {
     let sizeAfter = late ? expectedAfter : after.size;
     let healthAfter = marginAfter.mmReq > 0n ? Number(marginAfter.equity) / Number(marginAfter.mmReq) : Number.POSITIVE_INFINITY;
 
-    let outcome: Outcome = isFlatten ? "conflict" : "pending";
-    let reason: string | null = isFlatten ? draft.reason : filled < draft.sizeRequested ? "partial fill" : null;
+    let outcome: Outcome = isFlatten || wasFlip ? "conflict" : "pending";
+    let reason: string | null = isFlatten || wasFlip ? draft.reason : filled < draft.sizeRequested ? "partial fill" : null;
 
     if (late) {
       const flippedNow = after.size !== 0n && sign(after.size) !== sign(draft.sizeBefore);
       if (!isFlatten && after.size !== expectedAfter) {
         reason = `${reason ? `${reason}; ` : ""}confirmed late: the position is ${after.size} base units now, after other trades`;
       }
-      if (flippedNow && !isFlatten) {
+      // A late flip, or a flatten (and its close) confirmed late: never traded on, always paused.
+      if (flippedNow || isFlatten || wasFlip) {
         outcome = "conflict";
         await this.pause(
-          account,
-          `Hoax's ${key} close (tx ${hash}) was confirmed late and your position is now on the other side. Hoax did not trade on it and paused this account; check the position.`,
+          current,
+          `Hoax's ${key} ${isFlatten ? "flatten" : "close"} (tx ${hash}) was confirmed late${flippedNow ? " and your position is now on the other side" : " after a flip"}. Hoax did not trade on it and paused this account; check the position.`,
         );
       }
     } else if (!isFlatten) {
       const rec = reconcile({ sizeBefore: draft.sizeBefore, requested: draft.sizeRequested, filled, sizeAfter: after.size });
       if (rec.status === "flipped") {
         outcome = "conflict";
-        const flat = await this.flatten(account, mem, signer, market, draft, after.size, rec.flipAmount, p.slippageBps);
+        // Paused first and on record as a flip, so a failure from here on can
+        // never leave the account trading or the close counted as a normal one.
+        await this.pause(account, `Your ${key} position crossed zero during a Hoax close. Hoax paused this account and is flattening its own overshoot.`);
+        draft.reason = `${FLIP} the position crossed zero by ${rec.flipAmount} base units`;
+        draft.receipt = { ...draft.receipt, reason: draft.reason };
+        await store.insertAction(draft);
+        const flat = await this.flatten(account, mem, signer, market, draft, after.size, rec.flipAmount, p.slippageBps).catch((err) => {
+          log.error("flatten failed; the account stays paused", { account: owner, market: key, error: revertName(err).slice(0, 200) });
+          return {
+            reason: `${FLIP} the position crossed zero by ${rec.flipAmount} base units and the flatten did not complete: close it manually`,
+            message: `Your ${key} position crossed zero during a Hoax close and Hoax could not confirm its flatten. Close it manually. Hoax paused this account.`,
+            sizeAfter: null,
+          };
+        });
         sizeAfter = flat.sizeAfter ?? after.size;
         reason = flat.reason;
-        await this.pause(account, flat.message);
+        await this.alert(account, "paused", flat.message);
         const m = await venue.readMargin(market.marginBank, owner).catch(() => null);
         if (m) healthAfter = m.mmReq > 0n ? Number(m.equity) / Number(m.mmReq) : Number.POSITIVE_INFINITY;
       } else if (rec.status === "conflict") {
@@ -945,7 +981,11 @@ export class Engine {
       builderFeeBpsTimes1k: 0n,
     });
     if (sent.kind === "sent" && sent.result.hash !== null) {
-      await this.finalize(account, mem, { draft, market, isBid, fee: 0n, penaltyBps: 0, slippageBps }, sent.result, signer, false);
+      // If this cannot finish (a read times out), the flatten's row stays
+      // unconfirmed and is confirmed late, paused, like any other.
+      await this.finalize(account, mem, { draft, market, isBid, fee: 0n, penaltyBps: 0, slippageBps }, sent.result, signer, false).catch((err) =>
+        this.deps.log.error("flatten filled; its record is confirmed on the next tick", { account: account.owner, error: revertName(err).slice(0, 160) }),
+      );
     }
     const settled = await venue.readPosition(market, owner).catch(() => null);
     const stillFlipped = settled === null || (settled.size !== 0n && sign(settled.size) !== sign(close.sizeBefore));

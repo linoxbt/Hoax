@@ -122,6 +122,8 @@ done
 # this machine for Netlify, cannot take over the database or the server.
 echo "Granting the web app's database role..."
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U hoax -d hoax <<SQL >/dev/null
+-- A running server reads pg_hba.conf only on reload: an upgrade must not leave hoax_web refused.
+SELECT pg_reload_conf();
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hoax_web') THEN
     CREATE ROLE hoax_web LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;

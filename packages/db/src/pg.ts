@@ -403,10 +403,20 @@ export class PgStore implements Store {
 
   async liquidatedAfter(accountId: string, pool: string, afterBlock: bigint) {
     const [r] = await this.q(
-      `SELECT EXISTS (SELECT 1 FROM liquidations WHERE account_id = $1 AND pool = lower($2) AND block > $3) AS hit`,
+      `SELECT EXISTS (SELECT 1 FROM liquidations WHERE account_id = $1 AND pool = lower($2) AND block >= $3) AS hit`,
       [accountId, pool, afterBlock.toString()],
     );
     return r?.hit === true;
+  }
+
+  async listUnconfirmedForOwner(owner: string, chainId: number) {
+    return (
+      await this.q(
+        `SELECT a.* FROM actions a JOIN accounts c ON c.id = a.account_id
+         WHERE a.owner = $1 AND c.chain_id = $2 AND a.outcome = 'unconfirmed' ORDER BY a.created_at`,
+        [owner.toLowerCase(), chainId],
+      )
+    ).map(toAction);
   }
 
   async listUnconfirmedOnChain(chainId?: number) {

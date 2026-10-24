@@ -183,13 +183,13 @@ function contract(name: string, make: () => Promise<Store>) {
 
       const after = onHideki.block!;
       expect(await store.liquidatedAfter(hideki, onHideki.pool, after)).toBe(false);
-      // A liquidation on the other network's account does not count, nor one at or before the close's block.
+      // A liquidation on the other network's account does not count, nor one before the close's block.
       await store.recordLiquidations([
         { accountId: shannon, pool: onHideki.pool, block: after + 5n, txHash: "0xa", sizeDelta: 1n },
-        { accountId: hideki, pool: onHideki.pool, block: after, txHash: "0xb", sizeDelta: 1n },
+        { accountId: hideki, pool: onHideki.pool, block: after - 1n, txHash: "0xb", sizeDelta: 1n },
       ]);
       expect(await store.liquidatedAfter(hideki, onHideki.pool, after)).toBe(false);
-      // A later one does, in any address case, and recording it twice is harmless.
+      // A later one does (the close's own block counts too), in any address case, and recording it twice is harmless.
       const later = { accountId: hideki, pool: `0x${onHideki.pool.slice(2).toUpperCase()}`, block: after + 1n, txHash: "0xc", sizeDelta: -2n };
       await store.recordLiquidations([later]);
       await store.recordLiquidations([later]);
