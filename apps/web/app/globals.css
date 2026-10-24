@@ -232,6 +232,9 @@ main { position: relative; padding-top: calc(var(--frame) + var(--header)); }
 .logo-step { stroke-dasharray: 1; stroke-dashoffset: 0; }
 html.js .logo-step { animation: logo-step 1.1s 0.35s cubic-bezier(0.6, 0, 0.2, 1) both; }
 @keyframes logo-step { from { stroke-dashoffset: 1; } }
+.logo-loader { display: inline-flex; align-items: center; gap: 1.4rem; color: var(--ink); }
+html.js .logo-loader .logo-step { animation: logo-load 1.4s cubic-bezier(0.6, 0, 0.2, 1) infinite; }
+@keyframes logo-load { 0% { stroke-dashoffset: 1; } 45%, 60% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -1; } }
 
 /* ---------- footer ---------- */
 .footer { border-top: var(--b) solid var(--line); }

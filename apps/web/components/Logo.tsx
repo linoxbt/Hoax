@@ -18,6 +18,16 @@ export function LogoMark({ size = 38, className, still = false }: { size?: numbe
   );
 }
 
+/** The mark as a loader: the crossbar keeps drawing and clearing while work is in flight. */
+export function LogoLoader({ size = 40, label }: { size?: number; label: string }) {
+  return (
+    <span className="logo-loader" role="status" aria-live="polite">
+      <LogoMark size={size} />
+      <span className="cap soft">{label}</span>
+    </span>
+  );
+}
+
 export function Logo({ size = 38 }: { size?: number }) {
   return (
     <span className="logo">

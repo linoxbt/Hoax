@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { EngineBadge } from "@/components/EngineBadge";
+import { LogoLoader } from "@/components/Logo";
 import { Label } from "@/components/Ui";
 import { Avatar } from "@/components/WalletButton";
 import { AppContext } from "@/lib/appContext";
@@ -19,7 +21,14 @@ const NAV = [
 
 function Gate() {
   const hoax = useHoax();
+  const [checking, setChecking] = useState(false);
   const noAccount = hoax.wallet && hoax.walletInfo && !hoax.walletInfo.primary;
+  const checkAgain = async () => {
+    setChecking(true);
+    // Held for a beat so a fast answer still reads as a check, not a flicker.
+    await Promise.all([hoax.refreshWallet(), new Promise((r) => setTimeout(r, 700))]);
+    setChecking(false);
+  };
   return (
     <section className="sec first">
       <div className="pad" style={{ minHeight: "60vh", paddingTop: "6.4rem" }}>
@@ -31,14 +40,20 @@ function Gate() {
               {short(hoax.wallet)} owns no dreamDEX trading account on Somnia Shannon or Hideki. Open one in dreamDEX, then come back.
               {hoax.walletInfo && !hoax.walletInfo.indexed && " The accounts indexer did not answer, so only accounts derived from this wallet were checked."}
             </p>
-            <div className="row" style={{ marginTop: "3.2rem" }}>
-              <a href={DREAMDEX_APP} className="pill" target="_blank" rel="noreferrer">
-                Open dreamDEX ↗
-              </a>
-              <button className="pill ghost" onClick={() => void hoax.refreshWallet()}>
-                Check again
-              </button>
-            </div>
+            {checking ? (
+              <div style={{ marginTop: "3.2rem" }}>
+                <LogoLoader label="Checking Shannon and Hideki for your dreamDEX account…" />
+              </div>
+            ) : (
+              <div className="row" style={{ marginTop: "3.2rem" }}>
+                <a href={DREAMDEX_APP} className="pill" target="_blank" rel="noreferrer">
+                  Open dreamDEX ↗
+                </a>
+                <button className="pill ghost" onClick={() => void checkAgain()}>
+                  Check again
+                </button>
+              </div>
+            )}
           </>
         ) : hoax.walletErr ? (
           <>
