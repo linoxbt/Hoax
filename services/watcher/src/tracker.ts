@@ -64,6 +64,19 @@ export class CounterfactualTracker {
           liquidatedSince = await this.liquidatedOnChain(action, market);
           if (liquidatedSince) verdict = "liquidated";
         }
+        if (verdict === "reached") {
+          // A save means the reduced position was still there to save. Closed
+          // or reversed by hand since (not liquidated: checked above), it is
+          // not one, whatever the mark did.
+          const pos = await this.venue.readPosition(market, getAddress(action.owner));
+          const sideNow = pos.size === 0n ? 0 : pos.size > 0n ? 1 : -1;
+          const sideThen = action.sizeBefore > 0n ? 1 : -1;
+          if (sideNow !== sideThen) {
+            await this.resolve(action, market, "expired", feed.mark, liquidation.penaltyBps, "the position was closed or reversed by hand before the old liquidation price was reached");
+            resolved++;
+            continue;
+          }
+        }
         await this.resolve(action, market, verdict, feed.mark, liquidation.penaltyBps);
         resolved++;
       } catch (err) {
@@ -94,6 +107,7 @@ export class CounterfactualTracker {
     verdict: "reached" | "expired" | "liquidated",
     mark: bigint,
     penaltyBps: number,
+    note: string | null = null,
   ): Promise<void> {
     const resolvedAt = new Date(this.now());
     const base = {
@@ -102,7 +116,7 @@ export class CounterfactualTracker {
       resolvedAt,
     };
     let row: Omit<CounterfactualRow, "resolution" | "resolutionHash" | "resolutionSignature">;
-    let reason: string | null = null;
+    let reason: string | null = note;
     if (verdict === "expired") {
       row = { ...base, reachedAtBlock: null, equityAtReach: null, equityIfLiquidated: null, preserved: null, finalOutcome: "not-needed" };
     } else if (verdict === "liquidated") {

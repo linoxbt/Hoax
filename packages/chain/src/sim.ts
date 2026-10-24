@@ -441,7 +441,10 @@ export class SimVenue implements Venue {
   async cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex> {
     this.useNonce(signer.address, nonce);
     for (const [h, s] of this.stuck) if (s.signer === key(signer.address) && s.nonce === nonce) this.stuck.delete(h);
-    return this.nextHash();
+    const hash = this.nextHash();
+    this.block++;
+    this.results.set(hash, { hash, blockNumber: this.block, fills: [], noFill: true }); // mined, like any transaction
+    return hash;
   }
 
   /** Another actor trades the same account (a second bot), for race tests. */

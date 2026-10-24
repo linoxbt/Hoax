@@ -273,7 +273,7 @@ describe("orders whose result is not known", () => {
     await w.engine.tick((await w.store.getAccount(w.account.id))!);
     // Settled only now that the slot is used: it can never land.
     expect((await w.store.getAction(row.id))!.outcome).toBe("skipped");
-    expect((await w.store.getAction(row.id))!.reason).toContain("slot was cancelled");
+    expect((await w.store.getAction(row.id))!.reason).toContain("slot was taken by cancel tx");
     w.venue.releaseStuck();
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1) - [...w.store.actions.values()].reduce((s, a) => s + a.sizeFilled, 0n));
   });
@@ -629,5 +629,75 @@ describe("round five", () => {
     await restarted.tick((await w.store.getAccount(b.id))!);
     expect((await w.store.getAccount(b.id))!.paused).toBe(false);
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1)); // still held: no second close
+  });
+});
+
+describe("round six: re-registration race", () => {
+  it("a registration retired mid-tick never sends after the new one closed", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    // A's earlier tick reached a decision (its order was refused by the node): A's memory now caches "no last action".
+    w.venue.nextOrderFault = "reject";
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    w.clock.now += 6_000; // past the 5 s backoff
+    // A's tick hangs on its book read (a slow RPC).
+    const realBook = w.venue.readBook.bind(w.venue);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let hang = true;
+    w.venue.readBook = async (m: MarketInfo) => {
+      if (hang) { hang = false; await gate; }
+      return realBook(m);
+    };
+    const aTick = w.engine.tick((await w.store.getAccount(w.account.id))!);
+    await new Promise((r) => setTimeout(r, 20));
+    // Meanwhile the trader re-registers and links B; the linker retires A and activates B.
+    const b = await w.store.createAccount({ id: "acct-2", owner: PROTECTED });
+    (w.store.accounts.get("acct-2") as AccountRow).createdAt = new Date(w.clock.now);
+    await w.linker.run();
+    w.venue.link(PROTECTED, getAddress((await w.store.getAccount(b.id))!.hoaxKey!));
+    await w.linker.run();
+    expect((await w.store.getAccount(w.account.id))!.status).toBe("retired");
+    await w.store.upsertPolicy(b.id, "ETH-PERP", DEFAULT_POLICY);
+    const rb = await w.engine.tick((await w.store.getAccount(b.id))!);
+    const afterB = (await w.venue.readPosition(ETH, PROTECTED)).size;
+    release();
+    const ra = await aTick;
+    const final = (await w.venue.readPosition(ETH, PROTECTED)).size;
+    const closes = [...w.store.actions.values()].filter((a) => a.txHash && a.sizeFilled > 0n);
+    expect(rb.kind).toBe("acted");
+    expect(ra).toEqual({ kind: "idle", reason: "no longer the active registration" });
+    expect(final).toBe(afterB);
+    expect(closes).toHaveLength(1);
+  });
+});
+
+describe("round six: what counts as a save", () => {
+  it("does not credit a save when the trader closed the position by hand", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    const r = await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    if (r.kind !== "acted") throw new Error("expected a close");
+    const left = (await w.venue.readPosition(ETH, PROTECTED)).size;
+    w.venue.externalTrade(PROTECTED, ETH.pool, false, left); // closed by hand
+    w.venue.setMark(ETH.pool, 2300n * E18); // the old liquidation price is reached
+    await new CounterfactualTracker(w.venue, w.store, silentLogger, () => w.clock.now, w.keys).run();
+    const a = (await w.store.getAction(r.actionId))!;
+    expect(a.outcome).toBe("not-needed");
+    expect(a.reason).toContain("closed or reversed by hand");
+  });
+
+  it("decides again instead of closing what is left when the position shrank before send", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    const read = w.venue.readPosition.bind(w.venue);
+    let n = 0;
+    w.venue.readPosition = async (m, o) => {
+      // the fresh read just before sending: the trader has closed 0.9 by hand meanwhile
+      if (++n === 2) w.venue.externalTrade(PROTECTED, ETH.pool, false, eth(0.9));
+      return read(m, o);
+    };
+    expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "skip", reason: "position changed before send; deciding again" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(0.1));
   });
 });

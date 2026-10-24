@@ -150,6 +150,11 @@ interface Pending {
   slippageBps: number;
 }
 
+function withoutCreatedAt(a: ActionRow): NewAction {
+  const { createdAt: _c, ...row } = a;
+  return row;
+}
+
 /** Reasons on a flatten's own record start with this. */
 const FLATTEN = "flatten:";
 /** Reasons on a close that flipped the position start with this. */
@@ -385,7 +390,7 @@ export class Engine {
         lastSkip = { kind: "skip", reason: decision.reason };
         continue;
       }
-      return this.execute(account, mem, view, decision, margin.equity, margin.mmReq, liquidation, fee, policy.maxSlippageBps);
+      return this.execute(account, mem, view, decision, margin.equity, margin.mmReq, liquidation, fee, policy.maxSlippageBps, policy.cooldownSec);
     }
     return lastSkip;
   }
@@ -507,8 +512,9 @@ export class Engine {
     liquidation: LiquidationParams,
     fee: bigint,
     slippageBps: number,
+    cooldownSec: number,
   ): Promise<TickOutcome> {
-    const { venue, log, config } = this.deps;
+    const { venue, log, config, store } = this.deps;
     const owner = getAddress(account.owner);
     const market = view.market;
     const key = market.symbol;
@@ -518,10 +524,24 @@ export class Engine {
       await this.alert(account, "key", "Hoax's key for this account is missing from the keystore, so it cannot act.");
       return { kind: "skip", reason: "key missing" };
     }
-    // Paused now (by the trader, or by a confirmation earlier in this tick)? The store says, not the copy in hand.
-    if ((await this.deps.store.getAccount(account.id))?.paused) {
+    // The last word before anything is sent comes from the store, for the
+    // owner on this network, never from this registration's memory: another
+    // registration of the same owner (activated while this tick was waiting
+    // on a read) may have closed, or have an order out, in the meantime.
+    const latest = await store.getAccount(account.id);
+    if (!latest || latest.status !== "active") return { kind: "idle", reason: "no longer the active registration" };
+    if (latest.paused) {
       account.paused = true;
       return { kind: "idle", reason: "paused" };
+    }
+    const chainId = venue.chainId ?? account.chainId;
+    if ((await store.listUnconfirmedForOwner(account.owner, chainId)).some((a) => a.market === key)) {
+      return { kind: "skip", reason: "an earlier order is not confirmed yet" };
+    }
+    const lastOwnerAction = await store.lastActionAt(account.owner, chainId, key);
+    if (lastOwnerAction && this.now() - lastOwnerAction.getTime() < cooldownSec * 1000) {
+      mem.lastActionAt.set(key, lastOwnerAction.getTime());
+      return { kind: "skip", reason: "cooldown" };
     }
 
     // Size from a fresh read, immediately before sending.
@@ -536,6 +556,11 @@ export class Engine {
       }
       await this.pause(account, `Your ${key} position changed side before Hoax could act. Hoax paused this account until you confirm.`);
       return { kind: "skip", reason: "position changed side before send" };
+    }
+    // Smaller than when the size was solved (the trader closed some): decide
+    // again next tick from the new position rather than close what is left.
+    if ((fresh.size < 0n ? -fresh.size : fresh.size) < (view.size < 0n ? -view.size : view.size)) {
+      return { kind: "skip", reason: "position changed before send; deciding again" };
     }
     const qty = clampClose(decision.quantity, fresh.size);
 
@@ -719,22 +744,27 @@ export class Engine {
         if (age >= timeout * 5) await this.stuckForGood(current, mem, action, hash, signer ? "it was sent before Hoax recorded nonces" : "its key is missing from the keystore");
         return false;
       }
-      if ((await venue.minedNonce(signer.address)) > action.txNonce) {
-        // The nonce is used. Asked again now: the order itself may have landed
-        // between the two reads. Only with still no receipt did something else
-        // take the slot (the cancel below), and this order can never land.
+      // The cancel's own receipt is the proof the slot is gone: a nonce count
+      // or a missing receipt can come from a node that is behind.
+      const cancelHash = action.reason?.match(/cancel tx (0x[0-9a-fA-F]{64})/)?.[1] as Hex | undefined;
+      if (cancelHash && (await venue.minedNonce(signer.address)) > action.txNonce) {
+        const cancelReceipt = await venue.orderResult(cancelHash, market);
         const again = await venue.orderResult(hash, market);
-        if (again === null) {
-          await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never landed; its slot was cancelled", true);
+        if (again !== null) return this.confirm(account, mem, action, market, current);
+        if (cancelReceipt !== null) {
+          await this.settleWithoutFill(account, mem, action, hash, `the order was sent but never landed; its slot was taken by cancel tx ${cancelHash}`, true, current);
           return true;
         }
-        return this.confirm(account, mem, action, market, current);
+        return false;
       }
       const cancelledAt = mem.cancelled.get(action.id);
       if (cancelledAt === undefined || this.now() - cancelledAt > timeout) {
         try {
           const cancel = await venue.cancelNonce(signer, action.txNonce);
           mem.cancelled.set(action.id, this.now());
+          // On record with the order, so a restart still knows which receipt proves the slot gone.
+          await this.deps.store.insertAction({ ...withoutCreatedAt(action), reason: `order stuck; cancel tx ${cancel}` });
+          action.reason = `order stuck; cancel tx ${cancel}`;
           log.warn("order stuck; replaced at its nonce so it cannot land later", { account: account.owner, tx: hash, cancel });
         } catch (err) {
           // Not written off: until its nonce is used the order can still land,
@@ -747,8 +777,8 @@ export class Engine {
     }
     mem.cancelled.delete(action.id);
     if (result === "reverted") {
-      this.backOff(mem, market.symbol);
-      await this.settleWithoutFill(account, mem, action, hash, "the order reverted on chain", true);
+      this.backOff(this.mem(current.id), market.symbol);
+      await this.settleWithoutFill(account, mem, action, hash, "the order reverted on chain", true, current);
       return true;
     }
     if (!signer) {
@@ -797,6 +827,7 @@ export class Engine {
     hash: Hex | null,
     reason: string,
     alert: boolean,
+    alertTo: AccountRow = account,
   ): Promise<void> {
     const signer = account.hoaxKey ? await this.deps.keys.get(account.hoaxKey) : null;
     const receipt: Receipt = { ...draft.receipt, outcome: "skipped", reason, txHash: hash, sizeFilled: "0", sizeAfter: draft.sizeBefore.toString() };
@@ -820,7 +851,7 @@ export class Engine {
       const last = mem.lastSkipReceipt.get(k);
       if (last === undefined || this.now() - last >= this.deps.config.skipReceiptEveryMs) {
         mem.lastSkipReceipt.set(k, this.now());
-        await this.alert(account, "skipped", `Hoax's order on ${draft.market} did not fill: ${reason}.`);
+        await this.alert(alertTo, "skipped", `Hoax's order on ${draft.market} did not fill: ${reason}.`);
       }
     }
   }
@@ -878,6 +909,8 @@ export class Engine {
     if (late) {
       const flippedNow = after.size !== 0n && sign(after.size) !== sign(draft.sizeBefore);
       if (!isFlatten && after.size !== expectedAfter) {
+        // Other trades since: what this close saved can no longer be judged.
+        outcome = "conflict";
         reason = `${reason ? `${reason}; ` : ""}confirmed late: the position is ${after.size} base units now, after other trades`;
       }
       // A late flip, or a flatten (and its close) confirmed late: never traded on, always paused.
