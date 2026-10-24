@@ -169,6 +169,12 @@ export class Engine {
   private readonly approvals = new Map<string, { at: number; fee: bigint }>();
   private readonly feeds = new Map<string, { at: number; read: FeedRead }>();
   private readonly now: () => number;
+  private halted = false;
+
+  /** Stop sending: ticks in flight finish their records but start no new order (shutdown, a lost lease). */
+  halt(): void {
+    this.halted = true;
+  }
 
   constructor(private readonly deps: EngineDeps) {
     this.now = deps.now ?? Date.now;
@@ -529,6 +535,7 @@ export class Engine {
       await this.alert(account, "key", "Hoax's key for this account is missing from the keystore, so it cannot act.");
       return { kind: "skip", reason: "key missing" };
     }
+    if (this.halted) return { kind: "idle", reason: "stopping" };
     // The last word before anything is sent comes from the store, for the
     // owner on this network, never from this registration's memory: another
     // registration of the same owner (activated while this tick was waiting
@@ -610,6 +617,10 @@ export class Engine {
       return { kind: "skip", reason: "order reverted" };
     }
     if (sent.kind === "unknown") return { kind: "skip", reason: "order sent, result unknown" };
+    if (sent.kind === "transient") {
+      log.warn("could not send the close (RPC); retrying next tick", { account: owner, market: key, error: sent.reason.slice(0, 160) });
+      return { kind: "error", message: sent.reason };
+    }
 
     const result = sent.result;
     if (result.hash === null) {
@@ -685,7 +696,7 @@ export class Engine {
     market: MarketInfo,
     draft: NewAction,
     order: IocOrder,
-  ): Promise<{ kind: "sent"; result: PlaceResult } | { kind: "rejected"; reason: string } | { kind: "reverted" } | { kind: "unknown" }> {
+  ): Promise<{ kind: "sent"; result: PlaceResult } | { kind: "rejected"; reason: string } | { kind: "reverted" } | { kind: "unknown" } | { kind: "transient"; reason: string }> {
     const { venue, log, store } = this.deps;
     const key = market.symbol;
     let recorded = false;
@@ -720,7 +731,9 @@ export class Engine {
         await store.insertAction(draft).catch(() => mem.unsaved.set(draft.id, draft));
         return { kind: "unknown" };
       }
-      return { kind: "rejected", reason: revertName(err) };
+      // Nothing went out and nothing refused it: the RPC failed. No back-off,
+      // the next tick tries again as after any read error.
+      return { kind: "transient", reason: revertName(err) };
     }
   }
 
@@ -833,7 +846,7 @@ export class Engine {
     const mem = this.mem(current.id);
     const key = `stuck:${action.id}`;
     if (mem.lastSkipReceipt.has(key)) return;
-    if ((await this.deps.store.listAlerts(current.id, 200)).some((a) => a.kind === "paused" && a.message.includes(hash))) {
+    if ((await this.deps.store.listAlerts(current.id, 2000)).some((a) => a.kind === "paused" && a.message.includes(hash))) {
       mem.lastSkipReceipt.set(key, this.now());
       return;
     }
@@ -920,11 +933,22 @@ export class Engine {
     const expectedAfter = draft.sizeBefore - BigInt(sign(draft.sizeBefore)) * filled;
 
     // If these reads fail the row stays unconfirmed and the next tick settles it.
-    const [after, marginAfter, liqAfter] = await Promise.all([
+    // A node one block behind would show the size before the fill: read again
+    // (briefly) until the reads are from the fill's block or later.
+    let [after, marginAfter, liqAfter] = await Promise.all([
       venue.readPosition(market, owner),
       venue.readMargin(market.marginBank, owner),
       venue.readLiquidationPrice(market, owner),
     ]);
+    for (let i = 0; i < 10 && marginAfter.blockNumber < result.blockNumber; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      [after, marginAfter, liqAfter] = await Promise.all([
+        venue.readPosition(market, owner),
+        venue.readMargin(market.marginBank, owner),
+        venue.readLiquidationPrice(market, owner),
+      ]);
+    }
+    if (marginAfter.blockNumber < result.blockNumber) throw new Error("reads are still behind the fill's block; confirming on the next tick");
     let sizeAfter = late ? expectedAfter : after.size;
     let healthAfter = marginAfter.mmReq > 0n ? Number(marginAfter.equity) / Number(marginAfter.mmReq) : Number.POSITIVE_INFINITY;
 
@@ -1061,6 +1085,19 @@ export class Engine {
     const { venue } = this.deps;
     const owner = getAddress(account.owner);
     const key = market.symbol;
+    // A fresh read just before sending: another trade since the fill may have
+    // undone the flip already, or changed it; never flatten more than is there.
+    const now = await venue.readPosition(market, owner);
+    if (now.size === 0n || sign(now.size) === sign(close.sizeBefore)) {
+      return {
+        reason: `the position crossed zero by ${amount} base units, and was back on its side before Hoax flattened`,
+        message: `Your ${key} position crossed zero during a Hoax close and another trade undid it. Hoax paused this account until you confirm.`,
+        sizeAfter: now.size,
+      };
+    }
+    flippedSize = now.size;
+    const over = now.size < 0n ? -now.size : now.size;
+    if (over < amount) amount = over;
     const isBid = flippedSize < 0n;
     const feed = await venue.readFeed(market).catch(() => null);
     const mark = feed?.markOk ? feed.markPrice : close.mark;

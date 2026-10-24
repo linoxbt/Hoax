@@ -543,7 +543,7 @@ describe("round three", () => {
     const insert = w.store.insertAction.bind(w.store);
     w.store.insertAction = async (a) => (a.outcome === "unconfirmed" ? Promise.reject(new Error("db down")) : insert(a));
     const r = await w.engine.tick((await w.store.getAccount(w.account.id))!);
-    expect(r).toEqual({ kind: "skip", reason: "order rejected" });
+    expect(r).toEqual({ kind: "error", message: "db down" }); // like a read error: retried next tick, no back-off
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
   });
 });
@@ -732,6 +732,32 @@ describe("round seven", () => {
       return readBook(m);
     };
     expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "idle", reason: "policy off" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
+  });
+});
+
+describe("round eight", () => {
+  it("treats an RPC failure while sending as transient: no back-off, it closes on the next tick", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    const place = w.venue.placeIocFor.bind(w.venue);
+    let first = true;
+    w.venue.placeIocFor = async (...args) => {
+      if (first) {
+        first = false;
+        throw new Error("request timed out");
+      }
+      return place(...args);
+    };
+    expect((await w.engine.tick((await w.store.getAccount(w.account.id))!)).kind).toBe("error");
+    expect((await w.engine.tick((await w.store.getAccount(w.account.id))!)).kind).toBe("acted");
+  });
+
+  it("sends nothing once halted", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.engine.halt();
+    expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "idle", reason: "stopping" });
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
   });
 });

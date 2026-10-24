@@ -255,6 +255,7 @@ export class Watcher {
   /** Stop the loops and wait (up to `timeoutMs`) for ticks in flight, so a close in progress is recorded. */
   async stop(timeoutMs = 30_000): Promise<void> {
     this.stopped = true;
+    this.engine.halt(); // ticks in flight finish their records; none sends a new order
     for (const t of this.timers) clearInterval(t);
     this.unwatch?.();
     let timer: NodeJS.Timeout | undefined;

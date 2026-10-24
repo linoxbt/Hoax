@@ -264,13 +264,11 @@ export class DreamDexVenue implements Venue {
     const wallet = this.wallet(signer);
     let serialized: Hex;
     let nonce: number;
-    try {
-      const prepared = await wallet.prepareTransactionRequest({ ...tx, account: signer, chain: this.network.chain } as never);
-      nonce = Number((prepared as { nonce: number }).nonce);
-      serialized = await wallet.signTransaction(prepared as never);
-    } catch (err) {
-      throw new TxRejectedError(revertName(err));
-    }
+    // Preparing reads the nonce and fees from the RPC: a failure here is the
+    // RPC's, nothing was signed or sent, and it is thrown as it is.
+    const prepared = await wallet.prepareTransactionRequest({ ...tx, account: signer, chain: this.network.chain } as never);
+    nonce = Number((prepared as { nonce: number }).nonce);
+    serialized = await wallet.signTransaction(prepared as never);
     const hash = keccak256(serialized);
     if (onSent) await onSent(hash, nonce);
     try {
@@ -310,7 +308,10 @@ export class DreamDexVenue implements Venue {
       if (name.includes("ImmediateOrCancelNoFill")) {
         return { hash: null, blockNumber: await this.blockNumber(), fills: [], noFill: true };
       }
-      throw new TxRejectedError(name);
+      // A revert is the pool refusing the order; anything else (a timeout, a
+      // dropped connection) is the RPC, which says nothing about the order.
+      if (err instanceof BaseError && err.walk((e) => e instanceof ContractFunctionRevertedError)) throw new TxRejectedError(name);
+      throw err;
     }
     const data = encodeFunctionData({ abi: OPERATOR_ABI, functionName: "placeOrderFor", args });
     const hash = await this.signAndSend(signer, { to: market.pool, data, gas: ORDER_GAS }, onSent);
