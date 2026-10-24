@@ -1,6 +1,11 @@
-import type { Outcome, Policy, Receipt, Side } from "@hoax/core";
+import type { Outcome, Policy, Receipt, Resolution, Side } from "@hoax/core";
 
-export type AccountStatus = "pending_key" | "pending_link" | "active" | "unlinked";
+/**
+ * "unlinked": the trader removed the key on chain. "retired": a newer
+ * registration for the same owner took over; its key may still be linked, but
+ * Hoax never uses it again.
+ */
+export type AccountStatus = "pending_key" | "pending_link" | "active" | "unlinked" | "retired";
 
 export interface AccountRow {
   id: string;
@@ -11,12 +16,13 @@ export interface AccountRow {
   /** Lowercase Hoax key address; null until the watcher has made it. */
   hoaxKey: string | null;
   status: AccountStatus;
-  manageTokenHash: string;
   /** Effective builder approval, bps x 1000. */
   builderApproval1k: bigint;
   paused: boolean;
   linkedAt: Date | null;
   createdAt: Date;
+  /** The next block the liquidation scan reads from; null until the engine first scans. */
+  liqScanFrom: bigint | null;
 }
 
 export interface PolicyRow extends Policy {
@@ -61,6 +67,7 @@ export interface ActionRow {
   forcedSlippage: bigint | null;
   equityBefore: bigint;
   mmReqBefore: bigint;
+  /** Infinity when the account had no maintenance requirement. */
   healthBefore: number;
   healthAfter: number | null;
   liqPriceBefore: bigint | null;
@@ -83,6 +90,10 @@ export interface CounterfactualRow {
   preserved: bigint | null;
   finalOutcome: Outcome;
   resolvedAt: Date | null;
+  /** The signed record of the resolution, once resolved. */
+  resolution: Resolution | null;
+  resolutionHash: string | null;
+  resolutionSignature: string | null;
 }
 
 export interface AlertRow {
@@ -109,6 +120,10 @@ export interface Stats {
 
 export type NewAction = Omit<ActionRow, "createdAt">;
 
+export type DripReservation =
+  | { ok: true; id: string }
+  | { ok: false; reason: "key-cap" | "daily-cap" | "recent" };
+
 export interface HeartbeatRow {
   service: string;
   info: Record<string, unknown>;
@@ -116,8 +131,12 @@ export interface HeartbeatRow {
 }
 
 export interface Store {
-  /** chainId defaults to Hideki (50383). */
-  createAccount(a: { id: string; owner: string; manageTokenHash: string; chainId?: number }): Promise<AccountRow>;
+  /**
+   * Register an owner on a network (Hideki, 50383, unless given). When a
+   * registration for that owner and network is already waiting for its key or
+   * link, that one comes back instead and nothing is created.
+   */
+  createAccount(a: { id: string; owner: string; chainId?: number }): Promise<AccountRow>;
   getAccount(id: string): Promise<AccountRow | null>;
   /** The active account for an owner, else the newest registration. */
   /** The owner's account on one network (Hideki unless given): the active one, else the newest. */
@@ -128,6 +147,7 @@ export interface Store {
   setStatus(id: string, status: AccountStatus): Promise<void>;
   setPaused(id: string, paused: boolean): Promise<void>;
   setBuilderApproval(id: string, approval1k: bigint): Promise<void>;
+  setLiqScanFrom(id: string, block: bigint): Promise<void>;
 
   upsertPolicy(accountId: string, market: string, policy: Policy): Promise<PolicyRow>;
   listPolicies(accountId: string): Promise<PolicyRow[]>;
@@ -137,34 +157,67 @@ export interface Store {
   latestHealth(accountId: string): Promise<HealthTickRow[]>;
   pruneHealthTicks(olderThan: Date): Promise<number>;
 
+  /** Insert an action, or replace the one with this id (keeping its createdAt). */
   insertAction(a: NewAction): Promise<ActionRow>;
   updateActionOutcome(id: string, outcome: Outcome, reason?: string | null): Promise<void>;
   getAction(id: string): Promise<ActionRow | null>;
-  listActions(opts: { owner?: string; limit: number }): Promise<ActionRow[]>;
+  /** Newest first; on one network when chainId is given. */
+  listActions(opts: { owner?: string; chainId?: number; limit: number }): Promise<ActionRow[]>;
+  /** Orders sent whose result is not confirmed yet. */
+  listUnconfirmedActions(accountId: string): Promise<ActionRow[]>;
   /** Actions still waiting on their counterfactual, on one network when chainId is given. */
   listPendingActions(chainId?: number): Promise<ActionRow[]>;
   /** Whether the account has a "missed" receipt on this pool created after `after`. */
   liquidatedAfter(accountId: string, pool: string, after: Date): Promise<boolean>;
   lastActionAt(accountId: string, market: string): Promise<Date | null>;
+  /** When the newest "missed" receipt on this pool was written. */
+  lastMissAt(accountId: string, pool: string): Promise<Date | null>;
 
   upsertCounterfactual(c: CounterfactualRow): Promise<void>;
   getCounterfactual(actionId: string): Promise<CounterfactualRow | null>;
+  getCounterfactuals(actionIds: string[]): Promise<Map<string, CounterfactualRow>>;
 
   insertAlert(a: { accountId: string; kind: string; message: string }): Promise<void>;
   listAlerts(accountId: string, limit: number): Promise<AlertRow[]>;
 
-  recordDrip(hoaxKey: string, amount: bigint, txHash: string): Promise<void>;
-  dripsSince(since: Date, hoaxKey?: string): Promise<bigint>;
+  /**
+   * Reserve a gas drip atomically against the caps (per key and per network,
+   * over the last `windowMs`), refusing when this key had one within `minGapMs`.
+   * A reservation counts towards the caps until it is cancelled.
+   */
+  reserveDrip(r: {
+    hoaxKey: string;
+    chainId: number | null;
+    amount: bigint;
+    perKeyCap: bigint;
+    dailyCap: bigint;
+    windowMs: number;
+    minGapMs: number;
+  }): Promise<DripReservation>;
+  completeDrip(id: string, txHash: string): Promise<void>;
+  /** The drip was never sent: release its reservation. */
+  cancelDrip(id: string): Promise<void>;
+  dripsSince(since: Date, opts?: { hoaxKey?: string; chainId?: number | null }): Promise<bigint>;
 
   stats(): Promise<Stats>;
 
-  /** Count a hit on a rate-limit bucket; returns the hits in the window, this one included. */
-  rateHit(bucket: string, windowMs: number): Promise<number>;
+  /**
+   * Count a hit on a rate-limit bucket and return the hits in the window, this
+   * one included. A hit that is already over `max` is not stored, so a flood of
+   * refused requests does not grow the table.
+   */
+  rateHit(bucket: string, windowMs: number, max: number): Promise<number>;
   pruneRateHits(olderThan: Date): Promise<number>;
 
   /** Record that a service is alive, with whatever it reports about itself. */
   beat(service: string, info: Record<string, unknown>): Promise<void>;
   lastBeat(service: string): Promise<HeartbeatRow | null>;
+
+  /**
+   * Take a named lease for the life of this store's connection (one engine per
+   * network). False when another process holds it.
+   */
+  acquireLease(name: string): Promise<boolean>;
 
   close(): Promise<void>;
 }

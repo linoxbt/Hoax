@@ -1,7 +1,9 @@
 // The watcher process: reads its configuration from the environment, connects
 // to Postgres and one Somnia network, and runs until stopped. NETWORK picks it:
 // hideki (default) or shannon. Run one process per network against the same
-// database and keystore; each protects only its own network's accounts.
+// database and keystore; each protects only its own network's accounts. A
+// lease in Postgres makes sure only one process per network ever trades: a
+// second one (an overlapping redeploy, a NETWORK left unset) exits.
 
 import { createServer } from "node:http";
 import { DreamDexVenue, NETWORKS } from "@hoax/chain";
@@ -25,9 +27,11 @@ async function main() {
   if (databaseUrl) {
     await migrate(databaseUrl);
     store = new PgStore(databaseUrl);
-  } else {
-    log.warn("DATABASE_URL is not set: using an in-memory store, nothing survives a restart");
+  } else if (env("HOAX_ALLOW_MEMORY_STORE") === "1") {
+    log.warn("DATABASE_URL is not set: using an in-memory store, nothing survives a restart (HOAX_ALLOW_MEMORY_STORE=1)");
     store = new MemoryStore();
+  } else {
+    throw new Error("DATABASE_URL is required (set HOAX_ALLOW_MEMORY_STORE=1 to run without one, for development only)");
   }
 
   const secret = env("HOAX_KEYSTORE_SECRET");
@@ -37,7 +41,11 @@ async function main() {
   const networkKey = env("NETWORK", "hideki")!;
   const network = NETWORKS.find((n) => n.key === networkKey);
   if (!network) throw new Error(`NETWORK must be one of ${NETWORKS.map((n) => n.key).join(", ")}`);
-  const venue = new DreamDexVenue({ network, rpcUrl: env("RPC_URL"), wsUrl: env("WS_URL"), indexerUrl: env("INDEXER_URL") });
+  if (!(await store.acquireLease(`engine:${network.id}`))) {
+    throw new Error(`another Hoax engine already holds the ${network.key} lease; exiting so only one trades`);
+  }
+  const rpcTimeoutMs = env("RPC_TIMEOUT_MS") ? Number(env("RPC_TIMEOUT_MS")) : undefined;
+  const venue = new DreamDexVenue({ network, rpcUrl: env("RPC_URL"), wsUrl: env("WS_URL"), indexerUrl: env("INDEXER_URL"), rpcTimeoutMs });
 
   const gasKey = env("GAS_WALLET_PRIVATE_KEY");
   const gas = gasKey
@@ -50,6 +58,7 @@ async function main() {
           dripAmount: parseEther(env("GAS_DRIP_AMOUNT", "0.05")!),
           perKeyDailyCap: parseEther(env("GAS_PER_KEY_DAILY_CAP", "0.2")!),
           dailyCap: parseEther(env("GAS_DAILY_CAP", "2")!),
+          minGapMs: 5 * 60_000,
         },
         log,
       )
@@ -70,14 +79,18 @@ async function main() {
       builder: builder ? getAddress(builder) : null,
       builderFeeBpsTimes1k: BigInt(env("HOAX_BUILDER_FEE_BPS_1K", "0")!),
       dryRun: env("DRY_RUN", "false") === "true",
+      feedCacheMs: Number(env("FEED_CACHE_MS", "250")),
     },
   });
 
   const port = Number(env("PORT", "8080"));
   const server = createServer((req, res) => {
     if (req.url === "/healthz" || req.url === "/") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, gasWallet: gas?.address ?? null, ...watcher.status }));
+      const h = watcher.health();
+      if (store instanceof PgStore && !store.leaseHeld) h.problems.push("the engine lease was lost");
+      const ok = h.problems.length === 0;
+      res.writeHead(ok ? 200 : 503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok, problems: h.problems, network: network.key, ...watcher.status }));
       return;
     }
     res.writeHead(404).end();
@@ -86,17 +99,35 @@ async function main() {
 
   watcher.start();
 
-  const shutdown = async (signal: string) => {
-    log.info(`${signal}: stopping`);
+  // The lease is a database session: if that connection drops, another engine
+  // may take over, so this one must stop trading.
+  const leaseCheck = setInterval(() => {
+    if (store instanceof PgStore && !store.leaseHeld) {
+      log.error("lost the engine lease; stopping");
+      void shutdown("lease lost", 1);
+    }
+  }, 5_000);
+
+  let stopping = false;
+  const shutdown = async (signal: string, code = 0) => {
+    if (stopping) return;
+    stopping = true;
+    log.info(`${signal}: stopping, waiting for ticks in flight`);
+    clearInterval(leaseCheck);
     await watcher.stop();
     server.close();
-    await venue.close();
-    await store.close();
-    process.exit(0);
+    await venue.close().catch(() => {});
+    await store.close().catch(() => {});
+    process.exit(code);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
+
+// A stray rejection is logged, never fatal: crashing mid-close is worse than a missed alert.
+process.on("unhandledRejection", (err) => {
+  log.error("unhandled rejection", { error: err instanceof Error ? err.message : String(err) });
+});
 
 main().catch((err) => {
   log.error(err instanceof Error ? err.message : String(err));

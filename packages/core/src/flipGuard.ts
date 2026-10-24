@@ -24,7 +24,11 @@ export type ReconcileStatus =
 
 export interface Reconciliation {
   status: ReconcileStatus;
-  /** Raw base units on the wrong side after a flip; 0 otherwise. */
+  /**
+   * Raw base units Hoax must buy or sell back after a flip: the part of the
+   * crossing its own fill caused, never more than it filled. Another trade that
+   * reversed the position on purpose is left alone. 0 when not flipped.
+   */
   flipAmount: bigint;
   /** sizeAfter - expected, signed. Non-zero means someone else moved the position. */
   externalChange: bigint;
@@ -43,7 +47,12 @@ export function reconcile(args: {
   const externalChange = sizeAfter - expectedAfter;
 
   const flipped = sizeAfter !== 0n && sign(sizeAfter) !== sign(sizeBefore);
-  if (flipped) return { status: "flipped", flipAmount: abs(sizeAfter), externalChange, expectedAfter };
+  if (flipped) {
+    // Hoax filled `filled` towards zero. Whatever lies past zero beyond that is
+    // someone else's trade, so the most Hoax undoes is its own fill.
+    const over = abs(sizeAfter);
+    return { status: "flipped", flipAmount: over < filled ? over : filled, externalChange, expectedAfter };
+  }
   if (externalChange !== 0n) return { status: "conflict", flipAmount: 0n, externalChange, expectedAfter };
   if (filled === 0n) return { status: "none", flipAmount: 0n, externalChange, expectedAfter };
   if (filled < requested) return { status: "partial", flipAmount: 0n, externalChange, expectedAfter };

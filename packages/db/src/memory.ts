@@ -7,6 +7,7 @@ import type {
   ActionRow,
   AlertRow,
   CounterfactualRow,
+  DripReservation,
   HealthTickRow,
   HeartbeatRow,
   NewAction,
@@ -22,21 +23,30 @@ export class MemoryStore implements Store {
   actions = new Map<string, ActionRow>();
   counterfactuals = new Map<string, CounterfactualRow>();
   alerts: AlertRow[] = [];
-  drips: Array<{ hoaxKey: string; amount: bigint; txHash: string; at: Date }> = [];
+  drips: Array<{ id: string; hoaxKey: string; chainId: number | null; amount: bigint; txHash: string | null; at: Date }> = [];
+  private dripSeq = 0;
+  private leases = new Set<string>();
   rateHits = new Map<string, number[]>();
 
-  async createAccount(a: { id: string; owner: string; manageTokenHash: string; chainId?: number }): Promise<AccountRow> {
+  async createAccount(a: { id: string; owner: string; chainId?: number }): Promise<AccountRow> {
+    const owner = a.owner.toLowerCase();
+    const chainId = a.chainId ?? 50383;
+    for (const other of this.accounts.values()) {
+      if (other.owner === owner && other.chainId === chainId && (other.status === "pending_key" || other.status === "pending_link")) {
+        return { ...other };
+      }
+    }
     const row: AccountRow = {
       id: a.id,
-      owner: a.owner.toLowerCase(),
-      chainId: a.chainId ?? 50383,
+      owner,
+      chainId,
       hoaxKey: null,
       status: "pending_key",
-      manageTokenHash: a.manageTokenHash,
       builderApproval1k: 0n,
       paused: false,
       linkedAt: null,
       createdAt: new Date(),
+      liqScanFrom: null,
     };
     this.accounts.set(row.id, row);
     return { ...row };
@@ -89,6 +99,10 @@ export class MemoryStore implements Store {
     this.patch(id, { builderApproval1k: approval1k });
   }
 
+  async setLiqScanFrom(id: string, block: bigint) {
+    this.patch(id, { liqScanFrom: block });
+  }
+
   async upsertPolicy(accountId: string, market: string, policy: Policy) {
     const row: PolicyRow = { ...policy, accountId, market, updatedAt: new Date() };
     this.policies.set(`${accountId}:${market}`, row);
@@ -111,7 +125,7 @@ export class MemoryStore implements Store {
       const prev = latest.get(t.market);
       if (!prev || t.createdAt >= prev.createdAt) latest.set(t.market, t);
     }
-    return [...latest.values()];
+    return [...latest.values()].map((t) => ({ ...t }));
   }
 
   async pruneHealthTicks(olderThan: Date) {
@@ -121,7 +135,8 @@ export class MemoryStore implements Store {
   }
 
   async insertAction(a: NewAction) {
-    const row: ActionRow = { ...a, owner: a.owner.toLowerCase(), createdAt: new Date() };
+    const prev = this.actions.get(a.id);
+    const row: ActionRow = { ...a, owner: a.owner.toLowerCase(), createdAt: prev?.createdAt ?? new Date() };
     this.actions.set(row.id, row);
     return { ...row };
   }
@@ -138,11 +153,19 @@ export class MemoryStore implements Store {
     return a ? { ...a } : null;
   }
 
-  async listActions(opts: { owner?: string; limit: number }) {
+  async listActions(opts: { owner?: string; chainId?: number; limit: number }) {
     return [...this.actions.values()]
       .filter((a) => !opts.owner || a.owner === opts.owner.toLowerCase())
+      .filter((a) => opts.chainId === undefined || this.accounts.get(a.accountId)?.chainId === opts.chainId)
       .sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime())
-      .slice(0, opts.limit)
+      .slice(0, Math.max(1, Math.min(500, Math.floor(opts.limit))))
+      .map((a) => ({ ...a }));
+  }
+
+  async listUnconfirmedActions(accountId: string) {
+    return [...this.actions.values()]
+      .filter((a) => a.accountId === accountId && a.outcome === "unconfirmed")
+      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
       .map((a) => ({ ...a }));
   }
 
@@ -159,12 +182,13 @@ export class MemoryStore implements Store {
     return false;
   }
 
-  async rateHit(bucket: string, windowMs: number) {
+  async rateHit(bucket: string, windowMs: number, max: number) {
     const now = Date.now();
     const hits = (this.rateHits.get(bucket) ?? []).filter((t) => now - t < windowMs);
-    hits.push(now);
+    const before = hits.length;
+    if (before < max) hits.push(now);
     this.rateHits.set(bucket, hits);
-    return hits.length;
+    return before + 1;
   }
 
   async pruneRateHits(olderThan: Date) {
@@ -186,6 +210,16 @@ export class MemoryStore implements Store {
     return last;
   }
 
+  async lastMissAt(accountId: string, pool: string) {
+    let last: Date | null = null;
+    for (const a of this.actions.values()) {
+      if (a.accountId === accountId && a.pool.toLowerCase() === pool.toLowerCase() && a.outcome === "missed" && (!last || a.createdAt > last)) {
+        last = a.createdAt;
+      }
+    }
+    return last;
+  }
+
   async upsertCounterfactual(c: CounterfactualRow) {
     this.counterfactuals.set(c.actionId, { ...c });
   }
@@ -193,6 +227,15 @@ export class MemoryStore implements Store {
   async getCounterfactual(actionId: string) {
     const c = this.counterfactuals.get(actionId);
     return c ? { ...c } : null;
+  }
+
+  async getCounterfactuals(actionIds: string[]) {
+    const out = new Map<string, CounterfactualRow>();
+    for (const id of actionIds) {
+      const c = this.counterfactuals.get(id);
+      if (c) out.set(id, { ...c });
+    }
+    return out;
   }
 
   async insertAlert(a: { accountId: string; kind: string; message: string }) {
@@ -203,16 +246,50 @@ export class MemoryStore implements Store {
     return this.alerts
       .filter((a) => a.accountId === accountId)
       .sort((x, y) => y.id - x.id)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((a) => ({ ...a }));
   }
 
-  async recordDrip(hoaxKey: string, amount: bigint, txHash: string) {
-    this.drips.push({ hoaxKey: hoaxKey.toLowerCase(), amount, txHash, at: new Date() });
+  /** For tests: the clock reservations are stamped and windowed by. */
+  now: () => number = Date.now;
+
+  async reserveDrip(r: {
+    hoaxKey: string;
+    chainId: number | null;
+    amount: bigint;
+    perKeyCap: bigint;
+    dailyCap: bigint;
+    windowMs: number;
+    minGapMs: number;
+  }): Promise<DripReservation> {
+    // Single-threaded: check and reserve happen with nothing in between.
+    const key = r.hoaxKey.toLowerCase();
+    const now = this.now();
+    const recent = this.drips.filter((d) => now - d.at.getTime() < r.windowMs);
+    const mine = recent.filter((d) => d.hoaxKey === key);
+    const last = mine.reduce((m, d) => Math.max(m, d.at.getTime()), -Infinity);
+    if (now - last < r.minGapMs) return { ok: false, reason: "recent" };
+    if (mine.reduce((s, d) => s + d.amount, 0n) + r.amount > r.perKeyCap) return { ok: false, reason: "key-cap" };
+    const total = recent.filter((d) => d.chainId === r.chainId).reduce((s, d) => s + d.amount, 0n);
+    if (total + r.amount > r.dailyCap) return { ok: false, reason: "daily-cap" };
+    const id = String(++this.dripSeq);
+    this.drips.push({ id, hoaxKey: key, chainId: r.chainId, amount: r.amount, txHash: null, at: new Date(now) });
+    return { ok: true, id };
   }
 
-  async dripsSince(since: Date, hoaxKey?: string) {
+  async completeDrip(id: string, txHash: string) {
+    const d = this.drips.find((x) => x.id === id);
+    if (d) d.txHash = txHash;
+  }
+
+  async cancelDrip(id: string) {
+    this.drips = this.drips.filter((d) => !(d.id === id && d.txHash === null));
+  }
+
+  async dripsSince(since: Date, opts: { hoaxKey?: string; chainId?: number | null } = {}) {
     return this.drips
-      .filter((d) => d.at >= since && (!hoaxKey || d.hoaxKey === hoaxKey.toLowerCase()))
+      .filter((d) => d.at >= since && (!opts.hoaxKey || d.hoaxKey === opts.hoaxKey.toLowerCase()))
+      .filter((d) => opts.chainId === undefined || d.chainId === opts.chainId)
       .reduce((s, d) => s + d.amount, 0n);
   }
 
@@ -246,5 +323,13 @@ export class MemoryStore implements Store {
     return b ? { ...b, info: { ...b.info } } : null;
   }
 
-  async close() {}
+  async acquireLease(name: string) {
+    if (this.leases.has(name)) return false;
+    this.leases.add(name);
+    return true;
+  }
+
+  async close() {
+    this.leases.clear();
+  }
 }

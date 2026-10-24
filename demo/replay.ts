@@ -114,7 +114,7 @@ const engine = new Engine({ venue, store, keys, log: silentLogger, config: DEFAU
 const linker = new Linker(venue, store, keys, null, silentLogger, now);
 const tracker = new CounterfactualTracker(venue, store, silentLogger, now);
 
-await store.createAccount({ id: "with-hoax", owner: WITH, manageTokenHash: "replay" });
+await store.createAccount({ id: "with-hoax", owner: WITH });
 store.accounts.get("with-hoax")!.createdAt = new Date(clock.now);
 await linker.run();
 venue.link(WITH, getAddress((await store.getAccount("with-hoax"))!.hoaxKey!));
@@ -140,7 +140,7 @@ for (const step of path) {
   venue.setMark(market.pool, step.mark);
   const events: string[] = [];
   for (const [owner, name] of [[WITH, "with Hoax"], [WITHOUT, "without Hoax"]] as const) {
-    const liqs = await venue.liquidationsSince(market.marginBank, owner, lastBlock + 1n);
+    const liqs = (await venue.liquidationsSince(market.marginBank, owner, lastBlock + 1n)).events;
     if (liqs.length) events.push(`${name}: liquidated ${liqs.reduce((s, l) => s + toFloat(l.sizeDelta < 0n ? -l.sizeDelta : l.sizeDelta, market.baseDecimals), 0).toFixed(4)} ${market.baseSymbol} at mark ${toFloat(step.mark).toFixed(2)}`);
   }
   lastBlock = await venue.blockNumber();

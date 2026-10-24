@@ -8,7 +8,13 @@
 //                    - equity they would have held after liquidation
 //
 // The close cost is already inside the first term (it was paid out of equity),
-// so it is not subtracted a second time. If the mark never gets there the
+// so it is not subtracted a second time.
+//
+// The second term charges the penalty and the forced close on the whole
+// position. dreamDEX liquidates in steps and can stop once the account is back
+// above maintenance, so this is an upper bound on what the close preserved:
+// what it saved if the move went on to liquidate the position fully. Every
+// place that shows the figure says so. If the mark never gets there the
 // action becomes "not-needed" and its close cost is shown as the price of
 // insurance.
 
@@ -29,12 +35,15 @@ export function evaluateTracking(args: {
   windowMs?: number;
 }): TrackingVerdict {
   if (args.liquidatedSince) return "liquidated";
+  // Past the window nothing counts any more, even if the mark is there now
+  // (the tracker can come back late after an outage).
+  if (args.ageMs >= (args.windowMs ?? COUNTERFACTUAL_WINDOW_MS)) return "expired";
   const liq = args.originalLiquidationPrice;
   if (liq !== null && liq > 0n && args.mark > 0n) {
     const reached = args.side === "long" ? args.mark <= liq : args.mark >= liq;
     if (reached) return "reached";
   }
-  return args.ageMs >= (args.windowMs ?? COUNTERFACTUAL_WINDOW_MS) ? "expired" : "pending";
+  return "pending";
 }
 
 export interface PreservedInput {

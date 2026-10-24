@@ -166,7 +166,7 @@ const keys = new MemoryKeystore();
 const key = await keys.create();
 const store = new MemoryStore();
 const id = randomUUID();
-await store.createAccount({ id, owner: safe, manageTokenHash: "spike", chainId: network.id });
+await store.createAccount({ id, owner: safe, chainId: network.id });
 await store.setHoaxKey(id, key.address);
 await store.setStatus(id, "active");
 const trigger = Math.min(9.5, Math.ceil((health + 0.1) * 100) / 100);

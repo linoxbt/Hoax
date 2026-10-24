@@ -57,7 +57,7 @@ function contract(name: string, make: () => Promise<Store>) {
 
     it("walks an account from registration to active", async () => {
       const id = randomUUID();
-      const a = await store.createAccount({ id, owner: OWNER, manageTokenHash: "h" });
+      const a = await store.createAccount({ id, owner: OWNER });
       expect(a.status).toBe("pending_key");
       expect(a.owner).toBe(OWNER.toLowerCase());
       await store.setHoaxKey(id, KEY);
@@ -76,7 +76,7 @@ function contract(name: string, make: () => Promise<Store>) {
 
     it("stores policies, ticks, actions, counterfactuals, alerts and stats", async () => {
       const id = randomUUID();
-      await store.createAccount({ id, owner: "0x00000000000000000000000000000000000000aa", manageTokenHash: "h" });
+      await store.createAccount({ id, owner: "0x00000000000000000000000000000000000000aa" });
       await store.setStatus(id, "active");
 
       await store.upsertPolicy(id, "ETH-PERP", { ...DEFAULT_POLICY, floorSize: 4n * 10n ** 15n });
@@ -122,6 +122,9 @@ function contract(name: string, make: () => Promise<Store>) {
         preserved: 30n * 10n ** 18n,
         finalOutcome: "saved",
         resolvedAt: new Date(),
+        resolution: null,
+        resolutionHash: null,
+        resolutionSignature: null,
       });
       const after = await store.stats();
       expect(after.saves).toBe(before.saves + 1);
@@ -135,8 +138,10 @@ function contract(name: string, make: () => Promise<Store>) {
       await store.insertAlert({ accountId: id, kind: "stale", message: "mark stale for 60 s" });
       expect((await store.listAlerts(id, 5))[0].kind).toBe("stale");
 
-      await store.recordDrip(KEY, 5n * 10n ** 16n, "0xd");
-      expect(await store.dripsSince(new Date(Date.now() - 60_000), KEY)).toBeGreaterThanOrEqual(5n * 10n ** 16n);
+      const drip = await store.reserveDrip({ hoaxKey: KEY, chainId: 50383, amount: 5n * 10n ** 16n, perKeyCap: 10n ** 18n, dailyCap: 10n ** 19n, windowMs: 86_400_000, minGapMs: 0 });
+      expect(drip.ok).toBe(true);
+      if (drip.ok) await store.completeDrip(drip.id, "0xd");
+      expect(await store.dripsSince(new Date(Date.now() - 60_000), { hoaxKey: KEY })).toBeGreaterThanOrEqual(5n * 10n ** 16n);
       expect((await store.listActions({ owner: OWNER, limit: 10 })).length).toBeGreaterThanOrEqual(2);
     });
 
@@ -144,8 +149,8 @@ function contract(name: string, make: () => Promise<Store>) {
       const owner = "0x00000000000000000000000000000000000000bb";
       const hideki = randomUUID();
       const shannon = randomUUID();
-      await store.createAccount({ id: hideki, owner, manageTokenHash: "h" });
-      await store.createAccount({ id: shannon, owner, manageTokenHash: "h", chainId: 50312 });
+      await store.createAccount({ id: hideki, owner });
+      await store.createAccount({ id: shannon, owner, chainId: 50312 });
       expect((await store.getAccount(shannon))?.chainId).toBe(50312);
       expect((await store.getAccountByOwner(owner))?.id).toBe(hideki);
       expect((await store.getAccountByOwner(owner, 50312))?.id).toBe(shannon);
@@ -162,8 +167,8 @@ function contract(name: string, make: () => Promise<Store>) {
       const owner = "0x00000000000000000000000000000000000000cc";
       const hideki = randomUUID();
       const shannon = randomUUID();
-      await store.createAccount({ id: hideki, owner, manageTokenHash: "h" });
-      await store.createAccount({ id: shannon, owner, manageTokenHash: "h", chainId: 50312 });
+      await store.createAccount({ id: hideki, owner });
+      await store.createAccount({ id: shannon, owner, chainId: 50312 });
       // The same pool address on both networks.
       const onHideki = await store.insertAction(action(hideki, { owner }));
       const onShannon = await store.insertAction(action(shannon, { owner }));
@@ -187,14 +192,56 @@ function contract(name: string, make: () => Promise<Store>) {
 
     it("counts rate-limit hits per bucket within the window", async () => {
       const bucket = `test:${randomUUID()}`;
-      expect(await store.rateHit(bucket, 60_000)).toBe(1);
-      expect(await store.rateHit(bucket, 60_000)).toBe(2);
-      expect(await store.rateHit(`${bucket}:other`, 60_000)).toBe(1);
+      expect(await store.rateHit(bucket, 60_000, 2)).toBe(1);
+      expect(await store.rateHit(bucket, 60_000, 2)).toBe(2);
+      // Over the limit: counted as refused, not stored.
+      expect(await store.rateHit(bucket, 60_000, 2)).toBe(3);
+      expect(await store.rateHit(bucket, 60_000, 2)).toBe(3);
+      expect(await store.rateHit(`${bucket}:other`, 60_000, 2)).toBe(1);
       await new Promise((r) => setTimeout(r, 30));
-      expect(await store.rateHit(bucket, 10)).toBe(1);
+      expect(await store.rateHit(bucket, 10, 2)).toBe(1);
       // How many rows remain to prune differs: the memory store drops expired hits as it counts.
       expect(await store.pruneRateHits(new Date(Date.now() + 1000))).toBeGreaterThan(0);
-      expect(await store.rateHit(bucket, 60_000)).toBe(1);
+      expect(await store.rateHit(bucket, 60_000, 2)).toBe(1);
+    });
+
+    it("hands back the waiting registration instead of making a second one", async () => {
+      const owner = "0x00000000000000000000000000000000000000dd";
+      const first = await store.createAccount({ id: randomUUID(), owner });
+      const again = await store.createAccount({ id: randomUUID(), owner });
+      expect(again.id).toBe(first.id);
+      // Another network is another registration.
+      expect((await store.createAccount({ id: randomUUID(), owner, chainId: 50312 })).id).not.toBe(first.id);
+      // Once the first one is no longer waiting, a new one is made.
+      await store.setStatus(first.id, "retired");
+      expect((await store.createAccount({ id: randomUUID(), owner })).id).not.toBe(first.id);
+    });
+
+    it("replaces an action by id, keeping when it was first written", async () => {
+      const id = randomUUID();
+      await store.createAccount({ id, owner: "0x00000000000000000000000000000000000000ee" });
+      const draft = await store.insertAction(action(id, { outcome: "unconfirmed", healthBefore: Number.POSITIVE_INFINITY }));
+      expect((await store.listUnconfirmedActions(id)).map((x) => x.id)).toEqual([draft.id]);
+      expect((await store.getAction(draft.id))?.healthBefore).toBe(Number.POSITIVE_INFINITY);
+      await new Promise((r) => setTimeout(r, 5));
+      const final = await store.insertAction({ ...action(id, { outcome: "pending", sizeFilled: 1n }), id: draft.id });
+      expect(final.createdAt.getTime()).toBe(draft.createdAt.getTime());
+      expect((await store.getAction(draft.id))?.sizeFilled).toBe(1n);
+      expect(await store.listUnconfirmedActions(id)).toHaveLength(0);
+      expect((await store.getCounterfactuals([draft.id, randomUUID()])).size).toBe(0);
+    });
+
+    it("keeps gas reservations inside the caps", async () => {
+      const key = `0x${randomUUID().replace(/-/g, "").slice(0, 32)}00000000`;
+      const base = { hoaxKey: key, chainId: 50312, amount: 5n, perKeyCap: 10n, dailyCap: 1_000_000n, windowMs: 86_400_000, minGapMs: 0 };
+      const a = await store.reserveDrip(base);
+      const b = await store.reserveDrip(base);
+      expect(a.ok && b.ok).toBe(true);
+      expect(await store.reserveDrip(base)).toEqual({ ok: false, reason: "key-cap" });
+      if (b.ok) await store.cancelDrip(b.id);
+      expect((await store.reserveDrip(base)).ok).toBe(true);
+      expect(await store.reserveDrip({ ...base, hoaxKey: `${key.slice(0, -1)}1`, minGapMs: 0, perKeyCap: 100n, dailyCap: 0n })).toEqual({ ok: false, reason: "daily-cap" });
+      expect(await store.reserveDrip({ ...base, perKeyCap: 100n, minGapMs: 60_000 })).toEqual({ ok: false, reason: "recent" });
     });
 
     it("keeps the newest heartbeat per service", async () => {

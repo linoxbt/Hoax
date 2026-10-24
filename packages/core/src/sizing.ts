@@ -91,23 +91,28 @@ export function sizeClose(input: SizingInput): SizingResult {
   let qty = roundUpToLot(idealQtyRaw, market.lotSize);
   if (qty < market.minQuantity) qty = market.minQuantity;
 
+  // A floor below the venue minimum would leave dust no order can close.
+  const floor = policy.floorSize !== null && policy.floorSize > market.minQuantity ? policy.floorSize : market.minQuantity;
   const cap = roundDownToLot((size * BigInt(Math.round(policy.maxClosePct * 100))) / 10_000n, market.lotSize);
   let capped = false;
+  let full = false;
   if (qty > cap) {
-    qty = cap;
-    capped = true;
+    if (cap < market.minQuantity) {
+      // The cap is below the smallest order the venue accepts. When a partial
+      // close at the minimum would still leave the floor, that partial is more
+      // than the trader allowed: do nothing and say why. When no partial close
+      // can leave the floor, the floor rule below decides (close all or nothing).
+      if (size - market.minQuantity >= floor) {
+        return { kind: "none", reason: "max close per action is below the market's minimum order size" };
+      }
+      full = true;
+    } else {
+      qty = cap;
+      capped = true;
+    }
   }
 
-  const floor = policy.floorSize ?? market.minQuantity;
-  let full = false;
-  if (qty >= size) {
-    full = true;
-  } else if (qty < market.minQuantity) {
-    // The cap left less than the venue will accept: only a full close is possible.
-    full = true;
-  } else if (size - qty < floor) {
-    full = true;
-  }
+  if (qty >= size || size - qty < floor) full = true;
 
   if (full) {
     if (!policy.allowFullClose) {

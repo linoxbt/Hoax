@@ -13,6 +13,7 @@ import type {
   FeedRead,
   IocOrder,
   LiquidationEvent,
+  LiquidationScan,
   MarginRead,
   MarketInfo,
   PlaceResult,
@@ -20,6 +21,7 @@ import type {
   TradingSigner,
   Venue,
 } from "./venue.ts";
+import { TxRejectedError, TxRevertedError, TxUnknownError } from "./venue.ts";
 
 export interface SimMarketState {
   info: MarketInfo;
@@ -70,6 +72,17 @@ export class SimVenue implements Venue {
   readonly balances = new Map<string, bigint>();
   /** Orders other actors send in the same block as the next Hoax order (race tests). */
   beforeNextOrder: (() => void) | null = null;
+  /**
+   * Make the next order fail the way a real chain can (fault tests):
+   * "reject" never sends it, "revert" mines a revert, "unknown" fills it but
+   * loses the receipt (the wait times out), "unknown-dropped" sends it and it never lands.
+   */
+  nextOrderFault: "reject" | "revert" | "unknown" | "unknown-dropped" | null = null;
+  /** Make the next sendNative lose its receipt after it lands. */
+  nextSendUnknown = false;
+  /** Builder approvals, keyed owner:builder, bps x 1000. */
+  readonly approvals = new Map<string, bigint>();
+  private results = new Map<string, PlaceResult | "reverted">();
 
   constructor(readonly liquidation: LiquidationParams = { penaltyBps: 100, minSpreadBps: 50 }) {}
 
@@ -314,29 +327,67 @@ export class SimVenue implements Venue {
     return this.accounts.get(key(owner))?.operators.has(key(operator)) ?? false;
   }
 
-  async builderApproval(): Promise<bigint> {
-    return 0n;
+  async builderApproval(_market: MarketInfo, owner: Address, builder: Address): Promise<bigint> {
+    return this.approvals.get(`${key(owner)}:${key(builder)}`) ?? 0n;
   }
 
   async maxBuilderFee(): Promise<bigint> {
     return 10_000n;
   }
 
-  async placeIocFor(signer: TradingSigner, owner: Address, market: MarketInfo, order: IocOrder): Promise<PlaceResult> {
+  async placeIocFor(
+    signer: TradingSigner,
+    owner: Address,
+    market: MarketInfo,
+    order: IocOrder,
+    onSent?: (hash: Hex) => Promise<void>,
+  ): Promise<PlaceResult> {
     const a = this.account(owner);
-    if (!a.operators.has(key(signer.address))) throw new Error("OperatorNotAuthorized");
+    if (!a.operators.has(key(signer.address))) throw new TxRejectedError("OperatorNotAuthorized");
+    const fault = this.nextOrderFault;
+    this.nextOrderFault = null;
+    if (fault === "reject") throw new TxRejectedError("SimulatedRejection");
     const race = this.beforeNextOrder;
     this.beforeNextOrder = null;
-    race?.();
     const m = this.market(market.pool);
+    // The simulation the real venue runs first: nothing to cross, nothing sent.
+    if (fault === null && this.wouldFill(m, order) === 0n) {
+      race?.();
+      return { hash: null, blockNumber: this.block, fills: [], noFill: true };
+    }
+    const hash = this.nextHash();
+    if (onSent) await onSent(hash);
+    if (fault === "unknown-dropped") throw new TxUnknownError(hash);
+    race?.();
+    this.block++;
+    if (fault === "revert") {
+      this.results.set(hash, "reverted");
+      throw new TxRevertedError(hash);
+    }
     const fee = BigInt(m.info.takerFeeBpsTimes1k) + order.builderFeeBpsTimes1k;
     const fills = this.fillIoc(a, m, order.isBid, order.quantity, order.price, fee);
-    this.block++;
-    if (fills.length === 0) return { hash: "0x", blockNumber: this.block, fills: [], noFill: true };
     this.runLiquidations();
-    const hash = this.nextHash();
+    const result: PlaceResult = { hash, blockNumber: this.block, fills, noFill: fills.length === 0 };
+    this.results.set(hash, result);
     for (const w of this.watchers) if (w.owners.has(key(owner))) w.handlers.onPositionChange(getAddress(owner), market.pool);
-    return { hash, blockNumber: this.block, fills, noFill: false };
+    if (fault === "unknown") throw new TxUnknownError(hash);
+    return result;
+  }
+
+  private wouldFill(m: SimMarketState, order: IocOrder): bigint {
+    const { bids, asks } = this.book(m);
+    const levels = order.isBid ? asks : bids;
+    let filled = 0n;
+    for (const l of levels) {
+      if (filled >= order.quantity) break;
+      if (order.isBid ? l.price > order.price : l.price < order.price) break;
+      filled += l.quantity;
+    }
+    return filled;
+  }
+
+  async orderResult(hash: Hex): Promise<PlaceResult | "reverted" | null> {
+    return this.results.get(hash) ?? null;
   }
 
   /** Another actor trades the same account (a second bot), for race tests. */
@@ -345,8 +396,12 @@ export class SimVenue implements Venue {
     this.applyFill(this.account(owner), m, isBid, qty, m.mark);
   }
 
-  async liquidationsSince(_bank: Address, owner: Address, fromBlock: bigint): Promise<LiquidationEvent[]> {
-    return this.liquidations.filter((l) => key(l.account) === key(owner) && l.blockNumber >= fromBlock);
+  async liquidationsSince(_bank: Address, owner: Address, fromBlock: bigint, maxBlocks = 20_000n): Promise<LiquidationScan> {
+    const end = fromBlock + maxBlocks - 1n < this.block ? fromBlock + maxBlocks - 1n : this.block;
+    return {
+      events: this.liquidations.filter((l) => key(l.account) === key(owner) && l.blockNumber >= fromBlock && l.blockNumber <= end),
+      toBlock: end < fromBlock ? fromBlock - 1n : end,
+    };
   }
 
   async nativeBalance(address: Address): Promise<bigint> {
@@ -358,7 +413,12 @@ export class SimVenue implements Venue {
     if (have < amount) throw new Error("insufficient funds");
     this.balances.set(key(from.address), have - amount);
     this.balances.set(key(to), (this.balances.get(key(to)) ?? 0n) + amount);
-    return this.nextHash();
+    const hash = this.nextHash();
+    if (this.nextSendUnknown) {
+      this.nextSendUnknown = false;
+      throw new TxUnknownError(hash);
+    }
+    return hash;
   }
 
   async blockNumber(): Promise<bigint> {

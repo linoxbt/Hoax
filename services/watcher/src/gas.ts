@@ -1,8 +1,10 @@
 // Keeps each linked Hoax key able to pay for its orders. Drips only to keys
-// with a confirmed link, with a per-key and a global daily cap so a bug or an
-// abuse cannot drain the gas wallet.
+// with a confirmed link, with a per-key and a per-network daily cap so a bug or
+// an abuse cannot drain the gas wallet. Each drip is reserved in the store
+// before it is sent, so the caps hold across processes and across a lost
+// receipt: a drip that was sent counts whether or not its receipt came back.
 
-import type { TradingSigner, Venue } from "@hoax/chain";
+import { TxUnknownError, type TradingSigner, type Venue } from "@hoax/chain";
 import type { Store } from "@hoax/db";
 import { getAddress, parseEther } from "viem";
 import type { Logger } from "./log.ts";
@@ -13,6 +15,8 @@ export interface GasConfig {
   dripAmount: bigint;
   perKeyDailyCap: bigint;
   dailyCap: bigint;
+  /** No second drip to the same key within this long (the balance read may not show the first yet). */
+  minGapMs?: number;
 }
 
 export const DEFAULT_GAS_CONFIG: GasConfig = {
@@ -20,11 +24,16 @@ export const DEFAULT_GAS_CONFIG: GasConfig = {
   dripAmount: parseEther("0.05"),
   perKeyDailyCap: parseEther("0.2"),
   dailyCap: parseEther("2"),
+  minGapMs: 5 * 60_000,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** A "cap reached" alert is repeated at most this often per key. */
+const CAP_ALERT_EVERY_MS = 6 * 60 * 60_000;
 
 export class GasManager {
+  private readonly capAlerted = new Map<string, number>();
+
   constructor(
     private readonly venue: Venue,
     private readonly store: Store,
@@ -43,22 +52,41 @@ export class GasManager {
     const key = getAddress(hoaxKey);
     const balance = await this.venue.nativeBalance(key);
     if (balance >= this.config.minBalance) return null;
-    const since = new Date(this.now() - DAY_MS);
-    const [forKey, total] = await Promise.all([this.store.dripsSince(since, key), this.store.dripsSince(since)]);
-    if (forKey + this.config.dripAmount > this.config.perKeyDailyCap || total + this.config.dripAmount > this.config.dailyCap) {
-      await this.store.insertAlert({
-        accountId,
-        kind: "gas",
-        message: "Hoax's key is low on STT and today's gas allowance is used up. Top it up from dreamDEX (Bots tab, Top up).",
-      });
+    const reservation = await this.store.reserveDrip({
+      hoaxKey: key,
+      chainId: this.venue.chainId ?? null,
+      amount: this.config.dripAmount,
+      perKeyCap: this.config.perKeyDailyCap,
+      dailyCap: this.config.dailyCap,
+      windowMs: DAY_MS,
+      minGapMs: this.config.minGapMs ?? DEFAULT_GAS_CONFIG.minGapMs!,
+    });
+    if (!reservation.ok) {
+      if (reservation.reason === "recent") return null; // one is on its way
+      const last = this.capAlerted.get(key);
+      if (last === undefined || this.now() - last >= CAP_ALERT_EVERY_MS) {
+        this.capAlerted.set(key, this.now());
+        await this.store.insertAlert({
+          accountId,
+          kind: "gas",
+          message: "Hoax's key is low on STT and today's gas allowance is used up. Top it up from dreamDEX (Bots tab, Top up).",
+        });
+      }
       return null;
     }
     try {
       const hash = await this.venue.sendNative(this.wallet, key, this.config.dripAmount);
-      await this.store.recordDrip(key, this.config.dripAmount, hash);
+      await this.store.completeDrip(reservation.id, hash);
       this.log.info("gas drip", { key, amount: this.config.dripAmount, tx: hash });
       return hash;
     } catch (err) {
+      if (err instanceof TxUnknownError) {
+        // Sent: it counts against the caps whether or not it lands.
+        await this.store.completeDrip(reservation.id, err.hash);
+        this.log.warn("gas drip sent, receipt not confirmed", { key, tx: err.hash });
+        return err.hash;
+      }
+      await this.store.cancelDrip(reservation.id);
       this.log.error("gas drip failed", { key, error: String(err).slice(0, 200) });
       await this.store.insertAlert({
         accountId,
@@ -71,7 +99,12 @@ export class GasManager {
 
   async run(): Promise<void> {
     for (const a of await this.store.listAccounts("active", this.venue.chainId)) {
-      if (a.hoaxKey) await this.topUp(a.hoaxKey, a.id);
+      if (!a.hoaxKey) continue;
+      try {
+        await this.topUp(a.hoaxKey, a.id);
+      } catch (err) {
+        this.log.warn("gas check failed", { account: a.owner, error: String(err).slice(0, 200) });
+      }
     }
   }
 }

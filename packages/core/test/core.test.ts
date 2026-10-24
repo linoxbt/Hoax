@@ -14,6 +14,8 @@ import {
   limitPrice,
   receiptHash,
   reconcile,
+  resolutionHash,
+  validatePolicyForMarket,
   sizeClose,
   toFloat,
   validatePolicy,
@@ -356,5 +358,63 @@ describe("policy", () => {
   it("reports health as equity over maintenance", () => {
     expect(health(usd(72), usd(60))).toBeCloseTo(1.2, 9);
     expect(health(usd(1), 0n)).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe("hardening", () => {
+  const base = { equity: usd(72), mmReq: usd(60), positionSize: eth(1), mark: MARK, market: ETH, policy: DEFAULT_POLICY };
+
+  it("flattens only its own fill when another trade reversed the position on purpose", () => {
+    // 1 long; Hoax sells 0.25; the trader sells 3 by hand in the same block.
+    const r = reconcile({ sizeBefore: eth(1), requested: eth(0.25), filled: eth(0.25), sizeAfter: -eth(2.25) });
+    expect(r.status).toBe("flipped");
+    expect(r.flipAmount).toBe(eth(0.25));
+    // A race that only overshoots zero is undone in full.
+    expect(reconcile({ sizeBefore: eth(1), requested: eth(0.25), filled: eth(0.25), sizeAfter: -eth(0.15) }).flipAmount).toBe(eth(0.15));
+  });
+
+  it("refuses to close past the cap when a minimum-size partial close is possible", () => {
+    // 0.02 ETH, 10% cap = 0.002, under the 0.004 minimum; 0.004 would still leave 0.016.
+    const r = sizeClose({ ...base, positionSize: eth(0.02), equity: usd(0.5), mmReq: usd(1.2), costRate: 0, policy: { ...DEFAULT_POLICY, maxClosePct: 10 } });
+    expect(r).toEqual({ kind: "none", reason: "max close per action is below the market's minimum order size" });
+  });
+
+  it("treats a floor under the venue minimum as the minimum", () => {
+    const r = sizeClose({ ...base, positionSize: eth(0.006), equity: usd(0.4), mmReq: usd(0.36), costRate: 0, policy: { ...DEFAULT_POLICY, floorSize: 1n } });
+    expect(r.kind === "close" && r.full).toBe(true);
+  });
+
+  it("stays quiet about a stale mark while health is far from the trigger", () => {
+    const d = decide({
+      nowMs: 0,
+      policy: DEFAULT_POLICY,
+      market: ETH,
+      state: { equity: usd(150), mmReq: usd(60), positionSize: eth(1), mark: MARK, markOk: false, liquidationPrice: null, bids: [], asks: [] },
+      liquidation: { penaltyBps: 100, minSpreadBps: 50 },
+      lastActionAtMs: null,
+      paused: false,
+      builderFeeBpsTimes1k: 0,
+    });
+    expect(d).toEqual({ type: "idle", reason: "mark feed stale", healthBefore: 2.5 });
+  });
+
+  it("guards the limit price against a zero tick", () => {
+    expect(limitPrice(MARK, true, 30, 0n)).toBe((MARK * 10_030n) / 10_000n);
+  });
+
+  it("counts nothing once the window is over, even if the mark is there now", () => {
+    expect(evaluateTracking({ side: "long", originalLiquidationPrice: 2350n * E18, mark: 2300n * E18, liquidatedSince: false, ageMs: 25 * 3600_000 })).toBe("expired");
+  });
+
+  it("checks the floor against the market minimum and the cooldown is whole seconds", () => {
+    expect(validatePolicyForMarket({ ...DEFAULT_POLICY, floorSize: 1n }, ETH)).toEqual([expect.stringContaining("market minimum")]);
+    expect(validatePolicyForMarket({ ...DEFAULT_POLICY, floorSize: 0n }, ETH)).toEqual([]);
+    expect(validatePolicy({ ...DEFAULT_POLICY, cooldownSec: 1.5 })).toEqual([expect.stringContaining("whole number")]);
+  });
+
+  it("hashes a resolution deterministically, whatever the key order", () => {
+    const r = { version: 1 as const, chainId: 50383, receiptHash: "0xab" as const, outcome: "saved" as const, reason: null, preserved: "1", reachedAtBlock: "2", resolvedAt: "2026-10-24T00:00:00.000Z" };
+    const shuffled = Object.fromEntries(Object.entries(r).reverse()) as typeof r;
+    expect(resolutionHash(shuffled)).toBe(resolutionHash(r));
   });
 });

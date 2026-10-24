@@ -67,7 +67,8 @@ export interface IdleDecision {
 export type Decision = ActDecision | SkipDecision | IdleDecision;
 
 /** The IOC limit price: never worse than max slippage from the mark, rounded inside it. */
-export function limitPrice(mark: bigint, isBid: boolean, slippageBps: number, tick: bigint): bigint {
+export function limitPrice(mark: bigint, isBid: boolean, slippageBps: number, tickSize: bigint): bigint {
+  const tick = tickSize > 0n ? tickSize : 1n;
   const slip = BigInt(Math.round(slippageBps));
   if (isBid) {
     const raw = (mark * (10_000n + slip)) / 10_000n;
@@ -84,11 +85,15 @@ export function decide(input: DecideInput): Decision {
   if (input.paused) return { type: "idle", reason: "paused", healthBefore: H };
   if (!policy.enabled) return { type: "idle", reason: "policy off", healthBefore: H };
   if (state.positionSize === 0n) return { type: "idle", reason: "no position", healthBefore: H };
+  const aboveTrigger = H > policy.triggerHealth - policy.triggerMargin;
   if (!state.markOk || state.mark <= 0n) {
+    // Never act on a stale mark. Only worth telling the trader when health is
+    // near enough to the trigger that Hoax would otherwise be looking.
+    if (aboveTrigger) return { type: "idle", reason: "mark feed stale", healthBefore: H };
     return { type: "skip", reason: "mark feed stale", healthBefore: H, alert: true };
   }
   if (!Number.isFinite(H)) return { type: "idle", reason: "no maintenance requirement", healthBefore: H };
-  if (H > policy.triggerHealth - policy.triggerMargin) {
+  if (aboveTrigger) {
     return { type: "idle", reason: "health above trigger", healthBefore: H };
   }
   if (input.lastActionAtMs !== null && input.nowMs - input.lastActionAtMs < policy.cooldownSec * 1000) {
@@ -114,7 +119,10 @@ export function decide(input: DecideInput): Decision {
     builderFeeBpsTimes1k: input.builderFeeBpsTimes1k,
   });
   costRate = Math.max(costRate, close.rate);
+  // The rate the final sizing was solved with, reported on the decision.
+  let sizedAt = costRate;
   for (let round = 0; round < 3; round++) {
+    sizedAt = costRate;
     sizing = sizeClose({
       equity: state.equity,
       mmReq: state.mmReq,
@@ -168,6 +176,6 @@ export function decide(input: DecideInput): Decision {
     gate,
     estCloseCost: close.cost,
     estLiquidationCost: liq.cost,
-    costRate,
+    costRate: sizedAt,
   };
 }

@@ -12,11 +12,22 @@
 //
 // Hoax builds the same transaction, scoped tighter: per-pool grants on the
 // perp pools only, never the registry's global grant, so the key cannot touch
-// a spot pool. The wallet sends it straight to its Safe as a pre-validated
+// a spot pool, and placeOrderFor only, the one call the engine makes: the key
+// cannot cancel or shrink the trader's resting orders. The wallet sends it straight to its Safe as a pre-validated
 // execution (msg.sender is the owner), so one confirmation links every market.
 
 import { accountsAt, getAccountsPage, planExecution, prevalidatedExecution, type Call } from "@somnia-chain/accounts-sdk";
-import { createPublicClient, encodeFunctionData, getAddress, http, parseAbi, type Address, type Hex, type PublicClient } from "viem";
+import {
+  ContractFunctionExecutionError,
+  createPublicClient,
+  encodeFunctionData,
+  getAddress,
+  http,
+  parseAbi,
+  type Address,
+  type Hex,
+  type PublicClient,
+} from "viem";
 import { TRADING_KEY_SELECTOR } from "./dreamdex.ts";
 import { HIDEKI, type Network } from "./networks.ts";
 
@@ -37,7 +48,14 @@ const SAFE_ABI = parseAbi(["function getOwners() view returns (address[])", "fun
 /** How many factory indices to look at for an account derived from the wallet. dreamDEX used index 0. */
 const ACCOUNT_INDICES = [0n, 1n, 2n, 3n] as const;
 
-export const HOAX_SELECTORS = [
+/** What the Hoax key is granted: the engine only ever places IOC closes. */
+export const HOAX_SELECTORS = [TRADING_KEY_SELECTOR.placeOrderFor] as const satisfies readonly Hex[];
+
+/**
+ * What an unlink revokes: everything "Link a bot" can grant, so a key linked
+ * there (or by an older Hoax that granted all three) is fully removed.
+ */
+export const REVOKE_SELECTORS = [
   TRADING_KEY_SELECTOR.placeOrderFor,
   TRADING_KEY_SELECTOR.cancelOrderFor,
   TRADING_KEY_SELECTOR.reduceOrderFor,
@@ -63,6 +81,8 @@ export interface LinkTx {
    * "global": one registry-wide grant, for an account that is the wallet itself.
    */
   scope: "pool" | "global";
+  /** A builder approval was asked for but cannot ride a registry-wide link (no Safe to batch through). */
+  builderSkipped: boolean;
 }
 
 export interface LinkRequest {
@@ -129,8 +149,12 @@ export class DreamDexAccounts {
         this.client.readContract({ address: account, abi: SAFE_ABI, functionName: "getThreshold" }),
       ]);
       return threshold === 1n && owners.some((o) => o.toLowerCase() === wallet.toLowerCase());
-    } catch {
-      return false;
+    } catch (err) {
+      // The call reverted or returned nothing: not a Safe, so the wallet does
+      // not control it. Anything else (the RPC failed) is "unknown", which the
+      // caller must not treat or cache as "no".
+      if (err instanceof ContractFunctionExecutionError) return false;
+      throw err;
     }
   }
 
@@ -175,6 +199,7 @@ export class DreamDexAccounts {
     const registry = await this.operatorRegistry(req.pools[0]);
     const calls: Call[] = [];
     const labels: LinkTx["calls"] = [];
+    const selectors = req.approved ? [...HOAX_SELECTORS] : [...REVOKE_SELECTORS];
     for (const pool of req.pools) {
       calls.push({
         to: registry,
@@ -182,12 +207,13 @@ export class DreamDexAccounts {
         data: encodeFunctionData({
           abi: REGISTRY_ABI,
           functionName: "setOperatorApprovalForPool",
-          args: [pool, req.operator, [...HOAX_SELECTORS], req.approved],
+          args: [pool, req.operator, selectors, req.approved],
         }),
       });
-      labels.push({ to: registry, label: `${req.approved ? "grant" : "revoke"} trade-only on ${pool}` });
+      labels.push({ to: registry, label: `${req.approved ? "grant place-order only" : "revoke the key"} on ${pool}` });
     }
-    if (req.builder && req.builder.feeBpsTimes1k > 0n) {
+    // Granting needs a fee to approve; revoking clears any approval for the builder.
+    if (req.builder && (req.approved ? req.builder.feeBpsTimes1k > 0n : true)) {
       const fee = req.approved ? req.builder.feeBpsTimes1k : 0n;
       for (const pool of req.pools) {
         calls.push({
@@ -201,22 +227,25 @@ export class DreamDexAccounts {
 
     if (req.wallet.toLowerCase() === req.account.toLowerCase()) {
       // A trader who trades from the wallet itself has no Safe to batch through,
-      // and one confirmation per pool would be dozens. So the key gets the same
-      // three order selectors registry-wide in one call, as dreamDEX's own
-      // "Link a bot" does. Still no withdraw or transfer; the engine only ever
-      // trades the perp pools. Builder approvals need a call per pool and are skipped.
+      // and one confirmation per pool would be dozens. So the key gets
+      // placeOrderFor registry-wide in one call (dreamDEX's own "Link a bot"
+      // grants three selectors that way). Still no withdraw or transfer; the
+      // engine only ever trades the perp pools. Builder approvals need a call
+      // per pool and are skipped: the result says so in `builderSkipped`.
       return {
         to: registry,
-        data: encodeFunctionData({ abi: REGISTRY_ABI, functionName: "setOperatorApprovalGlobal", args: [req.operator, [...HOAX_SELECTORS], req.approved] }),
+        data: encodeFunctionData({ abi: REGISTRY_ABI, functionName: "setOperatorApprovalGlobal", args: [req.operator, selectors, req.approved] }),
         value: 0n,
         from: req.wallet,
-        calls: [{ to: registry, label: `${req.approved ? "grant" : "revoke"} trade-only on every pool, registry-wide` }],
+        calls: [{ to: registry, label: `${req.approved ? "grant place-order only" : "revoke the key"} on every pool, registry-wide` }],
         scope: "global",
+        builderSkipped: Boolean(req.builder),
       };
     }
+    // A pre-validated execTransaction carries no nonce; planExecution's field is unused on this path.
     const plan = planExecution({ chainId: this.network.id, account: req.account, calls, nonce: 0n });
     const tx = prevalidatedExecution(plan, req.wallet);
-    return { to: getAddress(tx.to), data: tx.data, value: tx.value, from: req.wallet, calls: labels, scope: "pool" };
+    return { to: getAddress(tx.to), data: tx.data, value: tx.value, from: req.wallet, calls: labels, scope: "pool", builderSkipped: false };
   }
 
   /** Gas for the link transaction, from the wallet that will send it, with headroom. */

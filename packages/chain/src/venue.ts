@@ -43,11 +43,48 @@ export interface Fill {
 }
 
 export interface PlaceResult {
-  hash: Hex;
+  /** null when nothing was sent (the IOC simulated to no fill). */
+  hash: Hex | null;
   blockNumber: bigint;
   fills: Fill[];
   /** The IOC found nothing to cross (the pool reverts ImmediateOrCancelNoFill). */
   noFill: boolean;
+}
+
+/** A transaction was never sent: the simulation refused it. Nothing changed on chain. */
+export class TxRejectedError extends Error {
+  constructor(readonly reason: string) {
+    super(`rejected: ${reason}`);
+    this.name = "TxRejectedError";
+  }
+}
+
+/** A transaction was mined and reverted: gas was spent, nothing else changed. */
+export class TxRevertedError extends Error {
+  constructor(readonly hash: Hex) {
+    super(`reverted on chain (tx ${hash})`);
+    this.name = "TxRevertedError";
+  }
+}
+
+/**
+ * A transaction was sent but its result is not known: the receipt wait timed
+ * out or the connection dropped. It may still land, or may already have.
+ */
+export class TxUnknownError extends Error {
+  constructor(
+    readonly hash: Hex,
+    readonly cause?: unknown,
+  ) {
+    super(`sent, result unknown (tx ${hash})`);
+    this.name = "TxUnknownError";
+  }
+}
+
+export interface LiquidationScan {
+  events: LiquidationEvent[];
+  /** The last block the scan covered. The next scan starts after it. */
+  toBlock: bigint;
 }
 
 /** A key that signs for an account it was linked to. */
@@ -92,11 +129,28 @@ export interface Venue {
   /** The owner's effective builder-fee approval for `builder`, bps x 1000. */
   builderApproval(market: MarketInfo, owner: Address, builder: Address): Promise<bigint>;
   maxBuilderFee(market: MarketInfo): Promise<bigint>;
-  /** Send an immediate-or-cancel order for `owner`, signed by the linked key. */
-  placeIocFor(signer: TradingSigner, owner: Address, market: MarketInfo, order: IocOrder): Promise<PlaceResult>;
-  /** Liquidations of `owner` from `fromBlock` to the head. Implementations may bound how far back they look. */
-  liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint): Promise<LiquidationEvent[]>;
+  /**
+   * Send an immediate-or-cancel order for `owner`, signed by the linked key.
+   * `onSent` runs as soon as the transaction has a hash, before its receipt is
+   * awaited. Throws TxRejectedError (never sent), TxRevertedError (mined and
+   * reverted) or TxUnknownError (sent, result unknown).
+   */
+  placeIocFor(
+    signer: TradingSigner,
+    owner: Address,
+    market: MarketInfo,
+    order: IocOrder,
+    onSent?: (hash: Hex) => Promise<void>,
+  ): Promise<PlaceResult>;
+  /** The result of an order sent earlier: its fills, "reverted", or null while it has no receipt. */
+  orderResult(hash: Hex, market: MarketInfo): Promise<PlaceResult | "reverted" | null>;
+  /**
+   * Liquidations of `owner` from `fromBlock`, covering at most `maxBlocks`
+   * blocks towards the head. Page forward from `toBlock + 1`.
+   */
+  liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint, maxBlocks?: bigint): Promise<LiquidationScan>;
   nativeBalance(address: Address): Promise<bigint>;
+  /** Throws TxUnknownError when it was sent but not confirmed. */
   sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex>;
   blockNumber(): Promise<bigint>;
   /** Push position changes and liquidations for these owners. Returns an unsubscribe. */

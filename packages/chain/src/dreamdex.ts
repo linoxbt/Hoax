@@ -16,6 +16,9 @@ import {
 } from "@somnia-chain/markets-sdk";
 import type { LiquidationParams } from "@hoax/core";
 import {
+  BaseError,
+  ContractFunctionRevertedError,
+  TransactionReceiptNotFoundError,
   createPublicClient,
   createWalletClient,
   getAddress,
@@ -25,6 +28,7 @@ import {
   type Address,
   type Hex,
   type PublicClient,
+  type TransactionReceipt,
 } from "viem";
 import type {
   AccountEventHandlers,
@@ -32,6 +36,7 @@ import type {
   FeedRead,
   IocOrder,
   LiquidationEvent,
+  LiquidationScan,
   MarginRead,
   MarketInfo,
   PlaceResult,
@@ -39,9 +44,8 @@ import type {
   TradingSigner,
   Venue,
 } from "./venue.ts";
+import { TxRejectedError, TxRevertedError, TxUnknownError } from "./venue.ts";
 import { HIDEKI, type Network } from "./networks.ts";
-
-
 
 /** The selectors "Link a bot" grants, as the OperatorPermissionsRegistry keys them. */
 export const TRADING_KEY_SELECTOR = {
@@ -66,8 +70,22 @@ const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const MARKET_TTL_MS = 5 * 60 * 1000;
 /** eth_getLogs span the Hideki RPC accepts: toBlock - fromBlock <= 1000. */
 const LOG_WINDOW = 1000n;
-/** How far back a liquidation scan reaches: 12,000 blocks of 100 ms, 20 minutes. */
-const MAX_LOG_LOOKBACK = 12_000n;
+/** Blocks one liquidation scan covers at most (20 windows); callers page forward from toBlock + 1. */
+const DEFAULT_SCAN_BLOCKS = 20_000n;
+/** How long a sent transaction's receipt is awaited before its result counts as unknown. */
+const RECEIPT_TIMEOUT_MS = 60_000;
+/** SDK reads go over its own WebSocket transport, which has no timeout of its own. */
+const DEFAULT_READ_TIMEOUT_MS = 15_000;
+
+/** The revert's name when the error carries one (e.g. ImmediateOrCancelNoFill), else viem's short message. */
+export function revertName(err: unknown): string {
+  if (err instanceof BaseError) {
+    const revert = err.walk((e) => e instanceof ContractFunctionRevertedError);
+    if (revert instanceof ContractFunctionRevertedError) return revert.data?.errorName ?? revert.reason ?? revert.shortMessage;
+    return err.shortMessage;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
 
 export interface DreamDexVenueOptions {
   rpcUrl?: string;
@@ -75,6 +93,8 @@ export interface DreamDexVenueOptions {
   indexerUrl?: string;
   /** Per-request RPC timeout. viem's 10 s default is too short for a cold fork. */
   rpcTimeoutMs?: number;
+  /** Timeout for reads through the markets SDK. */
+  readTimeoutMs?: number;
   /** Which network's dreamDEX. Defaults to Hideki. */
   network?: Network;
 }
@@ -87,6 +107,7 @@ export class DreamDexVenue implements Venue {
   private readonly publicClient: PublicClient;
   private readonly rpcUrl: string;
   private readonly rpcTimeoutMs: number | undefined;
+  private readonly readTimeoutMs: number;
   private readonly wsUrl: string;
   private markets: { at: number; list: MarketInfo[] } | null = null;
   private liquidation = new Map<string, { engine: Address; params: LiquidationParams }>();
@@ -97,6 +118,7 @@ export class DreamDexVenue implements Venue {
     this.chainId = this.network.id;
     this.rpcUrl = opts.rpcUrl ?? this.network.rpcUrl;
     this.rpcTimeoutMs = opts.rpcTimeoutMs;
+    this.readTimeoutMs = opts.readTimeoutMs ?? Math.max(DEFAULT_READ_TIMEOUT_MS, opts.rpcTimeoutMs ?? 0);
     this.wsUrl = opts.wsUrl ?? this.network.wsUrl;
     this.exchange = new SomniaMarkets({
       chain: this.network.chain,
@@ -111,12 +133,21 @@ export class DreamDexVenue implements Venue {
     return this.exchange.client;
   }
 
+  /** A read that gives up after the read timeout, so one hung socket cannot stall a tick. */
+  private timed<T>(what: string, p: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} timed out after ${this.readTimeoutMs} ms`)), this.readTimeoutMs);
+    });
+    return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+  }
+
   async listMarkets(): Promise<MarketInfo[]> {
     if (this.markets && Date.now() - this.markets.at < MARKET_TTL_MS) return this.markets.list;
-    const rows = await this.client.listPerpMarkets();
+    const rows = await this.timed("listPerpMarkets", this.client.listPerpMarkets());
     const list = await Promise.all(
       rows.map(async (m): Promise<MarketInfo> => {
-        const risk = await this.client.getPerpRiskParams(m.poolAddress);
+        const risk = await this.timed("getPerpRiskParams", this.client.getPerpRiskParams(m.poolAddress));
         return {
           symbol: `${m.baseSymbol ?? "?"}-PERP`,
           baseSymbol: m.baseSymbol ?? "?",
@@ -138,9 +169,9 @@ export class DreamDexVenue implements Venue {
   private async engineFor(marginBank: Address) {
     const cached = this.liquidation.get(marginBank.toLowerCase());
     if (cached) return cached;
-    const system = await this.client.getPerpSystemConfig(marginBank);
+    const system = await this.timed("getPerpSystemConfig", this.client.getPerpSystemConfig(marginBank));
     const engine = getAddress(system.liquidationEngine);
-    const config = await this.client.getLiquidationEngineConfig(engine);
+    const config = await this.timed("getLiquidationEngineConfig", this.client.getLiquidationEngineConfig(engine));
     const entry = {
       engine,
       params: { penaltyBps: Number(config.penaltyBps), minSpreadBps: Number(config.minSpreadBps) },
@@ -154,7 +185,7 @@ export class DreamDexVenue implements Venue {
   }
 
   async readMargin(marginBank: Address, owner: Address): Promise<MarginRead> {
-    const a = await this.client.getMarginAccount(marginBank, owner);
+    const a = await this.timed("getMarginAccount", this.client.getMarginAccount(marginBank, owner));
     return {
       blockNumber: a.asOfBlock,
       equity: a.equity,
@@ -166,21 +197,21 @@ export class DreamDexVenue implements Venue {
   }
 
   async readPosition(market: MarketInfo, owner: Address): Promise<PositionRead> {
-    const p = await this.client.getPerpPosition({ marginBank: market.marginBank, account: owner, pool: market.pool });
+    const p = await this.timed("getPerpPosition", this.client.getPerpPosition({ marginBank: market.marginBank, account: owner, pool: market.pool }));
     return { size: p.size, avgEntryPrice: p.avgEntryPrice };
   }
 
   async readFeed(market: MarketInfo): Promise<FeedRead> {
-    const f = await this.client.getPerpFeedStatus(market.pool);
+    const f = await this.timed("getPerpFeedStatus", this.client.getPerpFeedStatus(market.pool));
     return { markPrice: f.markPrice, markOk: f.markPriceOk && f.markPrice > 0n };
   }
 
   async readLiquidationPrice(market: MarketInfo, owner: Address): Promise<bigint | null> {
-    return this.client.getLiquidationPrice({ marginBank: market.marginBank, pool: market.pool, account: owner });
+    return this.timed("getLiquidationPrice", this.client.getLiquidationPrice({ marginBank: market.marginBank, pool: market.pool, account: owner }));
   }
 
   async readBook(market: MarketInfo, depth: number): Promise<BookRead> {
-    const b = await this.client.getSpotOrderBook(market.pool, { depth });
+    const b = await this.timed("getSpotOrderBook", this.client.getSpotOrderBook(market.pool, { depth }));
     return {
       blockNumber: b.blockNumber ?? 0n,
       bids: b.bids.map((l) => ({ price: BigInt(l.price), quantity: BigInt(l.quantity) })),
@@ -198,14 +229,20 @@ export class DreamDexVenue implements Venue {
   }
 
   async builderApproval(market: MarketInfo, owner: Address, builder: Address): Promise<bigint> {
-    return this.client.getEffectiveBuilderApproval({ pool: market.pool, user: owner, builder });
+    return this.timed("getEffectiveBuilderApproval", this.client.getEffectiveBuilderApproval({ pool: market.pool, user: owner, builder }));
   }
 
   async maxBuilderFee(market: MarketInfo): Promise<bigint> {
-    return this.client.getMaxBuilderFeeBpsTimes1k(market.pool);
+    return this.timed("getMaxBuilderFeeBpsTimes1k", this.client.getMaxBuilderFeeBpsTimes1k(market.pool));
   }
 
-  async placeIocFor(signer: TradingSigner, owner: Address, market: MarketInfo, order: IocOrder): Promise<PlaceResult> {
+  async placeIocFor(
+    signer: TradingSigner,
+    owner: Address,
+    market: MarketInfo,
+    order: IocOrder,
+    onSent?: (hash: Hex) => Promise<void>,
+  ): Promise<PlaceResult> {
     const wallet = createWalletClient({ account: signer, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const expire = BigInt(Math.floor(Date.now() / 1000) + 3600) * 1_000_000_000n;
     let request;
@@ -231,16 +268,32 @@ export class DreamDexVenue implements Venue {
         gas: ORDER_GAS,
       }));
     } catch (err) {
-      if (String((err as Error).message).includes("ImmediateOrCancelNoFill")) {
-        return { hash: "0x", blockNumber: await this.blockNumber(), fills: [], noFill: true };
+      const name = revertName(err);
+      if (name.includes("ImmediateOrCancelNoFill")) {
+        return { hash: null, blockNumber: await this.blockNumber(), fills: [], noFill: true };
       }
-      throw err;
+      throw new TxRejectedError(name);
     }
-    const hash = await wallet.writeContract(request);
-    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status !== "success") {
-      throw new Error(`placeOrderFor reverted on chain (tx ${hash})`);
+    // Once writeContract returns a hash the order may land whatever happens
+    // next, so every later failure is "result unknown", never "rejected".
+    let hash: Hex;
+    try {
+      hash = await wallet.writeContract(request);
+    } catch (err) {
+      throw new TxRejectedError(revertName(err));
     }
+    if (onSent) await onSent(hash);
+    let receipt: TransactionReceipt;
+    try {
+      receipt = await this.publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+    } catch (err) {
+      throw new TxUnknownError(hash, err);
+    }
+    if (receipt.status !== "success") throw new TxRevertedError(hash);
+    return this.placeResult(hash, receipt, market);
+  }
+
+  private placeResult(hash: Hex, receipt: TransactionReceipt, market: MarketInfo): PlaceResult {
     const decoded = decodePlaceOrder(receipt, market.pool);
     return {
       hash,
@@ -250,15 +303,29 @@ export class DreamDexVenue implements Venue {
     };
   }
 
-  async liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint): Promise<LiquidationEvent[]> {
+  async orderResult(hash: Hex, market: MarketInfo): Promise<PlaceResult | "reverted" | null> {
+    let receipt: TransactionReceipt;
+    try {
+      receipt = await this.publicClient.getTransactionReceipt({ hash });
+    } catch (err) {
+      if (err instanceof TransactionReceiptNotFoundError) return null;
+      throw err;
+    }
+    if (receipt.status !== "success") return "reverted";
+    return this.placeResult(hash, receipt, market);
+  }
+
+  async liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint, maxBlocks = DEFAULT_SCAN_BLOCKS): Promise<LiquidationScan> {
     const { engine } = await this.engineFor(marginBank);
     const head = await this.publicClient.getBlockNumber();
     // The Hideki RPC refuses eth_getLogs when toBlock - fromBlock exceeds 1000
-    // (100 s of blocks), so read in windows, never further back than MAX_LOG_LOOKBACK.
-    let from = fromBlock > head - MAX_LOG_LOOKBACK ? fromBlock : head - MAX_LOG_LOOKBACK;
+    // (100 s of blocks), so read in windows. A scan covers at most maxBlocks;
+    // the caller keeps its cursor and pages forward, so nothing is skipped.
+    const end = fromBlock + maxBlocks - 1n < head ? fromBlock + maxBlocks - 1n : head;
+    let from = fromBlock;
     const out: LiquidationEvent[] = [];
-    while (from <= head) {
-      const to = from + LOG_WINDOW < head ? from + LOG_WINDOW : head;
+    while (from <= end) {
+      const to = from + LOG_WINDOW < end ? from + LOG_WINDOW : end;
       const logs = await this.publicClient.getContractEvents({
         address: engine,
         abi: liquidationEngineEventsAbi,
@@ -280,7 +347,7 @@ export class DreamDexVenue implements Venue {
       }
       from = to + 1n;
     }
-    return out;
+    return { events: out, toBlock: end < fromBlock ? fromBlock - 1n : end };
   }
 
   async nativeBalance(address: Address): Promise<bigint> {
@@ -290,7 +357,13 @@ export class DreamDexVenue implements Venue {
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {
     const wallet = createWalletClient({ account: from, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const hash = await wallet.sendTransaction({ to, value: amount, chain: this.network.chain });
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    let receipt: TransactionReceipt;
+    try {
+      receipt = await this.publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+    } catch (err) {
+      throw new TxUnknownError(hash, err);
+    }
+    if (receipt.status !== "success") throw new TxRevertedError(hash);
     return hash;
   }
 
@@ -302,6 +375,7 @@ export class DreamDexVenue implements Venue {
     if (owners.length === 0) return () => {};
     const ws = createPublicClient({ chain: this.network.chain, transport: webSocket(this.wsUrl) });
     const stops: Array<() => void> = [];
+    let stopped = false;
     stops.push(
       ws.watchContractEvent({
         address: marginBank,
@@ -318,6 +392,7 @@ export class DreamDexVenue implements Venue {
       }),
     );
     void this.engineFor(marginBank).then(({ engine }) => {
+      if (stopped) return; // unsubscribed before the engine address resolved
       stops.push(
         ws.watchContractEvent({
           address: engine,
@@ -342,6 +417,9 @@ export class DreamDexVenue implements Venue {
       );
     }, handlers.onError);
     return () => {
+      // The socket itself is viem's, cached per URL and shared with the SDK's
+      // reads, so only the subscriptions stop here.
+      stopped = true;
       for (const stop of stops) stop();
     };
   }

@@ -58,7 +58,12 @@ export const DEFAULT_POLICY: Policy = {
   enabled: true,
 };
 
-export type Outcome = "saved" | "not-needed" | "missed" | "conflict" | "skipped" | "pending";
+/**
+ * "unconfirmed": an order was sent and its result is not known yet (the
+ * receipt wait failed, or the process stopped). The engine confirms it from
+ * the chain before it acts on that market again.
+ */
+export type Outcome = "saved" | "not-needed" | "missed" | "conflict" | "skipped" | "pending" | "unconfirmed";
 
 /** Liquidation parameters read from the LiquidationEngine. */
 export interface LiquidationParams {
