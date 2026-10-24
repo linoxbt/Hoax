@@ -83,6 +83,31 @@ export class SimVenue implements Venue {
   /** Builder approvals, keyed owner:builder, bps x 1000. */
   readonly approvals = new Map<string, bigint>();
   private results = new Map<string, PlaceResult | "reverted">();
+  /** Per signer: nonces handed out, and those used on chain (mined, cancelled or reverted). */
+  private nextNonce = new Map<string, number>();
+  private usedNonces = new Map<string, Set<number>>();
+  /** Orders stuck in the "mempool": they land if released, unless their nonce was cancelled. */
+  private stuck = new Map<string, { nonce: number; signer: string; land: () => void }>();
+
+  private takeNonce(signer: string): number {
+    const n = this.nextNonce.get(key(signer)) ?? 0;
+    this.nextNonce.set(key(signer), n + 1);
+    return n;
+  }
+
+  private useNonce(signer: string, nonce: number): void {
+    const used = this.usedNonces.get(key(signer)) ?? new Set<number>();
+    used.add(nonce);
+    this.usedNonces.set(key(signer), used);
+  }
+
+  /** For tests: a stuck order lands now (if its nonce was not cancelled first). */
+  releaseStuck(): void {
+    for (const [hash, s] of this.stuck) {
+      this.stuck.delete(hash);
+      if (!this.usedNonces.get(s.signer)?.has(s.nonce)) s.land();
+    }
+  }
 
   constructor(readonly liquidation: LiquidationParams = { penaltyBps: 100, minSpreadBps: 50 }) {}
 
@@ -340,7 +365,7 @@ export class SimVenue implements Venue {
     owner: Address,
     market: MarketInfo,
     order: IocOrder,
-    onSent?: (hash: Hex) => Promise<void>,
+    onSent?: (hash: Hex, nonce: number) => Promise<void>,
   ): Promise<PlaceResult> {
     const a = this.account(owner);
     if (!a.operators.has(key(signer.address))) throw new TxRejectedError("OperatorNotAuthorized");
@@ -356,20 +381,32 @@ export class SimVenue implements Venue {
       return { hash: null, blockNumber: this.block, fills: [], noFill: true };
     }
     const hash = this.nextHash();
-    if (onSent) await onSent(hash);
-    if (fault === "unknown-dropped") throw new TxUnknownError(hash);
+    const nonce = this.takeNonce(signer.address);
+    if (onSent) await onSent(hash, nonce);
+    const land = (): PlaceResult => {
+      this.useNonce(signer.address, nonce);
+      this.block++;
+      const fee = BigInt(m.info.takerFeeBpsTimes1k) + order.builderFeeBpsTimes1k;
+      const fills = this.fillIoc(a, m, order.isBid, order.quantity, order.price, fee);
+      this.runLiquidations();
+      const result: PlaceResult = { hash, blockNumber: this.block, fills, noFill: fills.length === 0 };
+      this.results.set(hash, result);
+      for (const w of this.watchers) if (w.owners.has(key(owner))) w.handlers.onPositionChange(getAddress(owner), market.pool);
+      return result;
+    };
+    if (fault === "unknown-dropped") {
+      // Waiting in the mempool: it lands if released before its nonce is cancelled.
+      this.stuck.set(hash, { nonce, signer: key(signer.address), land: () => void land() });
+      throw new TxUnknownError(hash);
+    }
     race?.();
-    this.block++;
     if (fault === "revert") {
+      this.useNonce(signer.address, nonce);
+      this.block++;
       this.results.set(hash, "reverted");
       throw new TxRevertedError(hash);
     }
-    const fee = BigInt(m.info.takerFeeBpsTimes1k) + order.builderFeeBpsTimes1k;
-    const fills = this.fillIoc(a, m, order.isBid, order.quantity, order.price, fee);
-    this.runLiquidations();
-    const result: PlaceResult = { hash, blockNumber: this.block, fills, noFill: fills.length === 0 };
-    this.results.set(hash, result);
-    for (const w of this.watchers) if (w.owners.has(key(owner))) w.handlers.onPositionChange(getAddress(owner), market.pool);
+    const result = land();
     if (fault === "unknown") throw new TxUnknownError(hash);
     return result;
   }
@@ -388,6 +425,23 @@ export class SimVenue implements Venue {
 
   async orderResult(hash: Hex): Promise<PlaceResult | "reverted" | null> {
     return this.results.get(hash) ?? null;
+  }
+
+  async minedNonce(address: Address): Promise<number> {
+    const used = this.usedNonces.get(key(address)) ?? new Set<number>();
+    let n = 0;
+    while (used.has(n)) n++;
+    return n;
+  }
+
+  async knowsTransaction(hash: Hex): Promise<boolean> {
+    return this.results.has(hash) || this.stuck.has(hash);
+  }
+
+  async cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex> {
+    this.useNonce(signer.address, nonce);
+    for (const [h, s] of this.stuck) if (s.signer === key(signer.address) && s.nonce === nonce) this.stuck.delete(h);
+    return this.nextHash();
   }
 
   /** Another actor trades the same account (a second bot), for race tests. */

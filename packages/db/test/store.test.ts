@@ -19,6 +19,7 @@ function action(accountId: string, over: Partial<NewAction> = {}): NewAction {
     side: "long",
     block: 10n,
     txHash: "0x01",
+    txNonce: 0,
     sizeBefore: 10n ** 18n,
     sizeRequested: 25n * 10n ** 16n,
     sizeFilled: 25n * 10n ** 16n,
@@ -109,7 +110,10 @@ function contract(name: string, make: () => Promise<Store>) {
       const a = await store.insertAction(action(id));
       expect(a.sizeFilled).toBe(25n * 10n ** 16n);
       expect((await store.listPendingActions()).some((x) => x.id === a.id)).toBe(true);
-      expect(await store.lastActionAt(id, "ETH-PERP")).not.toBeNull();
+      expect(await store.lastActionAt(OWNER, 50383, "ETH-PERP")).toBeNull(); // this test's receipt has no createdAt
+      await store.insertAction(action(id, { receipt: { ...a.receipt, createdAt: "2026-10-24T10:00:00.000Z" } }));
+      expect((await store.lastActionAt(OWNER, 50383, "ETH-PERP"))?.toISOString()).toBe("2026-10-24T10:00:00.000Z");
+      expect(await store.lastActionAt(OWNER, 50312, "ETH-PERP")).toBeNull();
 
       const before = await store.stats();
       await store.updateActionOutcome(a.id, "saved");
@@ -177,17 +181,21 @@ function contract(name: string, make: () => Promise<Store>) {
       expect(hidekiPending).not.toContain(onShannon.id);
       expect((await store.listPendingActions()).map((x) => x.id)).toEqual(expect.arrayContaining([onHideki.id, onShannon.id]));
 
-      expect(await store.liquidatedAfter(hideki, onHideki.pool, onHideki.createdAt)).toBe(false);
-      await new Promise((r) => setTimeout(r, 5));
-      // A miss on the other network's account does not count.
-      await store.insertAction(action(shannon, { owner, outcome: "missed" }));
-      expect(await store.liquidatedAfter(hideki, onHideki.pool, onHideki.createdAt)).toBe(false);
-      // Nor do newer receipts crowding it out: the lookup is exact, not the last N.
-      for (let i = 0; i < 3; i++) await store.insertAction(action(hideki, { owner, outcome: "skipped" }));
-      await store.insertAction(action(hideki, { owner, outcome: "missed", pool: `0x${onHideki.pool.slice(2).toUpperCase()}` }));
-      for (let i = 0; i < 3; i++) await store.insertAction(action(hideki, { owner, outcome: "skipped" }));
-      expect(await store.liquidatedAfter(hideki, onHideki.pool, onHideki.createdAt)).toBe(true);
-      expect(await store.liquidatedAfter(hideki, "0x0000000000000000000000000000000000000001", onHideki.createdAt)).toBe(false);
+      const after = onHideki.block!;
+      expect(await store.liquidatedAfter(hideki, onHideki.pool, after)).toBe(false);
+      // A liquidation on the other network's account does not count, nor one at or before the close's block.
+      await store.recordLiquidations([
+        { accountId: shannon, pool: onHideki.pool, block: after + 5n, txHash: "0xa", sizeDelta: 1n },
+        { accountId: hideki, pool: onHideki.pool, block: after, txHash: "0xb", sizeDelta: 1n },
+      ]);
+      expect(await store.liquidatedAfter(hideki, onHideki.pool, after)).toBe(false);
+      // A later one does, in any address case, and recording it twice is harmless.
+      const later = { accountId: hideki, pool: `0x${onHideki.pool.slice(2).toUpperCase()}`, block: after + 1n, txHash: "0xc", sizeDelta: -2n };
+      await store.recordLiquidations([later]);
+      await store.recordLiquidations([later]);
+      expect(await store.liquidatedAfter(hideki, onHideki.pool, after)).toBe(true);
+      expect(await store.liquidatedAfter(hideki, "0x0000000000000000000000000000000000000001", after)).toBe(false);
+      expect((await store.listUnconfirmedOnChain(50383)).some((x) => x.accountId === shannon)).toBe(false);
     });
 
     it("counts rate-limit hits per bucket within the window", async () => {
@@ -242,6 +250,20 @@ function contract(name: string, make: () => Promise<Store>) {
       expect((await store.reserveDrip(base)).ok).toBe(true);
       expect(await store.reserveDrip({ ...base, hoaxKey: `${key.slice(0, -1)}1`, minGapMs: 0, perKeyCap: 100n, dailyCap: 0n })).toEqual({ ok: false, reason: "daily-cap" });
       expect(await store.reserveDrip({ ...base, perKeyCap: 100n, minGapMs: 60_000 })).toEqual({ ok: false, reason: "recent" });
+    });
+
+    it("spends each sign-in nonce once, even in parallel", async () => {
+      const n = `n${randomUUID().replace(/-/g, "")}`;
+      const exp = new Date(Date.now() + 60_000);
+      const results = await Promise.all([store.useNonce(n, exp), store.useNonce(n, exp), store.useNonce(n, exp)]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(await store.pruneNonces(new Date(Date.now() + 120_000))).toBeGreaterThan(0);
+    });
+
+    it("holds a rate limit under a parallel burst", async () => {
+      const bucket = `burst:${randomUUID()}`;
+      const counts = await Promise.all(Array.from({ length: 8 }, () => store.rateHit(bucket, 60_000, 3)));
+      expect(counts.filter((n) => n <= 3)).toHaveLength(3);
     });
 
     it("revokes a wallet's sessions, never moving the line back", async () => {

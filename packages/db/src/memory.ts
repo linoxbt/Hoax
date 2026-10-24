@@ -175,11 +175,41 @@ export class MemoryStore implements Store {
       .map((a) => ({ ...a }));
   }
 
-  async liquidatedAfter(accountId: string, pool: string, after: Date) {
-    for (const a of this.actions.values()) {
-      if (a.accountId === accountId && a.pool.toLowerCase() === pool.toLowerCase() && a.outcome === "missed" && a.createdAt > after) return true;
+  liquidations = new Map<string, { accountId: string; pool: string; block: bigint; txHash: string; sizeDelta: bigint }>();
+
+  async recordLiquidations(rows: Array<{ accountId: string; pool: string; block: bigint; txHash: string; sizeDelta: bigint }>) {
+    for (const r of rows) {
+      const k = `${r.accountId}:${r.pool.toLowerCase()}:${r.txHash}:${r.sizeDelta}`;
+      if (!this.liquidations.has(k)) this.liquidations.set(k, { ...r, pool: r.pool.toLowerCase() });
+    }
+  }
+
+  async liquidatedAfter(accountId: string, pool: string, afterBlock: bigint) {
+    for (const l of this.liquidations.values()) {
+      if (l.accountId === accountId && l.pool === pool.toLowerCase() && l.block > afterBlock) return true;
     }
     return false;
+  }
+
+  async listUnconfirmedOnChain(chainId?: number) {
+    return [...this.actions.values()]
+      .filter((a) => a.outcome === "unconfirmed" && (chainId === undefined || this.accounts.get(a.accountId)?.chainId === chainId))
+      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
+      .map((a) => ({ ...a }));
+  }
+
+  private nonces = new Map<string, Date>();
+
+  async useNonce(nonce: string, expiresAt: Date) {
+    if (this.nonces.has(nonce)) return false;
+    this.nonces.set(nonce, expiresAt);
+    return true;
+  }
+
+  async pruneNonces(now: Date) {
+    let n = 0;
+    for (const [k, exp] of this.nonces) if (exp < now) this.nonces.delete(k), n++;
+    return n;
   }
 
   async rateHit(bucket: string, windowMs: number, max: number) {
@@ -202,10 +232,15 @@ export class MemoryStore implements Store {
     return n;
   }
 
-  async lastActionAt(accountId: string, market: string) {
+  async lastActionAt(owner: string, chainId: number, market: string) {
     let last: Date | null = null;
     for (const a of this.actions.values()) {
-      if (a.accountId === accountId && a.market === market && a.txHash && (!last || a.createdAt > last)) last = a.createdAt;
+      if (a.owner !== owner.toLowerCase() || a.market !== market || !a.txHash || a.outcome === "missed") continue;
+      if (this.accounts.get(a.accountId)?.chainId !== chainId) continue;
+      const ms = Date.parse(a.receipt.createdAt);
+      if (!Number.isFinite(ms)) continue; // as Postgres: no receipt time, no cooldown
+      const at = new Date(ms);
+      if (!last || at > last) last = at;
     }
     return last;
   }

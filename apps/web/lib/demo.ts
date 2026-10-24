@@ -76,6 +76,7 @@ export async function seedDemo(store: Store): Promise<void> {
       side: "long",
       block: BigInt(receipt.blockNumber!),
       txHash: r.outcome === "skipped" ? null : `0x${"de".repeat(32)}`,
+      txNonce: null,
       sizeBefore: E18,
       sizeRequested: r.outcome === "skipped" ? 0n : 3n * 10n ** 17n,
       sizeFilled: r.outcome === "skipped" ? 0n : 3n * 10n ** 17n,

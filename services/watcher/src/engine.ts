@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import {
   clampClose,
   decide,
+  validatePolicyForMarket,
   limitPrice,
   notional,
   reconcile,
@@ -34,6 +35,7 @@ import {
   signReceipt,
   type FeedRead,
   type Fill,
+  type IocOrder,
   type LiquidationEvent,
   type MarketInfo,
   type PlaceResult,
@@ -60,7 +62,7 @@ export interface EngineConfig {
   readErrorAlertAfter: number;
   /** How often each account's liquidation log is scanned. */
   liqScanEveryMs: number;
-  /** Blocks one liquidation scan covers at most; the cursor pages forward across ticks. */
+  /** Blocks one liquidation scan covers at most (3 log reads); the cursor pages forward across ticks. */
   liqScanMaxBlocks: bigint;
   /** A health tick is stored at least this often per position, and whenever health moves or nears the trigger. */
   tickWriteEveryMs: number;
@@ -87,7 +89,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   skipReceiptEveryMs: 5 * 60_000,
   readErrorAlertAfter: 5,
   liqScanEveryMs: 5_000,
-  liqScanMaxBlocks: 20_000n,
+  liqScanMaxBlocks: 3_000n,
   tickWriteEveryMs: 10_000,
   confirmTimeoutMs: 2 * 60_000,
   feedCacheMs: 0,
@@ -131,6 +133,10 @@ interface AccountMemory {
   /** Rejected or reverted orders in a row per market, and when the next try is allowed. */
   backoff: Map<string, { failures: number; until: number }>;
   lastTickWrite: Map<string, { at: number; health: number | null }>;
+  /** Sent orders the store refused to record yet, retried every tick until it takes them. */
+  unsaved: Map<string, NewAction>;
+  /** Stuck orders already replaced at their nonce, by action id, with when. */
+  cancelled: Map<string, number>;
 }
 
 /** What the executor knows about an order it is about to send, kept for the final receipt. */
@@ -140,7 +146,12 @@ interface Pending {
   isBid: boolean;
   fee: bigint;
   penaltyBps: number;
+  /** The policy's slippage bound, for a flatten. */
+  slippageBps: number;
 }
+
+/** Reasons on a flatten's own record start with this. */
+const FLATTEN = "flatten:";
 
 export class Engine {
   private readonly memory = new Map<string, AccountMemory>();
@@ -167,6 +178,8 @@ export class Engine {
         lastLiqScanAt: null,
         backoff: new Map(),
         lastTickWrite: new Map(),
+        unsaved: new Map(),
+        cancelled: new Map(),
       };
       this.memory.set(accountId, m);
     }
@@ -202,15 +215,11 @@ export class Engine {
     const byPool = new Map(markets.map((m) => [m.pool.toLowerCase(), m]));
     const bySymbol = new Map(markets.map((m) => [m.symbol, m]));
 
+    // A sent order the store did not take yet goes on record before anything else.
+    await this.saveUnsaved(mem);
     // Orders whose result is not known come first: nothing else is sent on
     // their market until the chain says what they did.
-    const blocked = new Set<string>();
-    for (const action of await store.listUnconfirmedActions(account.id)) {
-      const market = byPool.get(action.pool.toLowerCase());
-      if (!market) continue;
-      const settled = await this.confirm(account, mem, action, market);
-      if (!settled) blocked.add(market.symbol);
-    }
+    const blocked = await this.confirmOutstanding(account, byPool);
 
     const [margin, policies] = await Promise.all([venue.readMargin(marginBank, owner), store.listPolicies(account.id)]);
     const H = margin.mmReq > 0n ? Number(margin.equity) / Number(margin.mmReq) : Number.POSITIVE_INFINITY;
@@ -237,10 +246,56 @@ export class Engine {
         }),
     );
 
-    await this.recordTicks(account, mem, views, margin.blockNumber, H, margin.equity, margin.mmReq, policyBy);
-    await this.scanLiquidations(account, mem, marginBank, byPool, views, policyBy, margin.equity, margin.mmReq);
-    mem.lastHealth = Number.isFinite(H) ? H : null;
+    // The decision comes first; health ticks and the liquidation scan are
+    // bookkeeping, done after it and never allowed to stop it.
+    let outcome: TickOutcome;
+    try {
+      outcome = await this.decideAndAct(account, mem, views, policyBy, blocked, margin, H, marginBank, owner);
+    } finally {
+      await this.recordTicks(account, mem, views, margin.blockNumber, H, margin.equity, margin.mmReq, policyBy).catch((err) =>
+        this.deps.log.warn("could not store health ticks", { account: account.owner, error: String(err).slice(0, 160) }),
+      );
+      await this.scanLiquidations(account, mem, marginBank, byPool, views, policyBy, margin.equity, margin.mmReq).catch((err) =>
+        this.deps.log.warn("liquidation scan failed; it resumes from the same block", { account: account.owner, error: String(err).slice(0, 160) }),
+      );
+      mem.lastHealth = Number.isFinite(H) ? H : null;
+    }
+    return outcome;
+  }
 
+  /** Confirm this account's unconfirmed orders; the markets still waiting on one. Also used for accounts no longer active. */
+  async confirmOutstanding(account: AccountRow, byPool?: Map<string, MarketInfo>): Promise<Set<string>> {
+    const mem = this.mem(account.id);
+    const pools = byPool ?? new Map((await this.deps.venue.listMarkets()).map((m) => [m.pool.toLowerCase(), m]));
+    const blocked = new Set<string>();
+    for (const action of await this.deps.store.listUnconfirmedActions(account.id)) {
+      const market = pools.get(action.pool.toLowerCase());
+      if (!market) continue;
+      const settled = await this.confirm(account, mem, action, market);
+      if (!settled) blocked.add(market.symbol);
+    }
+    return blocked;
+  }
+
+  private async saveUnsaved(mem: AccountMemory): Promise<void> {
+    for (const [id, draft] of mem.unsaved) {
+      await this.deps.store.insertAction(draft);
+      mem.unsaved.delete(id);
+    }
+  }
+
+  private async decideAndAct(
+    account: AccountRow,
+    mem: AccountMemory,
+    views: PositionView[],
+    policyBy: Map<string, PolicyRow>,
+    blocked: Set<string>,
+    margin: { equity: bigint; mmReq: bigint },
+    H: number,
+    marginBank: Address,
+    owner: Address,
+  ): Promise<TickOutcome> {
+    const { venue } = this.deps;
     if (account.paused) return { kind: "idle", reason: "paused" };
 
     const candidates = views
@@ -255,6 +310,13 @@ export class Engine {
       const policy = policyBy.get(view.market.symbol)!;
       const key = view.market.symbol;
       this.trackStale(account, mem, view);
+      // The web app validates policies, but the engine trusts nothing it did not check itself.
+      const problems = validatePolicyForMarket(policy, view.market);
+      if (problems.length > 0) {
+        await this.skipReceipt(account, mem, view, margin.equity, margin.mmReq, H, `the saved policy is invalid (${problems[0]}); save it again`, true);
+        lastSkip = { kind: "skip", reason: "invalid policy" };
+        continue;
+      }
       // Most ticks end here: health is above this policy's trigger, so the book
       // and the fee approval are not worth a read.
       if (view.markOk && H > policy.triggerHealth - policy.triggerMargin) continue;
@@ -301,7 +363,7 @@ export class Engine {
         lastSkip = { kind: "skip", reason: decision.reason };
         continue;
       }
-      return this.execute(account, mem, view, decision, margin.equity, margin.mmReq, liquidation, fee);
+      return this.execute(account, mem, view, decision, margin.equity, margin.mmReq, liquidation, fee, policy.maxSlippageBps);
     }
     return lastSkip;
   }
@@ -358,9 +420,10 @@ export class Engine {
 
   private async lastActionAt(account: AccountRow, market: string, mem: AccountMemory): Promise<number | null> {
     // One engine per network holds the lease, so after the first look the
-    // memory is authoritative; the store answers once, after a restart.
+    // memory is authoritative; the store answers once, after a restart, for
+    // the owner on this network (a re-registration does not reset it).
     if (mem.lastActionAt.has(market)) return mem.lastActionAt.get(market) ?? null;
-    const at = await this.deps.store.lastActionAt(account.id, market);
+    const at = await this.deps.store.lastActionAt(account.owner, this.deps.venue.chainId ?? account.chainId, market);
     mem.lastActionAt.set(market, at ? at.getTime() : null);
     return at ? at.getTime() : null;
   }
@@ -421,8 +484,9 @@ export class Engine {
     mmReqBefore: bigint,
     liquidation: LiquidationParams,
     fee: bigint,
+    slippageBps: number,
   ): Promise<TickOutcome> {
-    const { venue, log, config, store } = this.deps;
+    const { venue, log, config } = this.deps;
     const owner = getAddress(account.owner);
     const market = view.market;
     const key = market.symbol;
@@ -454,100 +518,40 @@ export class Engine {
       return { kind: "skip", reason: "dry run" };
     }
 
-    const id = randomUUID();
     const forcedSlippage =
       decision.estLiquidationCost - (notional(fresh.size, view.liqPrice ?? view.mark, market.baseDecimals) * BigInt(liquidation.penaltyBps)) / 10_000n;
-    const draftReceipt = this.receiptBase(account, signer, market, decision.side, "unconfirmed", "order sent, waiting for its receipt");
-    const draft: NewAction = {
-      id,
-      accountId: account.id,
-      owner: account.owner,
-      market: key,
-      pool: market.pool,
-      side: decision.side,
-      block: null,
-      txHash: null,
-      sizeBefore: fresh.size,
-      sizeRequested: qty,
-      sizeFilled: 0n,
-      sizeAfter: null,
-      avgPrice: null,
-      mark: view.mark,
-      cost: null,
+    const draft = this.draftAction(account, signer, market, decision.side, fresh.size, qty, view.mark, {
       estCloseCost: decision.estCloseCost,
       estLiqCost: decision.estLiquidationCost,
       forcedSlippage: forcedSlippage > 0n ? forcedSlippage : 0n,
       equityBefore,
       mmReqBefore,
       healthBefore: decision.healthBefore,
-      healthAfter: null,
       liqPriceBefore: view.liqPrice,
-      liqPriceAfter: null,
       builderFee1k: fee,
-      outcome: "unconfirmed",
       reason: "order sent, waiting for its receipt",
-      receipt: {
-        ...draftReceipt,
-        sizeBefore: fresh.size.toString(),
-        sizeRequested: qty.toString(),
-        markAtClose: view.mark.toString(),
-        healthBefore: receiptHealth(decision.healthBefore) ?? 0,
-      },
-      receiptHash: "",
-      signature: null,
-    };
-    const pending: Pending = { draft, market, isBid: decision.isBid, fee, penaltyBps: liquidation.penaltyBps };
+    });
+    const pending: Pending = { draft, market, isBid: decision.isBid, fee, penaltyBps: liquidation.penaltyBps, slippageBps };
 
-    let sentHash: Hex | null = null;
-    let result: PlaceResult;
-    try {
-      result = await venue.placeIocFor(
-        signer,
-        owner,
-        market,
-        { isBid: decision.isBid, price: decision.limitPrice, quantity: qty, builder: fee > 0n ? config.builder : null, builderFeeBpsTimes1k: fee },
-        async (hash) => {
-          // From here the order may land whatever happens next: count it for
-          // the cooldown and put it on record before waiting for the receipt.
-          sentHash = hash;
-          mem.lastActionAt.set(key, this.now());
-          draft.txHash = hash;
-          draft.receipt = { ...draft.receipt, txHash: hash };
-          try {
-            await store.insertAction(draft);
-          } catch (err) {
-            log.error("could not record a sent order; it is confirmed when the receipt arrives", { tx: hash, error: String(err).slice(0, 200) });
-          }
-        },
-      );
-    } catch (err) {
-      if (err instanceof TxRejectedError && sentHash === null) {
-        this.backOff(mem, key);
-        log.warn("close order rejected", { account: owner, market: key, reason: err.reason });
-        await this.skipReceipt(account, mem, view, equityBefore, mmReqBefore, decision.healthBefore, `order rejected: ${err.reason.slice(0, 120)}`, true);
-        return { kind: "skip", reason: "order rejected" };
-      }
-      if (err instanceof TxRevertedError) {
-        this.backOff(mem, key);
-        log.warn("close order reverted on chain", { account: owner, market: key, tx: err.hash });
-        await this.settleWithoutFill(account, mem, draft, err.hash, "the order reverted on chain", true);
-        return { kind: "skip", reason: "order reverted" };
-      }
-      const hash = err instanceof TxUnknownError ? err.hash : sentHash;
-      if (hash) {
-        // Sent, result unknown. Make sure it is on record; the next tick confirms it.
-        log.warn("close order sent, result unknown; confirming on the next tick", { account: owner, market: key, tx: hash, error: revertName(err).slice(0, 160) });
-        draft.txHash = hash;
-        await store.insertAction(draft);
-        return { kind: "skip", reason: "order sent, result unknown" };
-      }
+    const sent = await this.send(account, mem, signer, market, draft, {
+      isBid: decision.isBid,
+      price: decision.limitPrice,
+      quantity: qty,
+      builder: fee > 0n ? config.builder : null,
+      builderFeeBpsTimes1k: fee,
+    });
+    if (sent.kind === "rejected") {
       this.backOff(mem, key);
-      const reason = revertName(err).slice(0, 120);
-      log.error("close order failed before sending", { account: owner, market: key, error: reason });
-      await this.skipReceipt(account, mem, view, equityBefore, mmReqBefore, decision.healthBefore, `order rejected: ${reason}`, true);
+      await this.skipReceipt(account, mem, view, equityBefore, mmReqBefore, decision.healthBefore, `order rejected: ${sent.reason.slice(0, 120)}`, true);
       return { kind: "skip", reason: "order rejected" };
     }
+    if (sent.kind === "reverted") {
+      this.backOff(mem, key);
+      return { kind: "skip", reason: "order reverted" };
+    }
+    if (sent.kind === "unknown") return { kind: "skip", reason: "order sent, result unknown" };
 
+    const result = sent.result;
     if (result.hash === null) {
       // The IOC simulated to no fill: nothing was sent.
       if (!mem.retryNoFill.has(key)) {
@@ -562,38 +566,170 @@ export class Engine {
     }
     mem.retryNoFill.delete(key);
     mem.backoff.delete(key);
-    return this.finalize(account, mem, pending, result, signer);
+    return this.finalize(account, mem, pending, result, signer, false);
+  }
+
+  /** The record of an order about to be sent, before it has a hash. */
+  private draftAction(
+    account: AccountRow,
+    signer: TradingSigner,
+    market: MarketInfo,
+    side: "long" | "short",
+    sizeBefore: bigint,
+    qty: bigint,
+    mark: bigint,
+    extra: Pick<NewAction, "estCloseCost" | "estLiqCost" | "forcedSlippage" | "equityBefore" | "mmReqBefore" | "healthBefore" | "liqPriceBefore" | "builderFee1k" | "reason">,
+  ): NewAction {
+    const base = this.receiptBase(account, signer, market, side, "unconfirmed", extra.reason);
+    return {
+      id: randomUUID(),
+      accountId: account.id,
+      owner: account.owner,
+      market: market.symbol,
+      pool: market.pool,
+      side,
+      block: null,
+      txHash: null,
+      txNonce: null,
+      sizeBefore,
+      sizeRequested: qty,
+      sizeFilled: 0n,
+      sizeAfter: null,
+      avgPrice: null,
+      mark,
+      cost: null,
+      healthAfter: null,
+      liqPriceAfter: null,
+      outcome: "unconfirmed",
+      receipt: {
+        ...base,
+        sizeBefore: sizeBefore.toString(),
+        sizeRequested: qty.toString(),
+        markAtClose: mark.toString(),
+        healthBefore: receiptHealth(extra.healthBefore) ?? 0,
+      },
+      receiptHash: "",
+      signature: null,
+      ...extra,
+    };
+  }
+
+  /**
+   * Send one order and put it on record the moment it has a hash. Whatever
+   * fails after that, the order is "unknown" and the next tick confirms it.
+   */
+  private async send(
+    account: AccountRow,
+    mem: AccountMemory,
+    signer: TradingSigner,
+    market: MarketInfo,
+    draft: NewAction,
+    order: IocOrder,
+  ): Promise<{ kind: "sent"; result: PlaceResult } | { kind: "rejected"; reason: string } | { kind: "reverted" } | { kind: "unknown" }> {
+    const { venue, log, store } = this.deps;
+    const key = market.symbol;
+    let recorded = false;
+    try {
+      const result = await venue.placeIocFor(signer, getAddress(account.owner), market, order, async (hash, nonce) => {
+        // From here the order may land whatever happens next: count it for
+        // the cooldown and put it on record before it is broadcast.
+        recorded = true;
+        mem.lastActionAt.set(key, this.now());
+        draft.txHash = hash;
+        draft.txNonce = nonce;
+        draft.receipt = { ...draft.receipt, txHash: hash };
+        try {
+          await store.insertAction(draft);
+        } catch (err) {
+          mem.unsaved.set(draft.id, draft); // retried every tick until the store takes it
+          log.error("could not record a sent order yet; retrying", { tx: hash, error: String(err).slice(0, 200) });
+        }
+      });
+      return { kind: "sent", result };
+    } catch (err) {
+      if (err instanceof TxRejectedError) {
+        // The node refused it: nothing is out. A record already written is settled as such.
+        if (recorded) await this.settleWithoutFill(account, mem, draft, null, `the order was refused: ${err.reason.slice(0, 120)}`, false);
+        log.warn("order rejected", { account: account.owner, market: key, reason: err.reason });
+        return { kind: "rejected", reason: err.reason };
+      }
+      if (err instanceof TxRevertedError) {
+        log.warn("order reverted on chain", { account: account.owner, market: key, tx: err.hash });
+        await this.settleWithoutFill(account, mem, draft, err.hash, "the order reverted on chain", true);
+        return { kind: "reverted" };
+      }
+      if (recorded || err instanceof TxUnknownError) {
+        log.warn("order sent, result unknown; confirming on the next tick", { account: account.owner, market: key, tx: draft.txHash, error: revertName(err).slice(0, 160) });
+        if (err instanceof TxUnknownError) draft.txHash = err.hash;
+        await store.insertAction(draft).catch(() => mem.unsaved.set(draft.id, draft));
+        return { kind: "unknown" };
+      }
+      return { kind: "rejected", reason: revertName(err) };
+    }
   }
 
   /**
    * Ask the chain what an unconfirmed order did, and settle its record.
-   * True when settled; false while it still has no receipt.
+   * True when settled; false while it can still land. An order with no
+   * receipt is never written off while it might land: past the timeout its
+   * nonce is taken by an empty transaction first, so it cannot.
    */
   private async confirm(account: AccountRow, mem: AccountMemory, action: ActionRow, market: MarketInfo): Promise<boolean> {
+    const { venue, log } = this.deps;
     if (!action.txHash) {
       await this.settleWithoutFill(account, mem, action, null, "the order was never sent", false);
       return true;
     }
     const hash = action.txHash as Hex;
-    const result = await this.deps.venue.orderResult(hash, market);
+    const result = await venue.orderResult(hash, market);
+    const signer = account.hoaxKey ? await this.deps.keys.get(account.hoaxKey) : null;
     if (result === null) {
       // The draft receipt is stamped on the engine's clock when the order went out.
       const sentAt = Date.parse(action.receipt.createdAt) || action.createdAt.getTime();
-      if (this.now() - sentAt < this.deps.config.confirmTimeoutMs) return false;
-      await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never confirmed on chain", true);
-      return true;
+      const age = this.now() - sentAt;
+      const timeout = this.deps.config.confirmTimeoutMs;
+      if (age < timeout) return false;
+      if (action.txNonce === null || !signer) {
+        // An older record without a nonce: nothing to replace. Written off after a long wait, and said so.
+        if (age < timeout * 5) return false;
+        await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never confirmed on chain; check the transaction", true);
+        return true;
+      }
+      if ((await venue.minedNonce(signer.address)) > action.txNonce) {
+        // The nonce is used and this hash has no receipt: something else took
+        // the slot (the cancel below), so this order can never land.
+        await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never landed; its slot was cancelled", true);
+        return true;
+      }
+      const cancelledAt = mem.cancelled.get(action.id);
+      if (cancelledAt === undefined || this.now() - cancelledAt > timeout) {
+        try {
+          const cancel = await venue.cancelNonce(signer, action.txNonce);
+          mem.cancelled.set(action.id, this.now());
+          log.warn("order stuck; replaced at its nonce so it cannot land later", { account: account.owner, tx: hash, cancel });
+        } catch (err) {
+          log.error("could not replace a stuck order", { account: account.owner, tx: hash, error: revertName(err).slice(0, 160) });
+          if (age >= timeout * 5) {
+            await this.settleWithoutFill(account, mem, action, hash, "the order never confirmed and could not be cancelled; check the transaction", true);
+            await this.pause(account, `An order Hoax sent on ${action.market} (tx ${hash}) never confirmed and could not be cancelled. Hoax paused this account; check the transaction.`);
+            return true;
+          }
+        }
+      }
+      return false;
     }
+    mem.cancelled.delete(action.id);
     if (result === "reverted") {
       this.backOff(mem, market.symbol);
       await this.settleWithoutFill(account, mem, action, hash, "the order reverted on chain", true);
       return true;
     }
-    const signer = account.hoaxKey ? await this.deps.keys.get(account.hoaxKey) : null;
     if (!signer) return false;
-    mem.lastActionAt.set(market.symbol, Math.max(mem.lastActionAt.get(market.symbol) ?? 0, action.createdAt.getTime()));
-    const liquidation = await this.deps.venue.liquidationParams(market.marginBank);
+    mem.lastActionAt.set(market.symbol, Math.max(mem.lastActionAt.get(market.symbol) ?? 0, Date.parse(action.receipt.createdAt) || 0));
+    const liquidation = await venue.liquidationParams(market.marginBank);
     const { createdAt: _created, ...draft } = action;
-    await this.finalize(account, mem, { draft, market, isBid: action.side === "short", fee: action.builderFee1k, penaltyBps: liquidation.penaltyBps }, result, signer);
+    const pending: Pending = { draft, market, isBid: action.side === "short", fee: action.builderFee1k, penaltyBps: liquidation.penaltyBps, slippageBps: 0 };
+    await this.finalize(account, mem, pending, result, signer, true);
     return true;
   }
 
@@ -621,24 +757,35 @@ export class Engine {
       receiptHash: signed?.hash ?? "",
       signature: signed?.signature ?? null,
     });
+    mem.unsaved.delete(draft.id);
     if (alert) {
       // One alert per reason per market per skip-receipt period, so a repeating failure cannot flood the trader.
       const k = `${draft.market}:${reason}`;
       const last = mem.lastSkipReceipt.get(k);
       if (last === undefined || this.now() - last >= this.deps.config.skipReceiptEveryMs) {
         mem.lastSkipReceipt.set(k, this.now());
-        await this.alert(account, "skipped", `Hoax's close on ${draft.market} did not fill: ${reason}.`);
+        await this.alert(account, "skipped", `Hoax's order on ${draft.market} did not fill: ${reason}.`);
       }
     }
   }
 
-  /** Reconcile a filled order against the position, flatten a flip, and write the signed receipt. */
-  private async finalize(account: AccountRow, mem: AccountMemory, p: Pending, result: PlaceResult, signer: TradingSigner): Promise<TickOutcome> {
+  /**
+   * Reconcile a filled order and write its signed receipt.
+   *
+   * Right after the fill (`late` false), the position is read now and a flip
+   * Hoax caused is flattened at once. When the result is only learned later
+   * (`late`: a lost receipt, a restart), the position may have changed by the
+   * trader's own hand since, so nothing is traded: the fill is recorded as
+   * the chain reports it, and a position on the other side only pauses the
+   * account and tells the trader.
+   */
+  private async finalize(account: AccountRow, mem: AccountMemory, p: Pending, result: PlaceResult, signer: TradingSigner, late: boolean): Promise<TickOutcome> {
     const { venue, log, store } = this.deps;
     const owner = getAddress(account.owner);
     const { market, draft } = p;
     const key = market.symbol;
     const hash = result.hash as Hex;
+    const isFlatten = draft.reason?.startsWith(FLATTEN) ?? false;
 
     if (result.fills.length === 0) {
       await this.settleWithoutFill(account, mem, draft, hash, "no liquidity within max slippage", true);
@@ -648,6 +795,7 @@ export class Engine {
     const filled = result.fills.reduce((s, f) => s + f.quantity, 0n);
     const avgPrice = filled > 0n ? result.fills.reduce((s, f) => s + f.quantity * f.price, 0n) / filled : null;
     const cost = closeCost(result.fills, draft.mark, p.isBid, market, p.fee);
+    const expectedAfter = draft.sizeBefore - BigInt(sign(draft.sizeBefore)) * filled;
 
     // If these reads fail the row stays unconfirmed and the next tick settles it.
     const [after, marginAfter, liqAfter] = await Promise.all([
@@ -655,56 +803,39 @@ export class Engine {
       venue.readMargin(market.marginBank, owner),
       venue.readLiquidationPrice(market, owner),
     ]);
-    const rec = reconcile({ sizeBefore: draft.sizeBefore, requested: draft.sizeRequested, filled, sizeAfter: after.size });
-    let sizeAfter = after.size;
+    let sizeAfter = late ? expectedAfter : after.size;
     let healthAfter = marginAfter.mmReq > 0n ? Number(marginAfter.equity) / Number(marginAfter.mmReq) : Number.POSITIVE_INFINITY;
 
-    let outcome: Outcome = "pending";
-    let reason: string | null = rec.status === "partial" ? "partial fill" : null;
+    let outcome: Outcome = isFlatten ? "conflict" : "pending";
+    let reason: string | null = isFlatten ? draft.reason : filled < draft.sizeRequested ? "partial fill" : null;
 
-    if (rec.status === "flipped") {
-      // Undo Hoax's own overshoot at once, then stop and ask the trader.
-      const flipIsBid = after.size < 0n;
-      const feed = await venue.readFeed(market).catch(() => null);
-      const mark = feed?.markOk ? feed.markPrice : draft.mark;
-      let flattenHash: Hex | null = null;
-      let flattened = 0n;
-      try {
-        const flat = await venue.placeIocFor(signer, owner, market, {
-          isBid: flipIsBid,
-          price: limitPrice(mark, flipIsBid, 100, market.tickSize),
-          quantity: rec.flipAmount,
-          builder: null,
-          builderFeeBpsTimes1k: 0n,
-        });
-        flattenHash = flat.hash;
-        flattened = flat.fills.reduce((s, f) => s + f.quantity, 0n);
-      } catch (err) {
-        if (err instanceof TxUnknownError) flattenHash = err.hash;
-        log.error("flatten after flip failed", { account: owner, market: key, error: revertName(err).slice(0, 200) });
+    if (late) {
+      const flippedNow = after.size !== 0n && sign(after.size) !== sign(draft.sizeBefore);
+      if (!isFlatten && after.size !== expectedAfter) {
+        reason = `${reason ? `${reason}; ` : ""}confirmed late: the position is ${after.size} base units now, after other trades`;
       }
-      // What actually happened, from the chain, not from the order's hopes.
-      const settled = await venue.readPosition(market, owner).catch(() => null);
-      if (settled) sizeAfter = settled.size;
-      const stillFlipped = settled === null || (settled.size !== 0n && sign(settled.size) !== sign(draft.sizeBefore));
-      outcome = "conflict";
-      if (!stillFlipped) {
-        reason = `the position crossed zero by ${rec.flipAmount} base units; Hoax flattened its own overshoot (tx ${flattenHash})`;
-        await this.pause(account, `Your ${key} position crossed zero during a Hoax close. Hoax flattened its part of it and paused this account until you confirm.`);
-      } else {
-        const left = settled ? (settled.size < 0n ? -settled.size : settled.size) : null;
-        reason = `the position crossed zero by ${rec.flipAmount} base units and Hoax could not flatten it${flattened > 0n ? ` fully (filled ${flattened})` : ""}${flattenHash ? ` (tx ${flattenHash})` : ""}: close it manually`;
+      if (flippedNow && !isFlatten) {
+        outcome = "conflict";
         await this.pause(
           account,
-          `Your ${key} position crossed zero during a Hoax close and Hoax could not undo it${left !== null ? ` (${left} base units remain on the other side)` : ""}. Close it manually. Hoax paused this account.`,
+          `Hoax's ${key} close (tx ${hash}) was confirmed late and your position is now on the other side. Hoax did not trade on it and paused this account; check the position.`,
         );
       }
-      const m = await venue.readMargin(market.marginBank, owner).catch(() => null);
-      if (m) healthAfter = m.mmReq > 0n ? Number(m.equity) / Number(m.mmReq) : Number.POSITIVE_INFINITY;
-    } else if (rec.status === "conflict") {
-      outcome = "conflict";
-      reason = `another trade moved the position by ${rec.externalChange} base units during the close`;
-      await this.pause(account, `Another trade changed your ${key} position while Hoax was closing. Hoax paused this account until you confirm.`);
+    } else if (!isFlatten) {
+      const rec = reconcile({ sizeBefore: draft.sizeBefore, requested: draft.sizeRequested, filled, sizeAfter: after.size });
+      if (rec.status === "flipped") {
+        outcome = "conflict";
+        const flat = await this.flatten(account, mem, signer, market, draft, after.size, rec.flipAmount, p.slippageBps);
+        sizeAfter = flat.sizeAfter ?? after.size;
+        reason = flat.reason;
+        await this.pause(account, flat.message);
+        const m = await venue.readMargin(market.marginBank, owner).catch(() => null);
+        if (m) healthAfter = m.mmReq > 0n ? Number(m.equity) / Number(m.mmReq) : Number.POSITIVE_INFINITY;
+      } else if (rec.status === "conflict") {
+        outcome = "conflict";
+        reason = `another trade moved the position by ${rec.externalChange} base units during the close`;
+        await this.pause(account, `Another trade changed your ${key} position while Hoax was closing. Hoax paused this account until you confirm.`);
+      }
     }
 
     const receipt: Receipt = {
@@ -745,6 +876,7 @@ export class Engine {
       receiptHash,
       signature,
     });
+    mem.unsaved.delete(draft.id);
     if (outcome === "pending") {
       await store.upsertCounterfactual({
         actionId: draft.id,
@@ -760,16 +892,77 @@ export class Engine {
         resolutionSignature: null,
       });
     }
-    log.info("closed", {
+    log.info(isFlatten ? "flatten settled" : "closed", {
       account: owner,
       market: key,
       filled,
       tx: hash,
+      late,
       healthBefore: Number.isFinite(draft.healthBefore) ? draft.healthBefore.toFixed(3) : "flat",
       healthAfter: Number.isFinite(healthAfter) ? healthAfter.toFixed(3) : "flat",
       outcome,
     });
     return { kind: "acted", actionId: draft.id, outcome };
+  }
+
+  /**
+   * Undo Hoax's own overshoot after a flip: an order on its own record, sent
+   * like any other, within the policy's slippage. Says what the chain shows
+   * afterwards, not what the order hoped for.
+   */
+  private async flatten(
+    account: AccountRow,
+    mem: AccountMemory,
+    signer: TradingSigner,
+    market: MarketInfo,
+    close: NewAction,
+    flippedSize: bigint,
+    amount: bigint,
+    slippageBps: number,
+  ): Promise<{ reason: string; message: string; sizeAfter: bigint | null }> {
+    const { venue } = this.deps;
+    const owner = getAddress(account.owner);
+    const key = market.symbol;
+    const isBid = flippedSize < 0n;
+    const feed = await venue.readFeed(market).catch(() => null);
+    const mark = feed?.markOk ? feed.markPrice : close.mark;
+    const draft = this.draftAction(account, signer, market, isBid ? "short" : "long", flippedSize, amount, mark, {
+      estCloseCost: null,
+      estLiqCost: null,
+      forcedSlippage: null,
+      equityBefore: close.equityBefore,
+      mmReqBefore: close.mmReqBefore,
+      healthBefore: close.healthBefore,
+      liqPriceBefore: null,
+      builderFee1k: 0n,
+      reason: `${FLATTEN} undoing the overshoot of close ${close.id}`,
+    });
+    const sent = await this.send(account, mem, signer, market, draft, {
+      isBid,
+      price: limitPrice(mark, isBid, Math.max(1, slippageBps), market.tickSize),
+      quantity: amount,
+      builder: null,
+      builderFeeBpsTimes1k: 0n,
+    });
+    if (sent.kind === "sent" && sent.result.hash !== null) {
+      await this.finalize(account, mem, { draft, market, isBid, fee: 0n, penaltyBps: 0, slippageBps }, sent.result, signer, false);
+    }
+    const settled = await venue.readPosition(market, owner).catch(() => null);
+    const stillFlipped = settled === null || (settled.size !== 0n && sign(settled.size) !== sign(close.sizeBefore));
+    if (!stillFlipped) {
+      return {
+        reason: `the position crossed zero by ${amount} base units; Hoax flattened its own overshoot (tx ${draft.txHash})`,
+        message: `Your ${key} position crossed zero during a Hoax close. Hoax flattened its part of it and paused this account until you confirm.`,
+        sizeAfter: settled?.size ?? null,
+      };
+    }
+    const left = settled ? (settled.size < 0n ? -settled.size : settled.size) : null;
+    const pendingNote = sent.kind === "unknown" ? " Its flatten was sent and is being confirmed; Hoax will not send another." : "";
+    return {
+      reason: `the position crossed zero by ${amount} base units and Hoax could not flatten it${draft.txHash ? ` (tx ${draft.txHash})` : ""}: close it manually`,
+      message: `Your ${key} position crossed zero during a Hoax close and Hoax could not undo it${left !== null ? ` (${left} base units remain on the other side)` : ""}. Close it manually. Hoax paused this account.${pendingNote}`,
+      sizeAfter: settled?.size ?? null,
+    };
   }
 
   /**
@@ -797,6 +990,11 @@ export class Engine {
       from = head > FIRST_SCAN_LOOKBACK ? head - FIRST_SCAN_LOOKBACK : 0n;
     }
     const scan = await venue.liquidationsSince(marginBank, getAddress(account.owner), from, config.liqScanMaxBlocks);
+    // Every step goes in the ledger, with its block, before anything else: the
+    // tracker decides "liquidated after the close" from these, step by step.
+    await store.recordLiquidations(
+      scan.events.map((e) => ({ accountId: account.id, pool: e.pool, block: e.blockNumber, txHash: e.txHash, sizeDelta: e.sizeDelta })),
+    );
 
     // A liquidation closes in steps, each its own event: one episode per market
     // is one miss. Steps that arrive in a later scan of the same episode are
@@ -963,6 +1161,7 @@ export class Engine {
       side: r.side,
       block: r.blockNumber,
       txHash: r.outcome === "missed" ? null : r.txHash,
+      txNonce: null,
       sizeBefore: r.sizeBefore,
       sizeRequested: 0n,
       sizeFilled: 0n,

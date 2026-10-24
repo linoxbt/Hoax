@@ -21,8 +21,10 @@ import {
   TransactionReceiptNotFoundError,
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
   getAddress,
   http,
+  keccak256,
   parseAbi,
   webSocket,
   type Address,
@@ -76,6 +78,15 @@ const DEFAULT_SCAN_BLOCKS = 20_000n;
 const RECEIPT_TIMEOUT_MS = 60_000;
 /** SDK reads go over its own WebSocket transport, which has no timeout of its own. */
 const DEFAULT_READ_TIMEOUT_MS = 15_000;
+
+/**
+ * A broadcast the node refused outright: nothing entered its mempool. Anything
+ * else (a timeout, a dropped connection) may have gone out.
+ */
+function refusedOutright(err: unknown): boolean {
+  const m = (err instanceof BaseError ? `${err.shortMessage} ${err.details ?? ""}` : String(err)).toLowerCase();
+  return /insufficient funds|intrinsic gas|nonce too low|exceeds block gas limit|invalid sender|gas limit reached|underpriced/.test(m);
+}
 
 /** The revert's name when the error carries one (e.g. ImmediateOrCancelNoFill), else viem's short message. */
 export function revertName(err: unknown): string {
@@ -236,37 +247,64 @@ export class DreamDexVenue implements Venue {
     return this.timed("getMaxBuilderFeeBpsTimes1k", this.client.getMaxBuilderFeeBpsTimes1k(market.pool));
   }
 
+  private wallet(signer: TradingSigner) {
+    return createWalletClient({ account: signer, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
+  }
+
+  /**
+   * Sign locally, report the hash and nonce, then broadcast. A broadcast error
+   * the node gave for a transaction it refused is "rejected"; any other is
+   * "unknown", because the transaction may be out.
+   */
+  private async signAndSend(
+    signer: TradingSigner,
+    tx: { to: Address; data?: Hex; value?: bigint; gas?: bigint; nonce?: number; maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint; gasPrice?: bigint },
+    onSent?: (hash: Hex, nonce: number) => Promise<void>,
+  ): Promise<Hex> {
+    const wallet = this.wallet(signer);
+    let serialized: Hex;
+    let nonce: number;
+    try {
+      const prepared = await wallet.prepareTransactionRequest({ ...tx, account: signer, chain: this.network.chain } as never);
+      nonce = Number((prepared as { nonce: number }).nonce);
+      serialized = await wallet.signTransaction(prepared as never);
+    } catch (err) {
+      throw new TxRejectedError(revertName(err));
+    }
+    const hash = keccak256(serialized);
+    if (onSent) await onSent(hash, nonce);
+    try {
+      await wallet.sendRawTransaction({ serializedTransaction: serialized });
+    } catch (err) {
+      if (refusedOutright(err)) throw new TxRejectedError(revertName(err));
+      throw new TxUnknownError(hash, err);
+    }
+    return hash;
+  }
+
   async placeIocFor(
     signer: TradingSigner,
     owner: Address,
     market: MarketInfo,
     order: IocOrder,
-    onSent?: (hash: Hex) => Promise<void>,
+    onSent?: (hash: Hex, nonce: number) => Promise<void>,
   ): Promise<PlaceResult> {
-    const wallet = createWalletClient({ account: signer, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const expire = BigInt(Math.floor(Date.now() / 1000) + 3600) * 1_000_000_000n;
-    let request;
+    const args = [
+      owner,
+      order.isBid,
+      0n,
+      order.price,
+      order.quantity,
+      expire,
+      ORDER_TYPE_IOC,
+      0,
+      order.builder ?? ZERO,
+      order.builderFeeBpsTimes1k,
+    ] as const;
     try {
       // Simulate first so a revert arrives with its name instead of a bare status 0.
-      ({ request } = await this.publicClient.simulateContract({
-        address: market.pool,
-        abi: OPERATOR_ABI,
-        functionName: "placeOrderFor",
-        args: [
-          owner,
-          order.isBid,
-          0n,
-          order.price,
-          order.quantity,
-          expire,
-          ORDER_TYPE_IOC,
-          0,
-          order.builder ?? ZERO,
-          order.builderFeeBpsTimes1k,
-        ],
-        account: signer,
-        gas: ORDER_GAS,
-      }));
+      await this.publicClient.simulateContract({ address: market.pool, abi: OPERATOR_ABI, functionName: "placeOrderFor", args, account: signer, gas: ORDER_GAS });
     } catch (err) {
       const name = revertName(err);
       if (name.includes("ImmediateOrCancelNoFill")) {
@@ -274,15 +312,8 @@ export class DreamDexVenue implements Venue {
       }
       throw new TxRejectedError(name);
     }
-    // Once writeContract returns a hash the order may land whatever happens
-    // next, so every later failure is "result unknown", never "rejected".
-    let hash: Hex;
-    try {
-      hash = await wallet.writeContract(request);
-    } catch (err) {
-      throw new TxRejectedError(revertName(err));
-    }
-    if (onSent) await onSent(hash);
+    const data = encodeFunctionData({ abi: OPERATOR_ABI, functionName: "placeOrderFor", args });
+    const hash = await this.signAndSend(signer, { to: market.pool, data, gas: ORDER_GAS }, onSent);
     let receipt: TransactionReceipt;
     try {
       receipt = await this.publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
@@ -354,9 +385,32 @@ export class DreamDexVenue implements Venue {
     return this.publicClient.getBalance({ address });
   }
 
+  async minedNonce(address: Address): Promise<number> {
+    return this.publicClient.getTransactionCount({ address, blockTag: "latest" });
+  }
+
+  async knowsTransaction(hash: Hex): Promise<boolean> {
+    try {
+      await this.publicClient.getTransaction({ hash });
+      return true;
+    } catch (err) {
+      if (err instanceof BaseError && err.name === "TransactionNotFoundError") return false;
+      throw err;
+    }
+  }
+
+  async cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex> {
+    // Twice the current fee outbids whatever is stuck at this nonce.
+    const fees = await this.publicClient.estimateFeesPerGas().catch(() => null);
+    const bump =
+      fees && "maxFeePerGas" in fees && fees.maxFeePerGas
+        ? { maxFeePerGas: fees.maxFeePerGas * 2n, maxPriorityFeePerGas: (fees.maxPriorityFeePerGas ?? 0n) * 2n + 1n }
+        : { gasPrice: ((await this.publicClient.getGasPrice()) * 2n) as bigint };
+    return this.signAndSend(signer, { to: signer.address, value: 0n, gas: 21_000n, nonce, ...bump });
+  }
+
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {
-    const wallet = createWalletClient({ account: from, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
-    const hash = await wallet.sendTransaction({ to, value: amount, chain: this.network.chain });
+    const hash = await this.signAndSend(from, { to, value: amount });
     let receipt: TransactionReceipt;
     try {
       receipt = await this.publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });

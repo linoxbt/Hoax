@@ -85,6 +85,7 @@ function toAction(r: Row): ActionRow {
     side: r.side as ActionRow["side"],
     block: bigOrNull(r.block),
     txHash: (r.tx_hash as string | null) ?? null,
+    txNonce: r.tx_nonce === null || r.tx_nonce === undefined ? null : Number(r.tx_nonce),
     sizeBefore: big(r.size_before),
     sizeRequested: big(r.size_requested),
     sizeFilled: big(r.size_filled),
@@ -135,9 +136,11 @@ function leaseKey(name: string): string {
 export class PgStore implements Store {
   readonly pool: pg.Pool;
   private leaseClient: pg.PoolClient | null = null;
+  private leaseProbe: NodeJS.Timeout | null = null;
 
   constructor(connectionString: string) {
-    this.pool = new pg.Pool({ ...pgConfig(connectionString), max: 10 });
+    // keepAlive: a connection that silently dies (a NAT dropping it) is noticed, the lease's included.
+    this.pool = new pg.Pool({ ...pgConfig(connectionString), max: 10, keepAlive: true });
   }
 
   private async q(sql: string, params: unknown[] = []): Promise<Row[]> {
@@ -285,8 +288,8 @@ export class PgStore implements Store {
       `INSERT INTO actions (id, account_id, owner, market, pool, side, block, tx_hash, size_before, size_requested,
          size_filled, size_after, avg_price, mark, cost, est_close_cost, est_liq_cost, forced_slippage, equity_before,
          mm_req_before, health_before, health_after, liq_price_before, liq_price_after, builder_fee_1k, outcome, reason,
-         receipt, receipt_hash, signature)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+         receipt, receipt_hash, signature, tx_nonce)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
        ON CONFLICT (id) DO UPDATE SET
          block = EXCLUDED.block, tx_hash = EXCLUDED.tx_hash, size_before = EXCLUDED.size_before,
          size_requested = EXCLUDED.size_requested, size_filled = EXCLUDED.size_filled, size_after = EXCLUDED.size_after,
@@ -295,7 +298,8 @@ export class PgStore implements Store {
          mm_req_before = EXCLUDED.mm_req_before, health_before = EXCLUDED.health_before, health_after = EXCLUDED.health_after,
          liq_price_before = EXCLUDED.liq_price_before, liq_price_after = EXCLUDED.liq_price_after,
          builder_fee_1k = EXCLUDED.builder_fee_1k, outcome = EXCLUDED.outcome, reason = EXCLUDED.reason,
-         receipt = EXCLUDED.receipt, receipt_hash = EXCLUDED.receipt_hash, signature = EXCLUDED.signature
+         receipt = EXCLUDED.receipt, receipt_hash = EXCLUDED.receipt_hash, signature = EXCLUDED.signature,
+         tx_nonce = EXCLUDED.tx_nonce
        RETURNING *`,
       [
         a.id,
@@ -328,6 +332,7 @@ export class PgStore implements Store {
         JSON.stringify(a.receipt),
         a.receiptHash,
         a.signature,
+        a.txNonce,
       ],
     );
     return toAction(r);
@@ -382,15 +387,38 @@ export class PgStore implements Store {
     return rows.map(toAction);
   }
 
-  async liquidatedAfter(accountId: string, pool: string, after: Date) {
+  async recordLiquidations(rows: Array<{ accountId: string; pool: string; block: bigint; txHash: string; sizeDelta: bigint }>) {
+    if (rows.length === 0) return;
+    const values: unknown[] = [];
+    const tuples = rows.map((r, i) => {
+      values.push(r.accountId, r.pool.toLowerCase(), r.block.toString(), r.txHash, r.sizeDelta.toString());
+      const b = i * 5;
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5})`;
+    });
+    await this.q(
+      `INSERT INTO liquidations (account_id, pool, block, tx_hash, size_delta) VALUES ${tuples.join(",")} ON CONFLICT DO NOTHING`,
+      values,
+    );
+  }
+
+  async liquidatedAfter(accountId: string, pool: string, afterBlock: bigint) {
     const [r] = await this.q(
-      `SELECT EXISTS (
-         SELECT 1 FROM actions
-         WHERE account_id = $1 AND lower(pool) = lower($2) AND outcome = 'missed' AND created_at > $3
-       ) AS hit`,
-      [accountId, pool, after],
+      `SELECT EXISTS (SELECT 1 FROM liquidations WHERE account_id = $1 AND pool = lower($2) AND block > $3) AS hit`,
+      [accountId, pool, afterBlock.toString()],
     );
     return r?.hit === true;
+  }
+
+  async listUnconfirmedOnChain(chainId?: number) {
+    const rows =
+      chainId === undefined
+        ? await this.q(`SELECT * FROM actions WHERE outcome = 'unconfirmed' ORDER BY created_at`)
+        : await this.q(
+            `SELECT a.* FROM actions a JOIN accounts c ON c.id = a.account_id
+             WHERE a.outcome = 'unconfirmed' AND c.chain_id = $1 ORDER BY a.created_at`,
+            [chainId],
+          );
+    return rows.map(toAction);
   }
 
   async lastMissAt(accountId: string, pool: string) {
@@ -401,10 +429,12 @@ export class PgStore implements Store {
     return (r?.at as Date | null) ?? null;
   }
 
-  async lastActionAt(accountId: string, market: string) {
+  async lastActionAt(owner: string, chainId: number, market: string) {
+    // The receipt's createdAt is the engine's clock, the one the cooldown is measured on.
     const [r] = await this.q(
-      `SELECT max(created_at) AS at FROM actions WHERE account_id = $1 AND market = $2 AND tx_hash IS NOT NULL`,
-      [accountId, market],
+      `SELECT max((a.receipt->>'createdAt')::timestamptz) AS at FROM actions a JOIN accounts c ON c.id = a.account_id
+       WHERE a.owner = $1 AND c.chain_id = $2 AND a.market = $3 AND a.tx_hash IS NOT NULL AND a.outcome <> 'missed'`,
+      [owner.toLowerCase(), chainId, market],
     );
     return (r?.at as Date | null) ?? null;
   }
@@ -567,19 +597,41 @@ export class PgStore implements Store {
 
   async rateHit(bucket: string, windowMs: number, max: number) {
     // The window is measured on the database's clock, the one that stamps the
-    // rows. The hit is stored only while the bucket is under its limit, in the
-    // same statement as the count, so refused requests add no rows.
-    const [r] = await this.q(
-      `WITH c AS (
-         SELECT count(*)::int AS n FROM rate_hits
-          WHERE bucket = $1 AND at >= now() - make_interval(secs => $2::double precision / 1000)
-       ), ins AS (
-         INSERT INTO rate_hits (bucket) SELECT $1 FROM c WHERE c.n < $3 RETURNING 1
-       )
-       SELECT n + 1 AS n FROM c`,
-      [bucket, windowMs, max],
-    );
-    return Number(r?.n ?? 0);
+    // rows. The hit is stored only while the bucket is under its limit, and a
+    // lock per bucket makes count-then-insert atomic, so a burst of parallel
+    // requests cannot all slip under the limit. Refused requests add no rows.
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [leaseKey(`rate:${bucket}`)]);
+      const { rows } = await client.query(
+        `WITH c AS (
+           SELECT count(*)::int AS n FROM rate_hits
+            WHERE bucket = $1 AND at >= now() - make_interval(secs => $2::double precision / 1000)
+         ), ins AS (
+           INSERT INTO rate_hits (bucket) SELECT $1 FROM c WHERE c.n < $3 RETURNING 1
+         )
+         SELECT n + 1 AS n FROM c`,
+        [bucket, windowMs, max],
+      );
+      await client.query("COMMIT");
+      return Number(rows[0]?.n ?? 0);
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async useNonce(nonce: string, expiresAt: Date) {
+    const rows = await this.q(`INSERT INTO used_nonces (nonce, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING 1 AS ok`, [nonce, expiresAt]);
+    return rows.length === 1;
+  }
+
+  async pruneNonces(now: Date) {
+    const res = await this.pool.query(`DELETE FROM used_nonces WHERE expires_at < $1`, [now]);
+    return res.rowCount ?? 0;
   }
 
   async pruneRateHits(olderThan: Date) {
@@ -623,9 +675,12 @@ export class PgStore implements Store {
       if (rows[0]?.ok === true) {
         // Held by this session for as long as the connection stays checked out.
         this.leaseClient = client;
-        client.on("error", () => {
-          this.leaseClient = null;
-        });
+        client.on("error", () => this.dropLease());
+        // An idle connection may die without an error event: ask it every 10 s.
+        this.leaseProbe = setInterval(() => {
+          client.query("SELECT 1").catch(() => this.dropLease());
+        }, 10_000);
+        this.leaseProbe.unref();
         return true;
       }
       client.release();
@@ -636,6 +691,12 @@ export class PgStore implements Store {
     }
   }
 
+  private dropLease(): void {
+    if (this.leaseProbe) clearInterval(this.leaseProbe);
+    this.leaseProbe = null;
+    this.leaseClient = null;
+  }
+
   /** Whether the lease is still held (its connection has not dropped). */
   get leaseHeld(): boolean {
     return this.leaseClient !== null;
@@ -643,8 +704,9 @@ export class PgStore implements Store {
 
   async close() {
     if (this.leaseClient) {
-      this.leaseClient.release();
-      this.leaseClient = null;
+      const c = this.leaseClient;
+      this.dropLease();
+      c.release();
     }
     await this.pool.end();
   }

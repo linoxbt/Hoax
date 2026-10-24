@@ -96,9 +96,34 @@ function checkDatabaseTls(url: string): void {
 export async function sessionFor(req: Request, chainId?: number): Promise<Session | null> {
   const session = parseSession(bearer(req), chainId);
   if (!session) return null;
-  const revoked = await (await getStore()).sessionsRevokedBefore(session.wallet).catch(() => null);
-  if (revoked && session.issuedAt <= revoked.getTime()) return null;
+  // Fails closed: when the store cannot say whether the session was revoked, it is not accepted.
+  try {
+    const store = await getStore();
+    for (const key of revocationKeys(session)) {
+      const revoked = await store.sessionsRevokedBefore(key);
+      if (revoked && session.issuedAt <= revoked.getTime()) return null;
+    }
+  } catch (err) {
+    console.error("session check failed:", err instanceof Error ? err.message : String(err));
+    return null;
+  }
   return session;
+}
+
+/**
+ * What a revocation is recorded under. A plain key is the same wallet on every
+ * network; a smart wallet's address may belong to someone else on another
+ * network, so its sign-out (and the check) is scoped to its own chain.
+ */
+export function revocationKeys(session: Session): string[] {
+  const wallet = session.wallet.toLowerCase();
+  return session.chainId === null ? [wallet] : [wallet, `${wallet}@${session.chainId}`];
+}
+
+/** The key "sign out everywhere" revokes for this session. */
+export function revocationKeyFor(session: Session): string {
+  const wallet = session.wallet.toLowerCase();
+  return session.chainId === null ? wallet : `${wallet}@${session.chainId}`;
 }
 
 /**
@@ -185,11 +210,21 @@ function trustedIpHeader(): string | null {
  * trusted; elsewhere the last X-Forwarded-For entry, which the nearest proxy
  * added (the first is whatever the client sent).
  */
+let warnedUntrusted = false;
 export function clientIp(req: Request): string {
   const h = req.headers;
   const trusted = trustedIpHeader();
   const own = trusted ? h.get(trusted)?.split(",")[0]?.trim() : null;
   if (own) return own;
+  if (isProduction()) {
+    // No header this deployment can trust: any address would be the client's
+    // own claim, so every caller shares one bucket rather than pick their own.
+    if (!warnedUntrusted) {
+      warnedUntrusted = true;
+      console.warn("no trusted client-IP header (set HOAX_CLIENT_IP_HEADER behind your proxy): rate limits are shared by every caller");
+    }
+    return "untrusted-proxy";
+  }
   const forwarded = (h.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return forwarded[forwarded.length - 1] ?? "local";
 }
@@ -236,13 +271,32 @@ export async function rateLimited(bucket: string, max: number, windowMs: number)
  * across serverless instances, which is enough to stop a scraper.
  */
 export function rateLimitedLocal(bucket: string, max: number, windowMs: number): boolean {
-  if (hits.size > 50_000) hits.clear(); // bounded: a flood of distinct addresses cannot grow it forever
+  // Bounded: past 50,000 buckets the oldest tenth goes (Map keeps insertion
+  // order), so a flood of addresses cannot grow it forever or reset everyone's.
+  if (hits.size > 50_000) {
+    let drop = 5_000;
+    for (const k of hits.keys()) {
+      if (drop-- <= 0) break;
+      hits.delete(k);
+    }
+  }
   return memoryHit(bucket, windowMs) > max;
 }
 
-/** Spend a sign-in nonce: true the first time, false if it was used already. */
-export async function useNonce(nonce: string, ttlMs: number): Promise<boolean> {
-  return !(await rateLimited(`nonce:${nonce}`, 1, ttlMs));
+/** Spend a sign-in nonce, in the store (a primary key: a parallel replay loses). Fails closed. */
+export async function useNonce(nonce: string, expiresAt: Date): Promise<boolean> {
+  return (await getStore()).useNonce(nonce, expiresAt);
+}
+
+/** A short shared cache for a public read, so a burst of callers costs one read. */
+const cached = new Map<string, { at: number; value: Promise<unknown> }>();
+export function cachedFor<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const hit = cached.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as Promise<T>;
+  const value = load();
+  cached.set(key, { at: Date.now(), value });
+  value.catch(() => cached.delete(key));
+  return value;
 }
 
 export const BUILDER = {

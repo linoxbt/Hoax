@@ -72,7 +72,7 @@ To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps 
 ### Tests and checks
 
 ```sh
-npm test                                         # 74 unit and end-to-end tests
+npm test                                         # 82 unit and end-to-end tests
 TEST_DATABASE_URL=postgres://… npm test          # also runs the store contract against Postgres
 npm run typecheck
 npm run build -w @hoax/web
@@ -121,8 +121,8 @@ The numbers move with the book and mark read at the time; these are from a run o
 - Hoax fails closed: no order on a stale mark or after a read error. Repeated read failures alert the trader.
 - Fees come only from the on-chain approval and the pool's cap, and are shown on every receipt. Paper USDso accounts are never charged.
 - Gas drips go only to keys with a confirmed link, under per-key and per-network daily caps, reserved in the database before they are sent so they hold across processes and lost receipts.
-- Management: the trader signs in with their wallet (a free signed message, bound to this site's address and checked on the wallet's own network; each message works once). Sessions last a day, are bound to the network for a smart wallet, and "Sign out everywhere" ends them all. Every change is checked on chain, fresh, against the owners of the dreamDEX Safe; trigger levels and alerts are shown to the owner only. A registration only becomes active when its owner links the Hoax key, which nobody else can do; a bare wallet needs margin on dreamDEX to register. Registrations and sign-ins are rate-limited per address, per wallet and overall, counted in the database; read endpoints are limited per instance. Pages that ask a wallet to sign cannot be framed.
-- The web app reaches Postgres over TLS only and trusts exactly one certificate, the database's own (`DATABASE_CA_CERT`); a production web app refuses a remote Postgres without it. Postgres accepts only TLS, only the `hoax` user and database, with SCRAM. Its port is public because Netlify has no fixed addresses: see [deploy/README.md](deploy/README.md) for keeping it private.
+- Management: the trader signs in with their wallet: a free Sign-In with Ethereum (EIP-4361) message, so the wallet itself warns when the page asking is not this site; it is bound to this site's address, checked on the wallet's own network, and works once. Sessions last a day, are bound to the network for a smart wallet, and "Sign out everywhere" ends them all. Every change is checked on chain, fresh, against the owners of the dreamDEX Safe, and the engine re-checks every policy it reads (a cooldown is at least 5 s). Policies and alerts are shown to the owner only; receipts are public, so the health at which Hoax acted is visible in them. A registration only becomes active when its owner links the Hoax key, which nobody else can do; a bare wallet needs margin on dreamDEX to register. Registrations and sign-ins are rate-limited per address, per wallet and overall, counted in the database; read endpoints are limited per instance. Pages that ask a wallet to sign cannot be framed.
+- The web app reaches Postgres over TLS only, as `hoax_web`, a role that can read and write rows and nothing else, and trusts exactly one certificate, the database's own (`DATABASE_CA_CERT`); a production web app refuses a remote Postgres without it. Postgres accepts only TLS, only the `hoax` database, with SCRAM. Its port is public because Netlify has no fixed addresses: see [deploy/README.md](deploy/README.md) for keeping it private.
 - Vulnerabilities found in dreamDEX contracts go privately to security@dreamdex.io, not into this repo.
 
 ## Where v1 differs from the spec

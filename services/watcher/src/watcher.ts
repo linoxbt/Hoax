@@ -118,6 +118,28 @@ export class Watcher {
     });
   }
 
+  /**
+   * Orders still unconfirmed on accounts that are no longer active (the
+   * trader unlinked or registered again right after a lost receipt): the
+   * health tick never visits those, so they are confirmed here.
+   */
+  async confirmOrphans(): Promise<void> {
+    const rows = await this.opts.store.listUnconfirmedOnChain(this.opts.venue.chainId);
+    for (const accountId of new Set(rows.map((r) => r.accountId))) {
+      if (this.busy.has(accountId)) continue;
+      const account = await this.opts.store.getAccount(accountId);
+      if (!account || account.status === "active") continue; // the health tick confirms those
+      this.busy.add(accountId);
+      try {
+        await this.engine.confirmOutstanding(account);
+      } catch (err) {
+        this.opts.log.warn("could not confirm an order", { account: account.owner, error: String(err).slice(0, 200) });
+      } finally {
+        this.busy.delete(accountId);
+      }
+    }
+  }
+
   private async refreshSubscriptions(): Promise<void> {
     const accounts = await this.opts.store.listAccounts("active", this.opts.venue.chainId);
     const owners = accounts.map((a) => getAddress(a.owner) as Address).sort();
@@ -188,6 +210,7 @@ export class Watcher {
     this.loop("subscriptions", 15_000, () => this.refreshSubscriptions());
     this.loop("onboarding", 2_000, () => this.linker.run());
     this.loop("counterfactuals", 2_000, () => this.tracker.run());
+    this.loop("confirmations", 5_000, () => this.confirmOrphans());
     // A dry run sends nothing on chain, gas included.
     if (this.opts.gas && !this.opts.engine.dryRun) this.loop("gas", 30_000, () => this.opts.gas!.run());
     this.loop("heartbeat", 5_000, async () => {
@@ -202,6 +225,7 @@ export class Watcher {
       const dayAgo = new Date(Date.now() - 24 * 60 * 60_000);
       await this.opts.store.pruneHealthTicks(dayAgo);
       await this.opts.store.pruneRateHits(dayAgo);
+      await this.opts.store.pruneNonces(new Date());
     });
   }
 
@@ -243,6 +267,7 @@ export class Watcher {
   async runOnce(): Promise<void> {
     await this.linker.run();
     await this.tickAll(true);
+    await this.confirmOrphans();
     await this.tracker.run();
   }
 }

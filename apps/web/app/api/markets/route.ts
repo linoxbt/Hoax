@@ -1,5 +1,5 @@
 import { HIDEKI, isNetworkId } from "@hoax/chain";
-import { error, getMarkets, getVenue, json } from "@/lib/server";
+import { cachedFor, clientIp, error, getMarkets, getVenue, json, rateLimitedLocal } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -14,16 +14,9 @@ interface MarketRow {
   baseDecimals: number;
 }
 
-const g = globalThis as unknown as { __hoaxMarkets?: Map<number, { at: number; rows: MarketRow[] }> };
 const TTL_MS = 5_000;
 
-/** Every dreamDEX perp market on one network (?chain=, Hideki by default) with its live mark, read from chain (cached 5 s). */
-export async function GET(req: Request) {
-  const chainId = Number(new URL(req.url).searchParams.get("chain") ?? HIDEKI.id);
-  if (!isNetworkId(chainId)) return error(400, "chain must be 50312 (Shannon) or 50383 (Hideki)");
-  g.__hoaxMarkets ??= new Map();
-  const hit = g.__hoaxMarkets.get(chainId);
-  if (hit && Date.now() - hit.at < TTL_MS) return json({ chainId, markets: hit.rows, cached: true });
+async function load(chainId: number): Promise<MarketRow[]> {
   const markets = await getMarkets(chainId);
   const venue = getVenue(chainId);
   const rows = await Promise.all(
@@ -46,7 +39,17 @@ export async function GET(req: Request) {
     const i = ["BTC", "ETH", "SOL"].indexOf(b);
     return i === -1 ? 99 : i;
   };
-  rows.sort((a, b) => rank(a.baseSymbol) - rank(b.baseSymbol) || a.baseSymbol.localeCompare(b.baseSymbol));
-  g.__hoaxMarkets.set(chainId, { at: Date.now(), rows });
-  return json({ chainId, markets: rows, cached: false });
+  return rows.sort((a, b) => rank(a.baseSymbol) - rank(b.baseSymbol) || a.baseSymbol.localeCompare(b.baseSymbol));
+}
+
+/**
+ * Every dreamDEX perp market on one network (?chain=, Hideki by default) with
+ * its live mark, read from chain. Cached 5 s and shared: callers arriving
+ * while a read is under way wait for that one instead of starting their own.
+ */
+export async function GET(req: Request) {
+  if (rateLimitedLocal(`markets-ip:${clientIp(req)}`, 120, 60_000)) return error(429, "too many requests; try again shortly");
+  const chainId = Number(new URL(req.url).searchParams.get("chain") ?? HIDEKI.id);
+  if (!isNetworkId(chainId)) return error(400, "chain must be 50312 (Shannon) or 50383 (Hideki)");
+  return json({ chainId, markets: await cachedFor(`markets:${chainId}`, TTL_MS, () => load(chainId)) });
 }

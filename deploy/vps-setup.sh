@@ -6,6 +6,8 @@ set -euo pipefail
 
 REPO=https://github.com/linoxbt/Hoax.git
 BRANCH=${BRANCH:-main}
+# Pin a release: REF=<tag or commit> deploys exactly that instead of the branch's head.
+REF=${REF:-}
 DIR=${DIR:-/opt/hoax}
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -30,11 +32,15 @@ if [ -d "$DIR/.git" ]; then
     git -C "$DIR" diff > "$patch"
     echo "Local changes in $DIR are replaced by $BRANCH; they are saved in $patch"
   fi
-  git -C "$DIR" fetch origin "$BRANCH" && git -C "$DIR" checkout "$BRANCH" && git -C "$DIR" reset --hard "origin/$BRANCH"
+  git -C "$DIR" fetch --tags origin "$BRANCH" && git -C "$DIR" checkout "$BRANCH" && git -C "$DIR" reset --hard "origin/$BRANCH"
 else
   git clone --branch "$BRANCH" "$REPO" "$DIR"
 fi
 cd "$DIR"
+if [ -n "$REF" ]; then
+  git fetch --tags origin && git checkout --detach "$REF"
+fi
+echo "Deploying $(git rev-parse --short HEAD)"
 
 if [ ! -f .env ]; then
   # The umask stays inside the subshell: left set, it made deploy/pg-certs root-only.
@@ -47,8 +53,10 @@ GAS_WALLET_PRIVATE_KEY=0x$(openssl rand -hex 32)
 HOAX_BUILDER_ADDRESS=
 HOAX_BUILDER_FEE_BPS_1K=0
 DRY_RUN=false
-# Not used here: the web app's session secret, kept so every run prints the same one.
+# Not used here: the web app's session secret and its database password (the
+# hoax_web role: rows only, no superuser), kept so every run writes the same ones.
 HOAX_SESSION_SECRET=$(openssl rand -hex 32)
+WEB_DB_PASSWORD=$(openssl rand -hex 24)
 ENV
   echo "Wrote $DIR/.env with fresh secrets. Back it up: losing HOAX_KEYSTORE_SECRET loses the Hoax keys."
 fi
@@ -88,6 +96,9 @@ val() { grep "^$1=" .env | cut -d= -f2 || true; }
 if [ -z "$(val HOAX_SESSION_SECRET)" ]; then
   (umask 077 && echo "HOAX_SESSION_SECRET=$(openssl rand -hex 32)" >> .env)
 fi
+if [ -z "$(val WEB_DB_PASSWORD)" ]; then
+  (umask 077 && echo "WEB_DB_PASSWORD=$(openssl rand -hex 24)" >> .env)
+fi
 
 docker compose up -d --build --remove-orphans
 
@@ -106,6 +117,26 @@ for port in "$(val HEALTH_PORT)" "$(val HEALTH_PORT_SHANNON)"; do
   curl -sS "http://127.0.0.1:$port/healthz" && echo
 done
 
+# The web app's own database role: read and write rows, nothing else. It is
+# not a superuser (no COPY TO PROGRAM, no DDL), so its password, which leaves
+# this machine for Netlify, cannot take over the database or the server.
+echo "Granting the web app's database role..."
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U hoax -d hoax <<SQL >/dev/null
+DO \$\$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hoax_web') THEN
+    CREATE ROLE hoax_web LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+  END IF;
+END \$\$;
+ALTER ROLE hoax_web WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '$(val WEB_DB_PASSWORD)';
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT CONNECT ON DATABASE hoax TO hoax_web;
+GRANT USAGE ON SCHEMA public TO hoax_web;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO hoax_web;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO hoax_web;
+ALTER DEFAULT PRIVILEGES FOR ROLE hoax IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hoax_web;
+ALTER DEFAULT PRIVILEGES FOR ROLE hoax IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO hoax_web;
+SQL
+
 IP=$(curl -fsS https://api.ipify.org || hostname -I | awk '{print $1}')
 GAS=$(curl -fsS "http://127.0.0.1:$(val HEALTH_PORT)/healthz" | sed -n 's/.*"gasWallet":"\(0x[0-9a-fA-F]*\)".*/\1/p' || true)
 echo
@@ -122,7 +153,7 @@ NETLIFY_ENV="$DIR/netlify.env"
 (umask 077 && cat > "$NETLIFY_ENV") <<NETLIFY
 # Paste these into Netlify (Project configuration > Environment variables), scoped to Functions.
 # DATABASE_URL and HOAX_SESSION_SECRET are secrets: mark them so.
-DATABASE_URL=postgres://hoax:$(val POSTGRES_PASSWORD)@$IP:$(val POSTGRES_PUBLIC_PORT)/hoax?sslmode=no-verify
+DATABASE_URL=postgres://hoax_web:$(val WEB_DB_PASSWORD)@$IP:$(val POSTGRES_PUBLIC_PORT)/hoax?sslmode=no-verify
 DATABASE_CA_CERT=$(base64 -w0 deploy/pg-certs/server.crt)
 HOAX_SESSION_SECRET=$(val HOAX_SESSION_SECRET)
 # Your site's own hosts, comma-separated, if it has a custom domain (Netlify's own URLs are added automatically).

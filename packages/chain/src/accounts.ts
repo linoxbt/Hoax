@@ -212,6 +212,16 @@ export class DreamDexAccounts {
       });
       labels.push({ to: registry, label: `${req.approved ? "grant place-order only" : "revoke the key"} on ${pool}` });
     }
+    // A key also linked through dreamDEX's own Link a bot holds a registry-wide
+    // grant, which per-pool revokes do not touch: revoking clears that too.
+    if (!req.approved) {
+      calls.push({
+        to: registry,
+        value: 0n,
+        data: encodeFunctionData({ abi: REGISTRY_ABI, functionName: "setOperatorApprovalGlobal", args: [req.operator, [...REVOKE_SELECTORS], false] }),
+      });
+      labels.push({ to: registry, label: "revoke the key registry-wide (a Link a bot grant)" });
+    }
     // Granting needs a fee to approve; revoking clears any approval for the builder.
     if (req.builder && (req.approved ? req.builder.feeBpsTimes1k > 0n : true)) {
       const fee = req.approved ? req.builder.feeBpsTimes1k : 0n;

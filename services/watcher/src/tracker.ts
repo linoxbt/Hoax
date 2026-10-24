@@ -46,9 +46,9 @@ export class CounterfactualTracker {
         // The window runs from the close itself, as the signed receipt stamps it.
         const closedAt = Date.parse(action.receipt.createdAt) || action.createdAt.getTime();
         const ageMs = this.now() - closedAt;
-        // The engine writes a "missed" receipt for every liquidation it has
-        // scanned; the store answers for everything up to its cursor.
-        let liquidatedSince = await this.store.liquidatedAfter(action.accountId, action.pool, action.createdAt);
+        // The engine records every liquidation step it has scanned, with its
+        // block; the store answers for everything up to the engine's cursor.
+        let liquidatedSince = await this.store.liquidatedAfter(action.accountId, action.pool, action.block ?? 0n);
         let verdict = evaluateTracking({
           side: action.side,
           originalLiquidationPrice: action.liqPriceBefore,

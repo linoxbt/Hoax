@@ -29,6 +29,6 @@ export const BOUNDS: Record<string, { min: number; max: number }> = {
   targetHealth: { min: 1.02, max: 10 },
   maxClosePct: { min: 1, max: 100 },
   maxSlippageBps: { min: 1, max: 500 },
-  cooldownSec: { min: 0, max: 3600 },
+  cooldownSec: { min: 5, max: 3600 },
   lambda: { min: 0.01, max: 1 },
 };

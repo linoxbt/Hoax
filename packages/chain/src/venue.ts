@@ -131,17 +131,27 @@ export interface Venue {
   maxBuilderFee(market: MarketInfo): Promise<bigint>;
   /**
    * Send an immediate-or-cancel order for `owner`, signed by the linked key.
-   * `onSent` runs as soon as the transaction has a hash, before its receipt is
-   * awaited. Throws TxRejectedError (never sent), TxRevertedError (mined and
-   * reverted) or TxUnknownError (sent, result unknown).
+   * The transaction is signed locally first, so `onSent` runs with its hash
+   * and nonce before it is broadcast. Throws TxRejectedError (never sent: the
+   * simulation or the node refused it), TxRevertedError (mined and reverted)
+   * or TxUnknownError (maybe sent, result unknown).
    */
   placeIocFor(
     signer: TradingSigner,
     owner: Address,
     market: MarketInfo,
     order: IocOrder,
-    onSent?: (hash: Hex) => Promise<void>,
+    onSent?: (hash: Hex, nonce: number) => Promise<void>,
   ): Promise<PlaceResult>;
+  /** Transactions this address has had mined (the next nonce once everything pending has landed). */
+  minedNonce(address: Address): Promise<number>;
+  /** Whether the node still holds this transaction, mined or waiting in its mempool. */
+  knowsTransaction(hash: Hex): Promise<boolean>;
+  /**
+   * Replace whatever is waiting at `nonce` with an empty self-transfer at a
+   * higher fee, so a stuck order can never land later. Returns its hash.
+   */
+  cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex>;
   /** The result of an order sent earlier: its fills, "reverted", or null while it has no receipt. */
   orderResult(hash: Hex, market: MarketInfo): Promise<PlaceResult | "reverted" | null>;
   /**

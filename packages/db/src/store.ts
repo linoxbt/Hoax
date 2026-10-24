@@ -55,6 +55,8 @@ export interface ActionRow {
   side: Side;
   block: bigint | null;
   txHash: string | null;
+  /** The nonce the order's transaction was signed with, when Hoax sent one. */
+  txNonce: number | null;
   sizeBefore: bigint;
   sizeRequested: bigint;
   sizeFilled: bigint;
@@ -168,9 +170,17 @@ export interface Store {
   listUnconfirmedActions(accountId: string): Promise<ActionRow[]>;
   /** Actions still waiting on their counterfactual, on one network when chainId is given. */
   listPendingActions(chainId?: number): Promise<ActionRow[]>;
-  /** Whether the account has a "missed" receipt on this pool created after `after`. */
-  liquidatedAfter(accountId: string, pool: string, after: Date): Promise<boolean>;
-  lastActionAt(accountId: string, market: string): Promise<Date | null>;
+  /** Record liquidation events (each once, however often it is scanned). */
+  recordLiquidations(rows: Array<{ accountId: string; pool: string; block: bigint; txHash: string; sizeDelta: bigint }>): Promise<void>;
+  /** Whether the account was liquidated on this pool in a block after `afterBlock`. */
+  liquidatedAfter(accountId: string, pool: string, afterBlock: bigint): Promise<boolean>;
+  /**
+   * When Hoax last sent an order for this owner on this market and network, on
+   * the engine's own clock (the receipt's createdAt), across re-registrations.
+   */
+  lastActionAt(owner: string, chainId: number, market: string): Promise<Date | null>;
+  /** Unconfirmed orders on a network, whatever the account's status now. */
+  listUnconfirmedOnChain(chainId?: number): Promise<ActionRow[]>;
   /** When the newest "missed" receipt on this pool was written. */
   lastMissAt(accountId: string, pool: string): Promise<Date | null>;
 
@@ -209,6 +219,10 @@ export interface Store {
    */
   rateHit(bucket: string, windowMs: number, max: number): Promise<number>;
   pruneRateHits(olderThan: Date): Promise<number>;
+
+  /** Spend a sign-in nonce: true the first time, false ever after (until it expires). */
+  useNonce(nonce: string, expiresAt: Date): Promise<boolean>;
+  pruneNonces(now: Date): Promise<number>;
 
   /** End every session this wallet was issued before `before`. */
   revokeSessions(wallet: string, before: Date): Promise<void>;

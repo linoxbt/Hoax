@@ -6,6 +6,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { LinkGrid } from "@/components/LinkGrid";
 import { useApp } from "@/lib/appContext";
 import { addressUrl, txUrl } from "@/lib/format";
+import { PROTECTION_TITLE, protectionState } from "@/lib/protection";
 import { api } from "@/lib/session";
 import { useLinkTx } from "@/lib/useLinkTx";
 import { useHoax } from "@/lib/wallet";
@@ -51,7 +52,7 @@ export default function Settings() {
         <div className="grid g2" style={{ gap: "2.4rem" }}>
           <div className="card">
             <div className="cap soft">Protection</div>
-            <h3 style={{ margin: "10px 0" }}>{!account ? "Not set up" : account.paused ? "Paused" : "On"}</h3>
+            <h3 style={{ margin: "10px 0" }}>{!account ? "Not set up" : PROTECTION_TITLE[protectionState(view, hoax.engine)]}</h3>
             <p className="copy soft">Pausing stops every close at once. The key stays linked.</p>
             {account && (
               <button
@@ -71,7 +72,8 @@ export default function Settings() {
             <p className="copy soft">One transaction from your wallet removes trade access on every market.</p>
             {revoke.phase === "done" ? (
               <p className="note" style={{ marginTop: "1.6rem" }}>
-                Revoked.{" "}
+                {/* Said only once the chain shows every market unlinked, not when the transaction succeeds. */}
+                {anyLinked ? "Revoke sent. Waiting for every market to show the key unlinked…" : "Revoked on every market."}{" "}
                 {revoke.hash && (
                   <a className="accent" href={txUrl(revoke.hash, session.chainId)} target="_blank" rel="noreferrer">
                     View tx ↗

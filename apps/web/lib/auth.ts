@@ -15,6 +15,7 @@ import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { DreamDexAccounts, HIDEKI, isNetworkId, networkOf, type Network } from "@hoax/chain";
 import { createPublicClient, getAddress, http, type Address, type Hex } from "viem";
+import { createSiweMessage, parseSiweMessage } from "viem/siwe";
 
 const SESSION_TTL_MS = 24 * 60 * 60_000;
 /** ERC-6492 wraps a signature from a smart wallet that is not deployed yet; it ends with these 32 bytes. */
@@ -27,9 +28,14 @@ const CHALLENGE_TTL_MS = 10 * 60_000;
 
 const g = globalThis as unknown as { __hoaxSecret?: Buffer; __hoaxAccounts?: Map<number, DreamDexAccounts>; __hoaxControls?: Map<string, { ok: boolean; at: number }> };
 
-/** Whether this is a real deployment (not `next dev`, not the demo). */
+/**
+ * Whether this deployment must be strict: a production build, unless it is a
+ * pure demo (HOAX_DEMO=1 with no database, nothing real to protect). Demo mode
+ * left on next to a real database relaxes nothing.
+ */
 export function isProduction(): boolean {
-  return process.env.NODE_ENV === "production" && process.env.HOAX_DEMO !== "1";
+  if (process.env.NODE_ENV !== "production") return false;
+  return !(process.env.HOAX_DEMO === "1" && !process.env.DATABASE_URL);
 }
 
 function secret(): Buffer {
@@ -74,26 +80,35 @@ function rpcOverride(network: Network): string | undefined {
   return (network.id === HIDEKI.id ? process.env.RPC_URL : process.env.SHANNON_RPC_URL) || undefined;
 }
 
+/** A sign-in failure whose message is written for the user (anything else is not shown). */
+export class SignInError extends Error {}
+
+const STATEMENT = "Sign in to Hoax. This proves you control this wallet. It is free and sends no transaction.";
+
+/** The nonce's MAC binds the wallet, the network, this site's host and the expiry; the message carries the rest. */
+const nonceMac = (raw: string, exp: number, wallet: Address, chainId: number, host: string) =>
+  createHmac("sha256", secret()).update(`siwe.${raw}.${exp}.${wallet.toLowerCase()}.${chainId}.${host}`).digest("hex").slice(0, 32);
+
 /**
- * The message a wallet signs to sign in, for the network the wallet is on
- * (Hideki unless given): a smart wallet's signature is checked on that chain.
+ * The message a wallet signs to sign in: EIP-4361 (Sign-In with Ethereum)
+ * exactly, so wallets recognise it and warn when the page asking is not the
+ * domain it names. For the network the wallet is on (Hideki unless given): a
+ * smart wallet's signature is checked on that chain.
  */
 export function challenge(wallet: Address, host: string, chainId: number = HIDEKI.id): { message: string; expiresAt: string } {
   const exp = Date.now() + CHALLENGE_TTL_MS;
-  const raw = randomBytes(12).toString("base64url");
-  const nonce = `${raw}.${exp}.${mac(`${raw}.${exp}.${wallet.toLowerCase()}.${chainId}`)}`;
-  const message = [
-    `${host} wants you to sign in with your wallet:`,
-    getAddress(wallet),
-    "",
-    "Sign in to Hoax. This proves you control this wallet. It is free and sends no transaction.",
-    "",
-    `URI: https://${host}`,
-    `Chain ID: ${chainId}`,
-    `Nonce: ${nonce}`,
-    `Issued At: ${new Date().toISOString()}`,
-    `Expiration Time: ${new Date(exp).toISOString()}`,
-  ].join("\n");
+  const raw = randomBytes(8).toString("hex");
+  const message = createSiweMessage({
+    address: getAddress(wallet),
+    chainId,
+    domain: host,
+    uri: `https://${host}`,
+    version: "1",
+    statement: STATEMENT,
+    nonce: `${raw}${nonceMac(raw, exp, wallet, chainId, host)}`,
+    issuedAt: new Date(),
+    expirationTime: new Date(exp),
+  });
   return { message, expiresAt: new Date(exp).toISOString() };
 }
 
@@ -113,28 +128,48 @@ export async function verify(
   message: string,
   signature: Hex,
   host: string,
-  useNonce: (nonce: string, ttlMs: number) => Promise<boolean>,
+  useNonce: (nonce: string, expiresAt: Date) => Promise<boolean>,
 ): Promise<{ wallet: Address; token: string; expiresAt: string; chainId: number | null }> {
-  const lines = message.split("\n");
-  if (lines[0] !== `${host} wants you to sign in with your wallet:`) throw new Error("this sign-in message was made for another site");
-  const wallet = getAddress(lines[1] ?? "");
-  const nonce = lines.find((l) => l.startsWith("Nonce: "))?.slice(7) ?? "";
-  const chainId = Number(lines.find((l) => l.startsWith("Chain ID: "))?.slice(10));
-  const [raw, expStr, nonceMac] = nonce.split(".");
-  const exp = Number(expStr);
-  if (!raw || !nonceMac || !isNetworkId(chainId) || !sameMac(nonceMac, mac(`${raw}.${expStr}.${wallet.toLowerCase()}.${chainId}`))) {
-    throw new Error("sign-in message was not issued by Hoax");
+  const m = parseSiweMessage(message);
+  if (m.domain !== host || m.uri !== `https://${host}`) throw new SignInError("this sign-in message was made for another site");
+  if (!m.address || m.version !== "1" || !m.nonce || !m.chainId || !m.expirationTime || !m.issuedAt || m.statement !== STATEMENT) {
+    throw new SignInError("sign-in message was not issued by Hoax");
   }
-  if (!Number.isFinite(exp) || exp < Date.now()) throw new Error("sign-in message expired; try again");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(m.address)) throw new SignInError("sign-in message was not issued by Hoax");
+  const wallet = getAddress(m.address);
+  const chainId = m.chainId;
+  const exp = m.expirationTime.getTime();
+  // Exactly the message Hoax issues, nothing added or reordered.
+  const canonical = createSiweMessage({
+    address: wallet,
+    chainId,
+    domain: host,
+    uri: `https://${host}`,
+    version: "1",
+    statement: STATEMENT,
+    nonce: m.nonce,
+    issuedAt: m.issuedAt,
+    expirationTime: m.expirationTime,
+  });
+  const raw = m.nonce.slice(0, 16);
+  if (
+    canonical !== message ||
+    !isNetworkId(chainId) ||
+    m.nonce.length !== 48 ||
+    !sameMac(m.nonce.slice(16), nonceMac(raw, exp, wallet, chainId, host))
+  ) {
+    throw new SignInError("sign-in message was not issued by Hoax");
+  }
+  if (exp < Date.now()) throw new SignInError("sign-in message expired; try again");
 
   // verifyMessage covers plain keys, ERC-1271 smart wallets and ERC-6492 undeployed
   // ones; a smart wallet answers on the chain it lives on, the one the message names.
   const network = networkOf(chainId);
   const client = createPublicClient({ chain: network.chain, transport: http(rpcOverride(network) ?? network.rpcUrl) });
   const ok = await client.verifyMessage({ address: wallet, message, signature });
-  if (!ok) throw new Error("signature does not match the wallet");
+  if (!ok) throw new SignInError("signature does not match the wallet");
   // Spent only once the signature is good, so a bad attempt does not burn a real one.
-  if (!(await useNonce(raw, Math.max(0, exp - Date.now()) + 60_000))) throw new Error("this sign-in message was already used; sign in again");
+  if (!(await useNonce(m.nonce, new Date(exp + 60_000)))) throw new SignInError("this sign-in message was already used; sign in again");
 
   const code = await client.getCode({ address: wallet }).catch(() => undefined);
   const contract = (code !== undefined && code !== "0x") || signature.toLowerCase().endsWith(ERC6492_SUFFIX);

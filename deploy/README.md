@@ -22,11 +22,17 @@ something else, starts Postgres and the two engines, and:
 - prints the gas wallet address: send it STT on both Hideki and Shannon; it
   tops up every linked Hoax key on that network so the key can pay for its own
   orders;
-- writes the web app's settings (`DATABASE_URL`, `DATABASE_CA_CERT`,
-  `HOAX_SESSION_SECRET`, ...) to `/opt/hoax/netlify.env`, readable by root only,
-  so the database password never lands in the terminal's scrollback.
+- creates `hoax_web`, the web app's own database role: it can read and write
+  rows and nothing else (not a superuser, no schema changes, no
+  `COPY ... TO PROGRAM`), so the password that leaves the machine for Netlify
+  cannot take over the database or the server. The engines keep the owner role;
+- writes the web app's settings (`DATABASE_URL` as `hoax_web`,
+  `DATABASE_CA_CERT`, `HOAX_SESSION_SECRET`, ...) to `/opt/hoax/netlify.env`,
+  readable by root only, so no password lands in the terminal's scrollback.
 
-Run it again any time to update: it keeps `.env` and rebuilds. Local edits in
+Run it again any time to update: it keeps `.env` and rebuilds. `REF=<tag or
+commit> bash vps-setup.sh` deploys exactly that revision instead of the
+branch's head; prefer it for production, and read the script before you run it. Local edits in
 `/opt/hoax` are replaced by the branch, and saved first as a
 `local-changes-*.patch`. Back up `/opt/hoax/.env`: losing
 `HOAX_KEYSTORE_SECRET` loses every Hoax key.
@@ -37,8 +43,9 @@ records the ports it chose.
 
 **The database port is public.** Netlify functions have no fixed addresses to
 allow, so Postgres listens on every interface. It accepts only TLS, only the
-`hoax` user on the `hoax` database, only with the password (SCRAM, a random
-48-hex-character one), and logs every connection. To keep it off the internet,
+`hoax` (engines) and `hoax_web` (web app) roles on the `hoax` database, only
+with their passwords (SCRAM, random 48-hex-character ones), and logs every
+connection. To keep it off the internet,
 run the web app where it has fixed egress or a private network to the server,
 and set `POSTGRES_BIND` in `.env` to that interface; or use a managed Postgres
 and point `DATABASE_URL` (engines and web) at it.
@@ -84,7 +91,8 @@ scoped to Functions:
    build time. A production deployment with no address list refuses sign-in.
 4. If Hoax charges a builder fee, `HOAX_BUILDER_ADDRESS` and
    `HOAX_BUILDER_FEE_BPS_1K` (the same values as the engines').
-5. Delete `HOAX_DEMO`, then redeploy.
+5. Delete `HOAX_DEMO`, then redeploy. (Demo mode next to a real database no
+   longer relaxes anything, but it hides the engine and refuses registrations.)
 
 The engine badge on the site turns green within a few seconds, and
 `/start/link` issues keys on either network.

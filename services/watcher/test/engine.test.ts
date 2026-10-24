@@ -254,23 +254,46 @@ describe("orders whose result is not known", () => {
     expect([...w.store.actions.values()].filter((a) => a.txHash)).toHaveLength(1);
   });
 
-  it("holds the market while a sent order has no receipt, then settles it as dropped", async () => {
+  it("holds the market while a sent order is stuck, cancels its nonce, and only then settles it", async () => {
     const w = await world();
     w.venue.setMark(ETH.pool, 2318n * E18);
-    w.venue.nextOrderFault = "unknown-dropped";
+    w.venue.nextOrderFault = "unknown-dropped"; // sent, waiting in the mempool
     await w.engine.tick((await w.store.getAccount(w.account.id))!);
     const [row] = [...w.store.actions.values()];
     expect(row.outcome).toBe("unconfirmed");
+    expect(row.txNonce).toBe(0);
 
     w.clock.now += 60_000; // past the cooldown, still inside the confirm window
     expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "skip", reason: "an earlier order is not confirmed yet" });
-    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
 
+    // Past the window: its nonce is replaced, and the market stays held until the chain shows that.
     w.clock.now += DEFAULT_ENGINE_CONFIG.confirmTimeoutMs;
-    const r = await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "skip", reason: "an earlier order is not confirmed yet" });
+    expect((await w.store.getAction(row.id))!.outcome).toBe("unconfirmed");
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    // Settled only now that the slot is used: it can never land.
     expect((await w.store.getAction(row.id))!.outcome).toBe("skipped");
-    expect((await w.store.getAction(row.id))!.reason).toContain("never confirmed");
-    expect(r.kind).toBe("acted"); // the market is free again and health is still under the trigger
+    expect((await w.store.getAction(row.id))!.reason).toContain("slot was cancelled");
+    w.venue.releaseStuck();
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1) - [...w.store.actions.values()].reduce((s, a) => s + a.sizeFilled, 0n));
+  });
+
+  it("records a late confirmation without trading, even when the trader reversed meanwhile", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown"; // fills, receipt lost
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    const [row] = [...w.store.actions.values()];
+    const afterHoax = (await w.venue.readPosition(ETH, PROTECTED)).size;
+    // Before the engine looks again, the trader pauses Hoax and reverses by hand.
+    await w.store.setPaused(w.account.id, true);
+    w.venue.externalTrade(PROTECTED, ETH.pool, false, afterHoax + eth(0.3));
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(-eth(0.3)); // the trader's short stands: no flatten
+    const settled = (await w.store.getAction(row.id))!;
+    expect(settled.outcome).toBe("conflict");
+    expect(settled.sizeAfter).toBe(afterHoax); // as the fill left it
+    expect(settled.signature).toMatch(/^0x/);
   });
 
   it("does not resend a reverting order every second", async () => {
@@ -407,5 +430,64 @@ describe("gas reservations", () => {
     w.venue.nextSendUnknown = true;
     expect(await other.topUp(key, w.account.id)).toMatch(/^0x/);
     expect(await w.store.dripsSince(new Date(0), { hoaxKey: key })).toBe(parseEther("0.1"));
+  });
+});
+
+describe("round two", () => {
+  it("still closes when the liquidation scan is failing", async () => {
+    const w = await world();
+    w.venue.liquidationsSince = async () => {
+      throw new Error("getLogs refused");
+    };
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.clock.now += DEFAULT_ENGINE_CONFIG.liqScanEveryMs;
+    expect((await w.engine.tick((await w.store.getAccount(w.account.id))!)).kind).toBe("acted");
+  });
+
+  it("never credits a save after a liquidation inside an earlier miss's episode", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    const r = await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    if (r.kind !== "acted") throw new Error("expected a close");
+    // A miss was recorded just before (its episode suppresses new miss receipts for 10 minutes).
+    w.store.insertAction({ ...(await w.store.getAction(r.actionId))!, id: "00000000-0000-4000-8000-0000000000aa", outcome: "missed" });
+    w.venue.setMark(ETH.pool, 2000n * E18); // liquidated
+    w.clock.now += DEFAULT_ENGINE_CONFIG.liqScanEveryMs;
+    await w.engine.tick((await w.store.getAccount(w.account.id))!); // scans: the steps reach the ledger
+    expect(w.store.liquidations.size).toBeGreaterThan(0);
+    await new CounterfactualTracker(w.venue, w.store, silentLogger, () => w.clock.now, w.keys).run();
+    expect((await w.store.getAction(r.actionId))!.outcome).toBe("missed");
+  });
+
+  it("puts the flatten on its own record", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.beforeNextOrder = () => w.venue.externalTrade(PROTECTED, ETH.pool, false, eth(0.9));
+    const r = await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    if (r.kind !== "acted") throw new Error("expected a close");
+    const flattens = [...w.store.actions.values()].filter((a) => a.reason?.startsWith("flatten:"));
+    expect(flattens).toHaveLength(1);
+    expect(flattens[0].txHash).toMatch(/^0x/);
+    expect(flattens[0].sizeFilled).toBeGreaterThan(0n);
+    expect(flattens[0].outcome).toBe("conflict");
+    expect(flattens[0].signature).toMatch(/^0x/);
+  });
+
+  it("confirms an order left unconfirmed on an account that was unlinked since", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown";
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    await w.store.setStatus(w.account.id, "unlinked");
+    await w.engine.confirmOutstanding((await w.store.getAccount(w.account.id))!);
+    expect([...w.store.actions.values()].some((a) => a.outcome === "unconfirmed")).toBe(false);
+  });
+
+  it("refuses a stored policy that would not pass validation", async () => {
+    const w = await world();
+    await w.store.upsertPolicy(w.account.id, "ETH-PERP", { ...DEFAULT_POLICY, maxSlippageBps: 5000 });
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "skip", reason: "invalid policy" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
   });
 });

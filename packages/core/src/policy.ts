@@ -8,8 +8,9 @@ export function validatePolicy(p: Policy): string[] {
   if (p.targetHealth > 10) errors.push("target health above 10 would close almost everything");
   if (!(p.maxClosePct > 0 && p.maxClosePct <= 100)) errors.push("max close per action must be between 0 and 100%");
   if (!(p.maxSlippageBps > 0 && p.maxSlippageBps <= 500)) errors.push("max slippage must be between 0 and 500 bps");
-  if (!(Number.isInteger(p.cooldownSec) && p.cooldownSec >= 0 && p.cooldownSec <= 3600)) {
-    errors.push("cooldown must be a whole number of seconds between 0 and 3600");
+  // At least 5 s: back-to-back closes on one position give the book no time to refill.
+  if (!(Number.isInteger(p.cooldownSec) && p.cooldownSec >= 5 && p.cooldownSec <= 3600)) {
+    errors.push("cooldown must be a whole number of seconds between 5 and 3600");
   }
   if (!(p.lambda > 0 && p.lambda <= 1)) errors.push("lambda must be between 0 and 1");
   if (!(p.triggerMargin >= 0 && p.triggerMargin < p.triggerHealth - 1)) {
