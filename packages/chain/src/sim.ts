@@ -101,6 +101,14 @@ export class SimVenue implements Venue {
     this.usedNonces.set(key(signer), used);
   }
 
+  /** For tests: forget a stuck order (the node dropped it) and let another transaction take its nonce. */
+  dropStuckAndReuseNonce(): void {
+    for (const [hash, st] of this.stuck) {
+      this.stuck.delete(hash);
+      this.useNonce(st.signer, st.nonce);
+    }
+  }
+
   /** For tests: a stuck order lands now (if its nonce was not cancelled first). */
   releaseStuck(): void {
     for (const [hash, s] of this.stuck) {
@@ -438,10 +446,16 @@ export class SimVenue implements Venue {
     return this.results.has(hash) || this.stuck.has(hash);
   }
 
-  async cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex> {
+  /** For tests: a cancel at an already used nonce is refused, as a node does. */
+  refuseUsedNonceCancel = false;
+
+  async cancelNonce(signer: TradingSigner, nonce: number, onSent?: (hash: Hex) => Promise<void>): Promise<Hex> {
+    if (this.refuseUsedNonceCancel && this.usedNonces.get(key(signer.address))?.has(nonce)) throw new TxRejectedError("nonce too low");
+    const pre = this.nextHash();
+    if (onSent) await onSent(pre);
     this.useNonce(signer.address, nonce);
     for (const [h, s] of this.stuck) if (s.signer === key(signer.address) && s.nonce === nonce) this.stuck.delete(h);
-    const hash = this.nextHash();
+    const hash = pre;
     this.block++;
     this.results.set(hash, { hash, blockNumber: this.block, fills: [], noFill: true }); // mined, like any transaction
     return hash;

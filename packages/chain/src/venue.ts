@@ -151,7 +151,7 @@ export interface Venue {
    * Replace whatever is waiting at `nonce` with an empty self-transfer at a
    * higher fee, so a stuck order can never land later. Returns its hash.
    */
-  cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex>;
+  cancelNonce(signer: TradingSigner, nonce: number, onSent?: (hash: Hex) => Promise<void>): Promise<Hex>;
   /** The result of an order sent earlier: its fills, "reverted", or null while it has no receipt. */
   orderResult(hash: Hex, market: MarketInfo): Promise<PlaceResult | "reverted" | null>;
   /**

@@ -443,7 +443,7 @@ export class PgStore implements Store {
     // The receipt's createdAt is the engine's clock, the one the cooldown is measured on.
     const [r] = await this.q(
       `SELECT max((a.receipt->>'createdAt')::timestamptz) AS at FROM actions a JOIN accounts c ON c.id = a.account_id
-       WHERE a.owner = $1 AND c.chain_id = $2 AND a.market = $3 AND a.tx_hash IS NOT NULL AND a.outcome <> 'missed'`,
+       WHERE a.owner = $1 AND c.chain_id = $2 AND a.market = $3 AND a.tx_hash IS NOT NULL AND a.outcome NOT IN ('missed', 'skipped')`,
       [owner.toLowerCase(), chainId, market],
     );
     return (r?.at as Date | null) ?? null;

@@ -76,6 +76,8 @@ export interface EngineConfig {
 const MISS_EPISODE_MS = 10 * 60_000;
 /** Without a cursor, the first liquidation scan looks this far back (20 minutes of 100 ms blocks). */
 const FIRST_SCAN_LOOKBACK = 12_000n;
+/** A used nonce with no receipt for the order must be seen twice this far apart before it is written off. */
+const SLOT_PROOF_MS = 30_000;
 /** Backoff after a rejected or reverted order: 5 s, doubling, at most 10 minutes. */
 const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_MAX_MS = 10 * 60_000;
@@ -137,6 +139,8 @@ interface AccountMemory {
   unsaved: Map<string, NewAction>;
   /** Stuck orders already replaced at their nonce, by action id, with when. */
   cancelled: Map<string, number>;
+  /** When a stuck order's nonce was first seen used with no receipt for it. */
+  slotUsedSeen: Map<string, number>;
 }
 
 /** What the executor knows about an order it is about to send, kept for the final receipt. */
@@ -187,6 +191,7 @@ export class Engine {
         lastTickWrite: new Map(),
         unsaved: new Map(),
         cancelled: new Map(),
+        slotUsedSeen: new Map(),
       };
       this.memory.set(accountId, m);
     }
@@ -538,6 +543,9 @@ export class Engine {
     if ((await store.listUnconfirmedForOwner(account.owner, chainId)).some((a) => a.market === key)) {
       return { kind: "skip", reason: "an earlier order is not confirmed yet" };
     }
+    // The policy as saved now: switched off while this tick was deciding means no close.
+    const policyNow = (await store.listPolicies(account.id)).find((p) => p.market === key);
+    if (!policyNow?.enabled) return { kind: "idle", reason: "policy off" };
     const lastOwnerAction = await store.lastActionAt(account.owner, chainId, key);
     if (lastOwnerAction && this.now() - lastOwnerAction.getTime() < cooldownSec * 1000) {
       mem.lastActionAt.set(key, lastOwnerAction.getTime());
@@ -744,32 +752,49 @@ export class Engine {
         if (age >= timeout * 5) await this.stuckForGood(current, mem, action, hash, signer ? "it was sent before Hoax recorded nonces" : "its key is missing from the keystore");
         return false;
       }
-      // The cancel's own receipt is the proof the slot is gone: a nonce count
-      // or a missing receipt can come from a node that is behind.
+      // Once a transaction with this nonce is mined, this order can never
+      // land, whichever transaction took the slot (Hoax's cancel, or its next
+      // order on another market). The proof is a used nonce with this order
+      // still receiptless, seen twice at least 30 s apart, so one node that is
+      // behind cannot write off a fill; a mined cancel's own receipt settles it at once.
       const cancelHash = action.reason?.match(/cancel tx (0x[0-9a-fA-F]{64})/)?.[1] as Hex | undefined;
-      if (cancelHash && (await venue.minedNonce(signer.address)) > action.txNonce) {
-        const cancelReceipt = await venue.orderResult(cancelHash, market);
+      if ((await venue.minedNonce(signer.address)) > action.txNonce) {
         const again = await venue.orderResult(hash, market);
         if (again !== null) return this.confirm(account, mem, action, market, current);
-        if (cancelReceipt !== null) {
-          await this.settleWithoutFill(account, mem, action, hash, `the order was sent but never landed; its slot was taken by cancel tx ${cancelHash}`, true, current);
-          return true;
+        const cancelMined = cancelHash ? (await venue.orderResult(cancelHash, market)) !== null : false;
+        const firstSeen = mem.slotUsedSeen.get(action.id);
+        if (!cancelMined && (firstSeen === undefined || this.now() - firstSeen < SLOT_PROOF_MS)) {
+          if (firstSeen === undefined) mem.slotUsedSeen.set(action.id, this.now());
+          return false;
         }
-        return false;
+        mem.slotUsedSeen.delete(action.id);
+        await this.settleWithoutFill(
+          account,
+          mem,
+          action,
+          hash,
+          `the order was sent but never landed; its nonce was used by ${cancelMined ? `cancel tx ${cancelHash}` : "another transaction"}`,
+          true,
+          current,
+        );
+        return true;
       }
       const cancelledAt = mem.cancelled.get(action.id);
       if (cancelledAt === undefined || this.now() - cancelledAt > timeout) {
         try {
-          const cancel = await venue.cancelNonce(signer, action.txNonce);
+          // The cancel goes on the order's record before it is broadcast, so a
+          // restart still knows which receipt proves the slot gone.
+          const cancel = await venue.cancelNonce(signer, action.txNonce, async (cancelTx) => {
+            action.reason = `order stuck; cancel tx ${cancelTx}`;
+            await this.deps.store.insertAction({ ...withoutCreatedAt(action), reason: action.reason });
+          });
           mem.cancelled.set(action.id, this.now());
-          // On record with the order, so a restart still knows which receipt proves the slot gone.
-          await this.deps.store.insertAction({ ...withoutCreatedAt(action), reason: `order stuck; cancel tx ${cancel}` });
-          action.reason = `order stuck; cancel tx ${cancel}`;
           log.warn("order stuck; replaced at its nonce so it cannot land later", { account: account.owner, tx: hash, cancel });
         } catch (err) {
           // Not written off: until its nonce is used the order can still land,
           // so the market stays held (no second close) for as long as it takes.
-          log.error("could not replace a stuck order", { account: account.owner, tx: hash, error: revertName(err).slice(0, 160) });
+          // "nonce too low": something already took the slot; the used-nonce check above settles it.
+          log.error("could not send a cancel for a stuck order", { account: account.owner, tx: hash, error: revertName(err).slice(0, 160) });
           if (age >= timeout * 5) await this.stuckForGood(current, mem, action, hash, "it could not be cancelled (the key may be out of gas)");
         }
       }

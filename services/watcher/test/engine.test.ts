@@ -273,7 +273,7 @@ describe("orders whose result is not known", () => {
     await w.engine.tick((await w.store.getAccount(w.account.id))!);
     // Settled only now that the slot is used: it can never land.
     expect((await w.store.getAction(row.id))!.outcome).toBe("skipped");
-    expect((await w.store.getAction(row.id))!.reason).toContain("slot was taken by cancel tx");
+    expect((await w.store.getAction(row.id))!.reason).toContain("its nonce was used by cancel tx");
     w.venue.releaseStuck();
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1) - [...w.store.actions.values()].reduce((s, a) => s + a.sizeFilled, 0n));
   });
@@ -699,5 +699,39 @@ describe("round six: what counts as a save", () => {
     };
     expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "skip", reason: "position changed before send; deciding again" });
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(0.1));
+  });
+});
+
+describe("round seven", () => {
+  it("settles a stuck order once another transaction has used its nonce, even when the cancel is refused", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown-dropped";
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    const [row] = [...w.store.actions.values()];
+    // The node forgets it and another of the key's transactions takes nonce 0; a cancel there is now refused.
+    w.venue.dropStuckAndReuseNonce();
+    w.venue.refuseUsedNonceCancel = true;
+    w.clock.now += DEFAULT_ENGINE_CONFIG.confirmTimeoutMs;
+    await w.engine.tick((await w.store.getAccount(w.account.id))!); // nonce used, no receipt: seen once
+    expect((await w.store.getAction(row.id))!.outcome).toBe("unconfirmed");
+    w.clock.now += 31_000;
+    const r = await w.engine.tick((await w.store.getAccount(w.account.id))!); // seen again 30 s later: written off
+    expect((await w.store.getAction(row.id))!.outcome).toBe("skipped");
+    expect((await w.store.getAction(row.id))!.reason).toContain("nonce was used by another transaction");
+    expect(r.kind).toBe("acted"); // the market is protected again
+  });
+
+  it("does not close when the policy was switched off while the tick was deciding", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    const readBook = w.venue.readBook.bind(w.venue);
+    w.venue.readBook = async (m) => {
+      // the trader switches protection off while the engine is reading the book to decide
+      await w.store.upsertPolicy(w.account.id, "ETH-PERP", { ...DEFAULT_POLICY, enabled: false });
+      return readBook(m);
+    };
+    expect(await w.engine.tick((await w.store.getAccount(w.account.id))!)).toEqual({ kind: "idle", reason: "policy off" });
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
   });
 });

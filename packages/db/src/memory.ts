@@ -242,7 +242,7 @@ export class MemoryStore implements Store {
   async lastActionAt(owner: string, chainId: number, market: string) {
     let last: Date | null = null;
     for (const a of this.actions.values()) {
-      if (a.owner !== owner.toLowerCase() || a.market !== market || !a.txHash || a.outcome === "missed") continue;
+      if (a.owner !== owner.toLowerCase() || a.market !== market || !a.txHash || a.outcome === "missed" || a.outcome === "skipped") continue;
       if (this.accounts.get(a.accountId)?.chainId !== chainId) continue;
       const ms = Date.parse(a.receipt.createdAt);
       if (!Number.isFinite(ms)) continue; // as Postgres: no receipt time, no cooldown

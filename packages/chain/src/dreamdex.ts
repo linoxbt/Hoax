@@ -399,14 +399,14 @@ export class DreamDexVenue implements Venue {
     }
   }
 
-  async cancelNonce(signer: TradingSigner, nonce: number): Promise<Hex> {
+  async cancelNonce(signer: TradingSigner, nonce: number, onSent?: (hash: Hex) => Promise<void>): Promise<Hex> {
     // Twice the current fee outbids whatever is stuck at this nonce.
     const fees = await this.publicClient.estimateFeesPerGas().catch(() => null);
     const bump =
       fees && "maxFeePerGas" in fees && fees.maxFeePerGas
         ? { maxFeePerGas: fees.maxFeePerGas * 2n, maxPriorityFeePerGas: (fees.maxPriorityFeePerGas ?? 0n) * 2n + 1n }
         : { gasPrice: ((await this.publicClient.getGasPrice()) * 2n) as bigint };
-    return this.signAndSend(signer, { to: signer.address, value: 0n, gas: 21_000n, nonce, ...bump });
+    return this.signAndSend(signer, { to: signer.address, value: 0n, gas: 21_000n, nonce, ...bump }, onSent ? (hash) => onSent(hash) : undefined);
   }
 
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {

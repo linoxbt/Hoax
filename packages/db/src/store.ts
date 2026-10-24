@@ -179,8 +179,10 @@ export interface Store {
    */
   liquidatedAfter(accountId: string, pool: string, afterBlock: bigint): Promise<boolean>;
   /**
-   * When Hoax last sent an order for this owner on this market and network, on
-   * the engine's own clock (the receipt's createdAt), across re-registrations.
+   * When Hoax last sent an order for this owner on this market and network
+   * that filled or may have (not a revert or an empty fill: those back off,
+   * they do not start the cooldown), on the engine's own clock (the receipt's
+   * createdAt), across re-registrations.
    */
   lastActionAt(owner: string, chainId: number, market: string): Promise<Date | null>;
   /** Unconfirmed orders for an owner on a network, from every registration it has had. */
