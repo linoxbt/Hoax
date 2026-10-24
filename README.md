@@ -106,8 +106,8 @@ Each script writes block numbers, the SDK version and every tx hash to `spike/ev
 
 `npm run replay` runs the controlled comparison: two identical accounts, the same position, the same mark path, one protected. The real Hoax engine runs against `SimVenue`, seeded with dreamDEX's market and liquidation parameters and the ETH order book shape read live from Hideki. The result shows at `/replay`, labelled as a replay. On a 4.5% drop from today's ETH mark:
 
-- Without Hoax: liquidated in 5 steps, ending with 70.89 USDso.
-- With Hoax: two closes (0.24 ETH, then 0.20 ETH after the cooldown) for 0.15 USDso in total. It survived with 86.00 USDso, **15.11 USDso more**. The first receipt resolved as saved, with up to 35.76 USDso preserved: the upper bound against a full liquidation, more than the 15.11 the twin actually lost here because its liquidation stopped after five steps.
+- Without Hoax: liquidated in 6 steps, ending with 65.18 USDso.
+- With Hoax: two closes (0.23 ETH, then 0.20 ETH after the cooldown) for 0.05 USDso in total. It survived with 86.58 USDso, **21.40 USDso more**. The first receipt resolved as saved, with up to 36.50 USDso preserved: the upper bound against a full liquidation, more than the 21.40 the twin actually lost here because its liquidation stopped after six steps.
 
 The numbers move with the book and mark read at the time; these are from a run on 2026-10-24.
 
