@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { EngineBadge } from "@/components/EngineBadge";
+import { LogoLoader } from "@/components/Logo";
 import { Label, Split } from "@/components/Ui";
 import { StartContext } from "@/lib/startContext";
 import { useAccount } from "@/lib/useAccount";
@@ -27,6 +29,14 @@ export default function StartLayout({ children }: { children: React.ReactNode })
     (href === "/start/link" && linked) ||
     (href === "/start/gas" && linked && Boolean(view?.keyBalance && BigInt(view.keyBalance) > 10n ** 16n));
   const reachable = (href: string) => href === "/start" || ready;
+  // Steps past 01 are about the connected wallet's account: without one, back to step 01.
+  // hoax.session is undefined while the wallet reconnects, so wait for it before deciding.
+  const router = useRouter();
+  const settled = hoax.session !== undefined;
+  const allowed = reachable(path);
+  useEffect(() => {
+    if (settled && !allowed) router.replace("/start");
+  }, [settled, allowed, router]);
 
   return (
     <StartContext.Provider value={{ session, view, err, setErr, refresh, linked, linkedMarkets }}>
@@ -64,7 +74,7 @@ export default function StartLayout({ children }: { children: React.ReactNode })
               {err}
             </p>
           )}
-          {children}
+          {allowed ? children : <LogoLoader label={settled ? "Connect your wallet first…" : "Reading your wallet…"} />}
         </div>
       </section>
     </StartContext.Provider>

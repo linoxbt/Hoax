@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useHoax } from "@/lib/wallet";
 import { EngineBadge } from "./EngineBadge";
 import { LogoMark } from "./Logo";
 
@@ -57,7 +58,9 @@ function Bar() {
 
 /** The full footer closes the landing page; every other page ends on the one-line bar. */
 export function Footer() {
-  if (usePathname() !== "/")
+  const path = usePathname();
+  const { wallet } = useHoax();
+  if (path !== "/")
     return (
       <footer className="footer slim">
         <Bar />
@@ -82,7 +85,7 @@ export function Footer() {
             <div className="blk grow">
               <span className="mono-s">{c.title}</span>
               <div className="footer-links">
-                {c.links.map(([href, label, ext]) =>
+                {c.links.filter(([href]) => wallet || href !== "/app").map(([href, label, ext]) =>
                   ext ? (
                     <a key={href} href={href} target="_blank" rel="noreferrer" className="hover-un" style={{ justifySelf: "start" }}>
                       {label}

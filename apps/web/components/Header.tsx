@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
 import { Arrow, Roll } from "./Ui";
+import { useHoax } from "@/lib/wallet";
 import { WalletButton } from "./WalletButton";
 
 const NAV = [
@@ -24,8 +25,13 @@ const MENU = [
   ["/start", "Get protected"],
 ] as const;
 
+// Pages about one wallet's account: listed only once a wallet is connected.
+const WALLET_ONLY = new Set<string>(["/app"]);
+
 export function Header() {
   const path = usePathname();
+  const { wallet } = useHoax();
+  const menu = MENU.filter(([href]) => wallet || !WALLET_ONLY.has(href));
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const last = useRef(0);
@@ -89,7 +95,7 @@ export function Header() {
 
       <div className={`menu${open ? " open" : ""}`} aria-hidden={!open}>
         <nav className="menu-list">
-          {MENU.map(([href, label], i) => (
+          {menu.map(([href, label], i) => (
             <Link key={href} href={href} className={on(href) ? "on" : undefined} style={{ ["--i" as string]: i }} tabIndex={open ? 0 : -1}>
               {label}
               <span className="mono-s">[{String(i + 1).padStart(2, "0")}]</span>

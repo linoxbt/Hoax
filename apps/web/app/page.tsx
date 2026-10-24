@@ -39,7 +39,7 @@ const PLATFORM: Array<{ n: string; title: string; text: string; href: string; mo
     n: "03",
     title: "Your dashboard",
     text: "Connect the wallet you trade with. Hoax finds your dreamDEX account, shows each position against its trigger and target, and links in one transaction.",
-    href: "/app",
+    href: "/start",
     mock: <DashMock />,
   },
 ];
