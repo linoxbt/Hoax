@@ -1,0 +1,14 @@
+# Nothing local reaches the image: secrets, keys, builds and installed modules.
+.git
+.env
+.env.*
+!.env.example
+**/node_modules
+**/.next
+**/out
+keystore
+deploy/pg-certs
+demo/out
+e2e/out
+spike/evidence
+*.log

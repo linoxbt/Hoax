@@ -2,18 +2,43 @@
 # (deploy/vps-setup.sh writes it). The web app on Netlify connects to this
 # Postgres over the public port with the same password, over TLS only (the
 # script makes a self-signed certificate in deploy/pg-certs, which the web app
-# pins through DATABASE_CA_CERT; deploy/pg_hba.conf refuses plain connections).
+# pins through DATABASE_CA_CERT; deploy/pg_hba.conf refuses plain connections
+# and anything but the hoax user on the hoax database).
+#
+# Netlify functions have no fixed addresses to allow, so the database port is
+# public. If the web app runs somewhere with fixed egress (or over a private
+# network), set POSTGRES_BIND to that interface instead of 0.0.0.0.
 services:
   db:
     image: postgres:16
     restart: always
-    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/certs/server.crt", "-c", "ssl_key_file=/certs/server.key", "-c", "hba_file=/etc/hoax/pg_hba.conf"]
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - hba_file=/etc/hoax/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - log_connections=on
+      - -c
+      - authentication_timeout=10s
+      - -c
+      - max_connections=100
     environment:
       POSTGRES_USER: hoax
       POSTGRES_DB: hoax
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     ports:
-      - "${POSTGRES_PUBLIC_PORT:-5432}:5432"
+      - "${POSTGRES_BIND:-0.0.0.0}:${POSTGRES_PUBLIC_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./deploy/pg-certs:/certs:ro
@@ -25,10 +50,13 @@ services:
       retries: 20
 
   # One engine per network, same database, keystore and gas wallet. Each
-  # protects only its own network's accounts and beats as watcher-<network>.
+  # protects only its own network's accounts and beats as watcher-<network>;
+  # a lease in Postgres stops a second engine on the same network from trading.
   watcher: &watcher
     build: .
     restart: always
+    # Time to finish a close in flight and record it before the engine is killed.
+    stop_grace_period: 45s
     depends_on:
       db:
         condition: service_healthy
@@ -40,12 +68,22 @@ services:
       HOAX_KEYSTORE_SECRET: ${HOAX_KEYSTORE_SECRET:?set HOAX_KEYSTORE_SECRET in .env}
       KEYSTORE_DIR: /data/keystore
       GAS_WALLET_PRIVATE_KEY: ${GAS_WALLET_PRIVATE_KEY:-}
+      GAS_MIN_BALANCE: ${GAS_MIN_BALANCE:-0.01}
+      GAS_DRIP_AMOUNT: ${GAS_DRIP_AMOUNT:-0.05}
+      GAS_PER_KEY_DAILY_CAP: ${GAS_PER_KEY_DAILY_CAP:-0.2}
+      GAS_DAILY_CAP: ${GAS_DAILY_CAP:-2}
       HOAX_BUILDER_ADDRESS: ${HOAX_BUILDER_ADDRESS:-}
       HOAX_BUILDER_FEE_BPS_1K: ${HOAX_BUILDER_FEE_BPS_1K:-0}
       DRY_RUN: ${DRY_RUN:-false}
+      TICK_MS: ${TICK_MS:-1000}
+      RPC_URL: ${RPC_URL:-}
+      WS_URL: ${WS_URL:-}
+      INDEXER_URL: ${INDEXER_URL:-}
+      RPC_TIMEOUT_MS: ${RPC_TIMEOUT_MS:-}
       PORT: "8080"
+    # The health endpoint shows engine status: local only by default (ssh -L to look from afar).
     ports:
-      - "${HEALTH_PORT:-8080}:8080"
+      - "${HEALTH_BIND:-127.0.0.1}:${HEALTH_PORT:-8080}:8080"
     volumes:
       - keystore:/data
 
@@ -54,8 +92,11 @@ services:
     environment:
       <<: *watcher-env
       NETWORK: shannon
+      RPC_URL: ${SHANNON_RPC_URL:-}
+      WS_URL: ${SHANNON_WS_URL:-}
+      INDEXER_URL: ${SHANNON_INDEXER_URL:-}
     ports:
-      - "${HEALTH_PORT_SHANNON:-8081}:8080"
+      - "${HEALTH_BIND:-127.0.0.1}:${HEALTH_PORT_SHANNON:-8081}:8080"
 
 volumes:
   pgdata:

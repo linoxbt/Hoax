@@ -1,6 +1,6 @@
 # Demo
 
-The 3-minute video shows one real save on testnet and one controlled comparison, and every number on screen links to a transaction or a read.
+The demo has two parts: one real save on testnet and one controlled comparison, and every number in it links to a transaction or a read. (The video walkthrough is recorded from these; it is not in this repo.)
 
 ## The controlled comparison (replay)
 

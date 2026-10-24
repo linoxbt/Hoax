@@ -9,13 +9,27 @@ BRANCH=${BRANCH:-main}
 DIR=${DIR:-/opt/hoax}
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Installing Docker..."
-  curl -fsSL https://get.docker.com | sh
+  echo "Installing Docker from the distribution's packages..."
+  apt-get update -y
+  # Ubuntu calls the Compose plugin docker-compose-v2, Docker's own repository docker-compose-plugin.
+  if ! apt-get install -y docker.io docker-compose-v2 && ! apt-get install -y docker.io docker-compose-plugin; then
+    # Not packaged here: Docker's convenience script, downloaded first so it can be read before it runs.
+    echo "Docker is not packaged for this system. Fetching Docker's install script to /tmp/get-docker.sh;"
+    echo "read it, then run: sh /tmp/get-docker.sh && bash $0"
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    exit 1
+  fi
 fi
 command -v git >/dev/null 2>&1 || (apt-get update -y && apt-get install -y git)
 command -v openssl >/dev/null 2>&1 || (apt-get update -y && apt-get install -y openssl)
 
 if [ -d "$DIR/.git" ]; then
+  # Local edits (to compose or pg_hba.conf, say) are saved as a patch, not silently lost.
+  if ! git -C "$DIR" diff --quiet; then
+    patch="$DIR/local-changes-$(date +%Y%m%d-%H%M%S).patch"
+    git -C "$DIR" diff > "$patch"
+    echo "Local changes in $DIR are replaced by $BRANCH; they are saved in $patch"
+  fi
   git -C "$DIR" fetch origin "$BRANCH" && git -C "$DIR" checkout "$BRANCH" && git -C "$DIR" reset --hard "origin/$BRANCH"
 else
   git clone --branch "$BRANCH" "$REPO" "$DIR"
@@ -33,6 +47,8 @@ GAS_WALLET_PRIVATE_KEY=0x$(openssl rand -hex 32)
 HOAX_BUILDER_ADDRESS=
 HOAX_BUILDER_FEE_BPS_1K=0
 DRY_RUN=false
+# Not used here: the web app's session secret, kept so every run prints the same one.
+HOAX_SESSION_SECRET=$(openssl rand -hex 32)
 ENV
   echo "Wrote $DIR/.env with fresh secrets. Back it up: losing HOAX_KEYSTORE_SECRET loses the Hoax keys."
 fi
@@ -68,43 +84,56 @@ pick_port POSTGRES_PUBLIC_PORT 5432
 pick_port HEALTH_PORT 8080
 pick_port HEALTH_PORT_SHANNON 8081
 val() { grep "^$1=" .env | cut -d= -f2 || true; }
+# Installs from before the web app needed one: add it once.
+if [ -z "$(val HOAX_SESSION_SECRET)" ]; then
+  (umask 077 && echo "HOAX_SESSION_SECRET=$(openssl rand -hex 32)" >> .env)
+fi
 
 docker compose up -d --build --remove-orphans
 
-# Open the ports if ufw is active: the engines' health endpoints, Postgres for Netlify.
+# Open Postgres if ufw is active: Netlify reaches it over TLS. The engines'
+# health endpoints listen on 127.0.0.1 only and stay closed.
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-  for k in HEALTH_PORT HEALTH_PORT_SHANNON POSTGRES_PUBLIC_PORT; do ufw allow "$(val $k)"/tcp; done
+  ufw allow "$(val POSTGRES_PUBLIC_PORT)"/tcp
 fi
 
 echo "Waiting for both engines (Hideki and Shannon)..."
 for port in "$(val HEALTH_PORT)" "$(val HEALTH_PORT_SHANNON)"; do
   for i in $(seq 1 60); do
-    if curl -fsS "http://localhost:$port/healthz" >/dev/null 2>&1; then break; fi
+    if curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then break; fi
     sleep 2
   done
-  curl -fsS "http://localhost:$port/healthz" && echo
+  curl -sS "http://127.0.0.1:$port/healthz" && echo
 done
 
 IP=$(curl -fsS https://api.ipify.org || hostname -I | awk '{print $1}')
-GAS=$(curl -fsS "http://localhost:$(val HEALTH_PORT)/healthz" | sed -n 's/.*"gasWallet":"\(0x[0-9a-fA-F]*\)".*/\1/p' || true)
+GAS=$(curl -fsS "http://127.0.0.1:$(val HEALTH_PORT)/healthz" | sed -n 's/.*"gasWallet":"\(0x[0-9a-fA-F]*\)".*/\1/p' || true)
 echo
-echo "Hideki engine:   http://$IP:$(val HEALTH_PORT)/healthz"
-echo "Shannon engine:  http://$IP:$(val HEALTH_PORT_SHANNON)/healthz"
+echo "Hideki engine:   http://127.0.0.1:$(val HEALTH_PORT)/healthz   (on this machine; ssh -L $(val HEALTH_PORT):127.0.0.1:$(val HEALTH_PORT) to look from yours)"
+echo "Shannon engine:  http://127.0.0.1:$(val HEALTH_PORT_SHANNON)/healthz"
 if [ -n "$GAS" ]; then
   echo "Gas wallet:      $GAS"
   echo "                 Send it STT on both Somnia Hideki and Somnia Shannon: it tops up"
   echo "                 every linked Hoax key on that network so the key can pay for its orders."
 fi
+# The web app's settings go to a root-only file, not the terminal: the database
+# password would otherwise sit in scrollback and shell logs.
+NETLIFY_ENV="$DIR/netlify.env"
+(umask 077 && cat > "$NETLIFY_ENV") <<NETLIFY
+# Paste these into Netlify (Project configuration > Environment variables), scoped to Functions.
+# DATABASE_URL and HOAX_SESSION_SECRET are secrets: mark them so.
+DATABASE_URL=postgres://hoax:$(val POSTGRES_PASSWORD)@$IP:$(val POSTGRES_PUBLIC_PORT)/hoax?sslmode=no-verify
+DATABASE_CA_CERT=$(base64 -w0 deploy/pg-certs/server.crt)
+HOAX_SESSION_SECRET=$(val HOAX_SESSION_SECRET)
+# Your site's own hosts, comma-separated, if it has a custom domain (Netlify's own URLs are added automatically).
+HOAX_SITE_HOSTS=
+HOAX_BUILDER_ADDRESS=$(val HOAX_BUILDER_ADDRESS)
+HOAX_BUILDER_FEE_BPS_1K=$(val HOAX_BUILDER_FEE_BPS_1K)
+NETLIFY
 echo
-echo "On Netlify (Project configuration > Environment variables), add:"
-echo
-echo "  DATABASE_URL = postgres://hoax:$(val POSTGRES_PASSWORD)@$IP:$(val POSTGRES_PUBLIC_PORT)/hoax?sslmode=no-verify"
-echo "  DATABASE_CA_CERT = $(base64 -w0 deploy/pg-certs/server.crt)"
-echo
-echo "DATABASE_CA_CERT is the database's public certificate, not a secret. With it the"
-echo "web app trusts that one certificate and nothing else (the sslmode in the URL is"
-echo "then ignored); without it the connection is encrypted but unverified."
-echo
-echo "Mark DATABASE_URL secret, scope both to Functions. Then turn off demo mode (delete HOAX_DEMO)"
-echo "and redeploy. The site's engine badge turns green within seconds."
+echo "The web app's settings are in $NETLIFY_ENV (readable by root only):"
+echo "  sudo cat $NETLIFY_ENV"
+echo "Add each to Netlify, scoped to Functions; mark DATABASE_URL and HOAX_SESSION_SECRET secret."
+echo "DATABASE_CA_CERT pins the database's own certificate: the web app trusts it and nothing else."
+echo "Then turn off demo mode (delete HOAX_DEMO) and redeploy. The engine badge turns green within seconds."
 echo "Back up $DIR/.env somewhere safe: it holds the key that decrypts every Hoax key."

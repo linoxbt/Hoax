@@ -90,7 +90,8 @@ async function main() {
       if (store instanceof PgStore && !store.leaseHeld) h.problems.push("the engine lease was lost");
       const ok = h.problems.length === 0;
       res.writeHead(ok ? 200 : 503, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok, problems: h.problems, network: network.key, ...watcher.status }));
+      // Served on 127.0.0.1 by docker-compose; the gas wallet's address is public on chain anyway.
+      res.end(JSON.stringify({ ok, problems: h.problems, network: network.key, gasWallet: gas?.address ?? null, ...watcher.status }));
       return;
     }
     res.writeHead(404).end();
@@ -108,12 +109,31 @@ async function main() {
     }
   }, 5_000);
 
+  // Docker restarts a process that exits, not one that hangs: if the engine
+  // stays unhealthy (the clock stopped, ticks not finishing, the database gone)
+  // for two minutes, exit so the supervisor starts a fresh one.
+  const UNHEALTHY_EXIT_MS = Number(env("UNHEALTHY_EXIT_MS", "120000"));
+  let unhealthySince: number | null = null;
+  const watchdog = setInterval(() => {
+    const h = watcher.health();
+    if (h.ok) {
+      unhealthySince = null;
+      return;
+    }
+    unhealthySince ??= Date.now();
+    if (Date.now() - unhealthySince >= UNHEALTHY_EXIT_MS) {
+      log.error("unhealthy for too long; exiting for a restart", { problems: h.problems.join("; ") });
+      void shutdown("watchdog", 1);
+    }
+  }, 15_000);
+
   let stopping = false;
   const shutdown = async (signal: string, code = 0) => {
     if (stopping) return;
     stopping = true;
     log.info(`${signal}: stopping, waiting for ticks in flight`);
     clearInterval(leaseCheck);
+    clearInterval(watchdog);
     await watcher.stop();
     server.close();
     await venue.close().catch(() => {});

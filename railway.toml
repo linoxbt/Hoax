@@ -1,3 +1,8 @@
+# The Hoax engine on Railway: one service per network, each built from this
+# Dockerfile. Set on each service: NETWORK (hideki or shannon), DATABASE_URL,
+# HOAX_KEYSTORE_SECRET (the same on both), optionally GAS_WALLET_PRIVATE_KEY,
+# and attach a volume at /data (the encrypted Hoax keys live there). A second
+# service on the same network exits at start: only one engine trades.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
