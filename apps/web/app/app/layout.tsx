@@ -35,7 +35,7 @@ function Gate() {
         <Label dot>Dashboard</Label>
         {noAccount ? (
           <>
-            <h1 className="h1" style={{ marginTop: "1.6rem" }}>No dreamDEX account yet</h1>
+            <h1 className="h3" style={{ marginTop: "1.6rem" }}>No dreamDEX account yet</h1>
             <p className="txt ink" style={{ marginTop: "2.4rem", maxWidth: "62rem" }}>
               {short(hoax.wallet)} owns no dreamDEX trading account on Somnia Shannon or Hideki. Open one in dreamDEX, then come back.
               {hoax.walletInfo && !hoax.walletInfo.indexed && " The accounts indexer did not answer, so only accounts derived from this wallet were checked."}
