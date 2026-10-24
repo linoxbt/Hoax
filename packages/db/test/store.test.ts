@@ -244,6 +244,15 @@ function contract(name: string, make: () => Promise<Store>) {
       expect(await store.reserveDrip({ ...base, perKeyCap: 100n, minGapMs: 60_000 })).toEqual({ ok: false, reason: "recent" });
     });
 
+    it("revokes a wallet's sessions, never moving the line back", async () => {
+      const w = `0x${randomUUID().replace(/-/g, "").slice(0, 32)}0000000A`;
+      expect(await store.sessionsRevokedBefore(w)).toBeNull();
+      const t = new Date(Date.now() - 1000);
+      await store.revokeSessions(w, t);
+      await store.revokeSessions(w.toLowerCase(), new Date(t.getTime() - 60_000));
+      expect((await store.sessionsRevokedBefore(w))?.getTime()).toBe(t.getTime());
+    });
+
     it("keeps the newest heartbeat per service", async () => {
       expect(await store.lastBeat("watcher-test")).toBeNull();
       await store.beat("watcher-test", { ticks: 1 });

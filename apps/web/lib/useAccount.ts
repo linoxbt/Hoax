@@ -9,6 +9,13 @@ import type { AccountJson } from "./types";
 export function useAccount(session: Session | null | undefined, everyMs = 5000) {
   const [view, setView] = useState<AccountJson | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const key = session ? `${session.chainId}:${session.owner}:${session.accountId}` : null;
+
+  // Another account or network: never show the last one's data meanwhile.
+  useEffect(() => {
+    setView(null);
+    setErr(null);
+  }, [key]);
 
   const refresh = useCallback(async () => {
     if (!session) return;

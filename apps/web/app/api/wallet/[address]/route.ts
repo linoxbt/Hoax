@@ -1,7 +1,7 @@
 import { NETWORKS, ownedAccounts } from "@hoax/chain";
 import { getAddress, type Address } from "viem";
 import { accountsClient } from "@/lib/auth";
-import { error, getVenue, isAddress, json } from "@/lib/server";
+import { clientIp, error, failure, getVenue, isAddress, json, rateLimitedLocal } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +32,11 @@ interface Found {
  * chain by hours; the factory derivation from the wallet itself is instant but
  * only finds older accounts.
  */
-export async function GET(_req: Request, { params }: { params: Promise<{ address: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   if (!isAddress(address)) return error(400, "address must be a 0x address");
+  // Each lookup is a dozen chain and indexer reads: enough for a person, not a scraper.
+  if (rateLimitedLocal(`wallet-ip:${clientIp(req)}`, 30, 60_000)) return error(429, "too many lookups; try again shortly");
   const wallet = getAddress(address);
   try {
     const [owned, derived, balances] = await Promise.all([
@@ -69,7 +71,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ address
           return { ...base, equity: m.equity, mmReq: m.mmReq, health: m.mmReq > 0n ? Number(m.equity) / Number(m.mmReq) : null, positions: m.activePools.length, marginError: null };
         } catch (err) {
           // A failed margin read (a stale feed, say) blanks this account's summary, not the list.
-          return { ...base, equity: null, mmReq: null, health: null, positions: 0, marginError: String(err).slice(0, 160) };
+          console.error("margin read failed:", String(err).slice(0, 300));
+          return { ...base, equity: null, mmReq: null, health: null, positions: 0, marginError: "could not read this account's margin right now" };
         }
       }),
     );
@@ -94,6 +97,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ address
       indexed: owned !== null,
     });
   } catch (err) {
-    return error(502, `could not read the chain: ${String(err).slice(0, 160)}`);
+    return failure(502, "could not read the chain; try again", err);
   }
 }

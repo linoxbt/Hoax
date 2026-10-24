@@ -107,6 +107,7 @@ export interface AlertRow {
 
 export interface Stats {
   accountsProtected: number;
+  /** Closes that filled something (a reverted or empty order is not an action taken). */
   actionsTaken: number;
   saves: number;
   /** Sum of equity preserved on saved actions, 18-decimal quote units. */
@@ -208,6 +209,11 @@ export interface Store {
    */
   rateHit(bucket: string, windowMs: number, max: number): Promise<number>;
   pruneRateHits(olderThan: Date): Promise<number>;
+
+  /** End every session this wallet was issued before `before`. */
+  revokeSessions(wallet: string, before: Date): Promise<void>;
+  /** Sessions issued to this wallet before this moment are refused; null when none were revoked. */
+  sessionsRevokedBefore(wallet: string): Promise<Date | null>;
 
   /** Record that a service is alive, with whatever it reports about itself. */
   beat(service: string, info: Record<string, unknown>): Promise<void>;

@@ -7,6 +7,7 @@ const LABEL: Record<Outcome, string> = {
   missed: "missed",
   conflict: "conflict",
   pending: "watching 24h",
+  unconfirmed: "confirming",
 };
 
 export function OutcomeBadge({ outcome }: { outcome: Outcome }) {

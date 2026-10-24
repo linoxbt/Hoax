@@ -302,7 +302,7 @@ export class MemoryStore implements Store {
     }
     return {
       accountsProtected: [...this.accounts.values()].filter((a) => a.status === "active" && !a.paused).length,
-      actionsTaken: actions.filter((a) => a.txHash).length,
+      actionsTaken: actions.filter((a) => a.sizeFilled > 0n).length,
       saves: actions.filter((a) => a.outcome === "saved").length,
       savedEquity,
       insuranceCost: actions.filter((a) => a.outcome === "not-needed").reduce((s, a) => s + (a.cost ?? 0n), 0n),
@@ -310,6 +310,19 @@ export class MemoryStore implements Store {
       conflicts: actions.filter((a) => a.outcome === "conflict").length,
       pending: actions.filter((a) => a.outcome === "pending").length,
     };
+  }
+
+  private revocations = new Map<string, Date>();
+
+  async revokeSessions(wallet: string, before: Date) {
+    const k = wallet.toLowerCase();
+    const prev = this.revocations.get(k);
+    this.revocations.set(k, prev && prev > before ? prev : before);
+  }
+
+  async sessionsRevokedBefore(wallet: string) {
+    const d = this.revocations.get(wallet.toLowerCase());
+    return d ? new Date(d) : null;
   }
 
   private beats = new Map<string, HeartbeatRow>();

@@ -7,7 +7,7 @@ import { ScrollText } from "@/components/ScrollText";
 import { LiveSimulator } from "@/components/Simulator";
 import { Btn, CornerLink, Label, Split } from "@/components/Ui";
 import { usd } from "@/lib/format";
-import { getStore } from "@/lib/server";
+import { DEMO, getStore } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -60,8 +60,13 @@ const CASES: Array<[string, string]> = [
 ];
 
 export default async function Landing() {
-  const store = await getStore();
-  const stats = await store.stats();
+  // The track record is one section of the page: without the database the rest still renders.
+  const stats = await getStore()
+    .then((store) => store.stats())
+    .catch((err) => {
+      console.error("track record unavailable:", err instanceof Error ? err.message : String(err));
+      return null;
+    });
 
   return (
     <>
@@ -254,17 +259,21 @@ export default async function Landing() {
       </section>
 
       {/* track record */}
-      <section className="sec cells c4 record">
+      <section className="sec cells c4 record" aria-label={DEMO ? "Track record, sample data" : "Track record"}>
         {(
           [
-            ["Saved equity", `${usd(stats.savedEquity)}`, "USDso"],
-            ["Insurance cost", `${usd(stats.insuranceCost)}`, "USDso"],
-            ["Actions taken", String(stats.actionsTaken), ""],
-            ["Accounts protected", String(stats.accountsProtected), ""],
+            ["Saved equity (up to)", stats ? usd(stats.savedEquity) : "–", "USDso"],
+            ["Insurance cost", stats ? usd(stats.insuranceCost) : "–", "USDso"],
+            ["Actions taken", stats ? String(stats.actionsTaken) : "–", ""],
+            ["Accounts protected", stats ? String(stats.accountsProtected) : "–", ""],
           ] as const
         ).map(([k, v, u], i) => (
           <div key={k} className="p" data-reveal style={{ ["--d" as string]: `${i * 0.06}s` }}>
-            <div className="mono-s soft">{k}</div>
+            <div className="mono-s soft">
+              {k}
+              {DEMO ? " · sample" : ""}
+              {!stats && i === 0 ? " · unavailable right now" : ""}
+            </div>
             <div className="num m" style={{ marginTop: "2.4rem" }}>
               {v}
               {u && <small>{u}</small>}
@@ -310,7 +319,7 @@ function EngineMock() {
   return (
     <div className="mock tagbox" style={{ width: "100%" }}>
       <div className="tagbox-head between">
-        <span>Engine · BTC-PERP</span>
+        <span>Engine · BTC-PERP · illustration</span>
         <span>1 tick / s</span>
       </div>
       <div className="mock-rows">
@@ -330,8 +339,8 @@ function ReceiptMock() {
   return (
     <div className="mock tagbox" style={{ width: "100%" }}>
       <div className="tagbox-head between">
-        <span>Receipt · saved</span>
-        <span>✓ Verified</span>
+        <span>Receipt · saved · illustration</span>
+        <span>✓ Signature checks</span>
       </div>
       <div className="mock-rows">
         {[
@@ -361,8 +370,8 @@ function DashMock() {
   return (
     <div className="mock tagbox" style={{ width: "100%" }}>
       <div className="tagbox-head between">
-        <span>Positions</span>
-        <span>21 / 21 linked</span>
+        <span>Positions · illustration</span>
+        <span>all markets linked</span>
       </div>
       <div className="mock-rows">
         {pos.map(([m, k]) => (

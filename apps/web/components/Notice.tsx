@@ -1,13 +1,14 @@
 "use client";
 // The bottom-right notice: this deployment has no protection engine running,
-// so receipts and stats are sample data. Dismissed once per browser.
+// so receipts and stats are sample data. Dismissed for this visit (tab) only,
+// so a returning visitor is told again; the sample figures are labelled inline too.
 import { useEffect, useState } from "react";
 
 export function Notice() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     try {
-      setOpen(localStorage.getItem("hoax.notice") !== "1");
+      setOpen(sessionStorage.getItem("hoax.notice") !== "1");
     } catch {
       setOpen(true);
     }
@@ -15,7 +16,7 @@ export function Notice() {
   if (!open) return null;
   const close = () => {
     try {
-      localStorage.setItem("hoax.notice", "1");
+      sessionStorage.setItem("hoax.notice", "1");
     } catch {}
     setOpen(false);
   };

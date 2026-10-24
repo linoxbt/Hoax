@@ -1,6 +1,6 @@
 // JSON shapes the API returns: bigints arrive as decimal strings.
 
-export type Outcome = "saved" | "not-needed" | "missed" | "conflict" | "skipped" | "pending";
+export type Outcome = "saved" | "not-needed" | "missed" | "conflict" | "skipped" | "pending" | "unconfirmed";
 
 export interface PolicyJson {
   market: string;
@@ -38,7 +38,7 @@ export interface AccountJson {
   network: { id: number; key: "shannon" | "hideki"; name: string; explorer: string };
   account: {
     id: string;
-    status: "pending_key" | "pending_link" | "active" | "unlinked";
+    status: "pending_key" | "pending_link" | "active" | "unlinked" | "retired";
     hoaxKey: string | null;
     paused: boolean;
     linkedAt: string | null;
@@ -63,6 +63,9 @@ export interface CounterfactualJson {
   preserved: string | null;
   finalOutcome: Outcome;
   resolvedAt: string | null;
+  resolution: Record<string, unknown> | null;
+  resolutionHash: string | null;
+  resolutionSignature: string | null;
 }
 
 export interface ActionJson {
@@ -172,6 +175,8 @@ export interface LinkTxJson {
   calls: Array<{ to: string; label: string }>;
   /** "pool": per-pool grants through the Safe; "global": one registry-wide grant from a plain-key account. */
   scope: "pool" | "global";
+  /** A builder approval was asked for but cannot ride a registry-wide link. */
+  builderSkipped?: boolean;
   markets: number;
   hoaxKey: string;
   chainId: number;

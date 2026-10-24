@@ -12,12 +12,12 @@ export default async function StatsPage() {
   const [stats, actions] = await Promise.all([store.stats(), store.listActions({ limit: 25 })]);
   const rows = JSON.parse(JSON.stringify(actions, (_k, v) => (typeof v === "bigint" ? v.toString() : v))) as ActionJson[];
   const cells: Array<[string, string, string]> = [
-    ["Saved equity", usd(stats.savedEquity), "USDso"],
+    ["Saved equity (up to)", usd(stats.savedEquity), "USDso"],
     ["Insurance cost", usd(stats.insuranceCost), "USDso"],
     ["Accounts protected", String(stats.accountsProtected), ""],
     ["Misses", String(stats.misses), ""],
     ["Saves", String(stats.saves), ""],
-    ["Closes sent", String(stats.actionsTaken), ""],
+    ["Closes filled", String(stats.actionsTaken), ""],
     ["In 24 h window", String(stats.pending), ""],
     ["Conflicts", String(stats.conflicts), ""],
   ];

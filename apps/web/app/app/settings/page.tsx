@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { formatEther } from "viem";
 import { AppHead } from "@/components/AppHead";
 import { CopyButton } from "@/components/CopyButton";
@@ -17,11 +18,27 @@ export default function Settings() {
   const revoke = useLinkTx();
   const anyLinked = view?.links ? Object.values(view.links).some(Boolean) : false;
   const canManage = hoax.sample || hoax.signedIn;
+  const [pausing, setPausing] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
 
   async function setPaused(paused: boolean) {
+    if (pausing) return;
+    setPausing(true);
     try {
       await api(`/api/accounts/${session.owner}/pause`, { method: "POST", token: session.token, body: JSON.stringify({ paused, chain: session.chainId }) });
       await refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setPausing(false);
+    }
+  }
+
+  async function signOutEverywhere() {
+    try {
+      await api("/api/auth/logout", { method: "POST", token: session.token });
+      setSignedOut(true);
+      hoax.disconnect();
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -40,10 +57,11 @@ export default function Settings() {
               <button
                 className={`pill${account.paused ? "" : " ghost"}`}
                 style={{ marginTop: "1.6rem" }}
-                disabled={!canManage}
+                disabled={!canManage || pausing}
+                aria-busy={pausing}
                 onClick={() => setPaused(!account.paused)}
               >
-                {account.paused ? "Resume Hoax" : "Pause Hoax"}
+                {pausing ? "Saving…" : account.paused ? "Resume Hoax" : "Pause Hoax"}
               </button>
             )}
           </div>
@@ -55,7 +73,7 @@ export default function Settings() {
               <p className="note" style={{ marginTop: "1.6rem" }}>
                 Revoked.{" "}
                 {revoke.hash && (
-                  <a className="accent" href={txUrl(revoke.hash)} target="_blank" rel="noreferrer">
+                  <a className="accent" href={txUrl(revoke.hash, session.chainId)} target="_blank" rel="noreferrer">
                     View tx ↗
                   </a>
                 )}
@@ -101,7 +119,7 @@ export default function Settings() {
             <span className="row" style={{ gap: "1rem" }}>
               {account?.hoaxKey ? (
                 <>
-                  <a className="mono" href={addressUrl(account.hoaxKey)} target="_blank" rel="noreferrer">
+                  <a className="mono" href={addressUrl(account.hoaxKey, session.chainId)} target="_blank" rel="noreferrer">
                     {account.hoaxKey}
                   </a>
                   <CopyButton text={account.hoaxKey} ghost />
@@ -129,6 +147,11 @@ export default function Settings() {
           <button className="pill ghost" onClick={hoax.disconnect}>
             {hoax.sample ? "Leave the sample account" : "Disconnect wallet"}
           </button>
+          {!hoax.sample && hoax.signedIn && (
+            <button className="pill ghost" onClick={signOutEverywhere} disabled={signedOut}>
+              Sign out everywhere
+            </button>
+          )}
         </div>
       </div>
     </>

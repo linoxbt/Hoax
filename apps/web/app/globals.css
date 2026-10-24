@@ -335,7 +335,7 @@ a.card:hover { background: rgba(40, 40, 40, 0.035); text-decoration: none; }
 .tag::before { content: ""; width: 0.6rem; height: 0.6rem; background: currentColor; }
 .tag.saved { color: var(--ok); } .tag.skipped { color: var(--warn); }
 .tag.missed, .tag.conflict { color: var(--bad); }
-.tag.pending { color: var(--brand); } .tag.not-needed { color: var(--ink-4); }
+.tag.pending, .tag.unconfirmed { color: var(--brand); } .tag.not-needed { color: var(--ink-4); }
 .rows { border-top: var(--b) solid var(--line); }
 .rows > .r { display: flex; justify-content: space-between; align-items: baseline; gap: 1.6rem; padding: 1.2rem 0; border-bottom: var(--b) solid var(--line); }
 .rows > .r > :first-child { font-family: var(--mono); font-size: 1.2rem; text-transform: uppercase; color: var(--ink-4); flex: 0 0 auto; max-width: 48%; letter-spacing: 0; }

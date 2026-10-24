@@ -1,5 +1,5 @@
 import "server-only";
-import { receiptSigner, HIDEKI, networkOf, type MarketInfo } from "@hoax/chain";
+import { receiptSigner, resolutionSigner, HIDEKI, isNetworkId, networkOf, type MarketInfo } from "@hoax/chain";
 import type { AccountRow, ActionRow, CounterfactualRow, Store } from "@hoax/db";
 import { getAddress, type Hex } from "viem";
 import { accountsClient } from "./auth";
@@ -103,8 +103,9 @@ export async function accountView(store: Store, owner: string, account: AccountR
   const venue = getVenue(chainId);
   const markets = await getMarkets(chainId);
   const live = account?.hoaxKey && !(DEMO && owner.toLowerCase() === DEMO_OWNER);
+  // Trigger levels are the owner's business: shown to anyone they say where to push the price.
   const [policies, positions, alerts, keyBalance, links] = await Promise.all([
-    account ? store.listPolicies(account.id) : Promise.resolve([]),
+    account && isOwner ? store.listPolicies(account.id) : Promise.resolve([]),
     positionsFor(store, owner, account, chainId),
     account && isOwner ? store.listAlerts(account.id, 20) : Promise.resolve([]),
     account?.hoaxKey && venue ? venue.nativeBalance(getAddress(account.hoaxKey)).catch(() => null) : Promise.resolve(null),
@@ -149,9 +150,20 @@ export async function receiptView(action: ActionRow, cf: CounterfactualRow | nul
       signatureValid = false;
     }
   }
-  // The receipt's network is its account's; older rows without one are Hideki.
+  // The resolution is signed by the same key and names this receipt by its hash.
+  let resolutionValid: boolean | null = null;
+  if (cf?.resolution && cf.resolutionSignature) {
+    try {
+      const signer = await resolutionSigner(cf.resolution, cf.resolutionSignature as Hex);
+      resolutionValid = signer.toLowerCase() === action.receipt.hoaxKey.toLowerCase() && cf.resolution.receiptHash === action.receiptHash;
+    } catch {
+      resolutionValid = false;
+    }
+  }
+  // A version 2 receipt names its network; older ones belong to their account's (Hideki before networks).
   const account = await (await getStore()).getAccount(action.accountId).catch(() => null);
-  const network = networkOf(account?.chainId ?? HIDEKI.id);
+  const named = action.receipt.chainId;
+  const network = networkOf(named !== undefined && isNetworkId(named) ? named : (account?.chainId ?? HIDEKI.id));
   const markets = await getMarkets(network.id).catch(() => []);
   const market = markets.find((m) => m.pool.toLowerCase() === action.pool.toLowerCase()) ?? markets.find((m) => m.symbol === action.market);
   return {
@@ -159,6 +171,7 @@ export async function receiptView(action: ActionRow, cf: CounterfactualRow | nul
     baseDecimals: market?.baseDecimals ?? 18,
     counterfactual: cf,
     signatureValid,
+    resolutionValid,
     chainId: network.id,
     networkName: network.name,
     explorer: network.explorer,

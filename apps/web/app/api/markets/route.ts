@@ -1,4 +1,5 @@
-import { getMarkets, getVenue, json } from "@/lib/server";
+import { HIDEKI, isNetworkId } from "@hoax/chain";
+import { error, getMarkets, getVenue, json } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +14,18 @@ interface MarketRow {
   baseDecimals: number;
 }
 
-const g = globalThis as unknown as { __hoaxMarkets?: { at: number; rows: MarketRow[] } };
+const g = globalThis as unknown as { __hoaxMarkets?: Map<number, { at: number; rows: MarketRow[] }> };
 const TTL_MS = 5_000;
 
-/** Every dreamDEX perp market with its live mark, read from chain (cached 5 s). */
-export async function GET() {
-  if (g.__hoaxMarkets && Date.now() - g.__hoaxMarkets.at < TTL_MS) return json({ markets: g.__hoaxMarkets.rows, cached: true });
-  const markets = await getMarkets();
-  const venue = getVenue();
+/** Every dreamDEX perp market on one network (?chain=, Hideki by default) with its live mark, read from chain (cached 5 s). */
+export async function GET(req: Request) {
+  const chainId = Number(new URL(req.url).searchParams.get("chain") ?? HIDEKI.id);
+  if (!isNetworkId(chainId)) return error(400, "chain must be 50312 (Shannon) or 50383 (Hideki)");
+  g.__hoaxMarkets ??= new Map();
+  const hit = g.__hoaxMarkets.get(chainId);
+  if (hit && Date.now() - hit.at < TTL_MS) return json({ chainId, markets: hit.rows, cached: true });
+  const markets = await getMarkets(chainId);
+  const venue = getVenue(chainId);
   const rows = await Promise.all(
     markets.map(async (m): Promise<MarketRow> => {
       const feed = venue ? await venue.readFeed(m).catch(() => null) : null;
@@ -42,6 +47,6 @@ export async function GET() {
     return i === -1 ? 99 : i;
   };
   rows.sort((a, b) => rank(a.baseSymbol) - rank(b.baseSymbol) || a.baseSymbol.localeCompare(b.baseSymbol));
-  g.__hoaxMarkets = { at: Date.now(), rows };
-  return json({ markets: rows, cached: false });
+  g.__hoaxMarkets.set(chainId, { at: Date.now(), rows });
+  return json({ chainId, markets: rows, cached: false });
 }

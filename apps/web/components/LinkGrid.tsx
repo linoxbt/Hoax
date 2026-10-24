@@ -8,7 +8,7 @@ export function LinkGrid({ view }: { view: AccountJson | null }) {
   return (
     <div>
       <div className="spread cap soft" style={{ marginBottom: "1rem" }}>
-        <span>Trade-only access by market</span>
+        <span>Place-order access by market</span>
         <span>
           {links ? `${linked} / ${view.markets.length}` : "–"}
         </span>
@@ -17,7 +17,13 @@ export function LinkGrid({ view }: { view: AccountJson | null }) {
         {view.markets.map((m) => {
           const on = links ? links[m.pool.toLowerCase()] : null;
           return (
-            <span key={m.pool} className={on ? "on" : on === false ? "off" : ""} title={m.pool}>
+            <span
+              key={m.pool}
+              className={on ? "on" : on === false ? "off" : ""}
+              title={`${m.symbol}: ${on ? "linked" : on === false ? "not linked" : "unknown"} · ${m.pool}`}
+              aria-label={`${m.symbol} ${on ? "linked" : on === false ? "not linked" : "unknown"}`}
+            >
+              {on ? "✓ " : on === false ? "× " : ""}
               {m.symbol.replace("-PERP", "")}
             </span>
           );

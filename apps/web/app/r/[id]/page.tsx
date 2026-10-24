@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { CopyButton } from "@/components/CopyButton";
 import { Label } from "@/components/Ui";
 import { OutcomeBadge } from "@/components/Outcome";
-import { getStore } from "@/lib/server";
+import { DEMO, getStore, isUuid } from "@/lib/server";
 import { receiptView } from "@/lib/views";
 import { addressUrl, health, txUrl, units, usd } from "@/lib/format";
 
@@ -10,13 +10,15 @@ export const dynamic = "force-dynamic";
 
 export default async function ReceiptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isUuid(id)) notFound();
   const store = await getStore();
   const action = await store.getAction(id);
   if (!action) notFound();
   const r = await receiptView(action, await store.getCounterfactual(id));
   const d = r.baseDecimals;
   const cf = r.counterfactual;
+  // The demo's sample receipts carry made-up hashes: no explorer link for those.
+  const link = !DEMO;
 
   return (
     <>
@@ -52,7 +54,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
           <div className="rows" style={{ marginTop: "2.4rem" }}>
             <div className="r">
               <span>Account</span>
-              <a href={addressUrl(r.owner)}>{r.owner}</a>
+              {link ? <a href={addressUrl(r.owner, r.chainId)}>{r.owner}</a> : <span>{r.owner}</span>}
             </div>
             <div className="r">
               <span>Closed</span>
@@ -78,7 +80,13 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             </div>
             <div className="r">
               <span>Transaction</span>
-              <span>{r.txHash ? <a href={txUrl(r.txHash)}>{r.txHash.slice(0, 18)}… ↗</a> : "none sent"}</span>
+              <span>
+                {r.txHash ? link ? <a href={txUrl(r.txHash, r.chainId)}>{r.txHash.slice(0, 18)}… ↗</a> : `${r.txHash.slice(0, 18)}… (sample)` : "none sent"}
+              </span>
+            </div>
+            <div className="r">
+              <span>Network</span>
+              <span>{r.networkName}</span>
             </div>
             <div className="r">
               <span>Block</span>
@@ -123,10 +131,11 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
           </h2>
           <div style={{ marginTop: "3.2rem" }}>
             {r.outcome === "pending" && <p className="txt ink">Watching for 24 h. A save if the mark reaches {usd(r.liqPriceBefore)} and the position survives.</p>}
+            {r.outcome === "unconfirmed" && <p className="txt ink">The close was sent and its result is being confirmed on chain.</p>}
             {r.outcome === "saved" && cf && (
               <>
                 <div className="num accent">
-                  {usd(cf.preserved)}
+                  <small>up to</small> {usd(cf.preserved)}
                   <small>USDso preserved</small>
                 </div>
                 <div className="rows" style={{ marginTop: "3.2rem" }}>
@@ -148,7 +157,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             {r.outcome === "not-needed" && <p className="txt ink">Liquidation price not reached in 24 h. The close cost was insurance.</p>}
             {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && <p className="txt ink">{r.reason ?? r.outcome}</p>}
             <p className="mono-xs soft" style={{ marginTop: "2.4rem" }}>
-              Preserved = equity at the old liquidation price − equity after a liquidation there.
+              Preserved = equity at the old liquidation price − equity after liquidating the whole position there. dreamDEX liquidates in
+              steps and can stop early, so this is an upper bound: what the close saved if the move had gone on to liquidate it all.
             </p>
           </div>
         </div>
@@ -161,7 +171,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             </div>
             <div className="r">
               <span>Signed by</span>
-              <a href={addressUrl(String(r.receipt.hoaxKey))}>{String(r.receipt.hoaxKey)}</a>
+              {link ? <a href={addressUrl(String(r.receipt.hoaxKey), r.chainId)}>{String(r.receipt.hoaxKey)}</a> : <span>{String(r.receipt.hoaxKey)}</span>}
             </div>
             <div className="r">
               <span>Signature</span>
@@ -171,9 +181,20 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                 {r.signatureValid === null && "unsigned"}
               </span>
             </div>
+            {cf?.resolution && (
+              <div className="r">
+                <span>Outcome record</span>
+                <span>
+                  {r.resolutionValid === true && <span className="tag saved">signed, matches this receipt</span>}
+                  {r.resolutionValid === false && <span className="tag missed">does not match</span>}
+                  {r.resolutionValid === null && "unsigned"}
+                </span>
+              </div>
+            )}
           </div>
           <p className="mono-xs soft" style={{ marginTop: "1.6rem" }}>
-            keccak256 of sorted-key JSON · EIP-191 signature
+            keccak256 of sorted-key JSON · EIP-191 signature. The receipt is signed when Hoax closes and never changed; the final outcome is a
+            second record, signed by the same key, that names this receipt by its hash.
           </p>
           <div style={{ marginTop: "2.4rem" }}>
             <CopyButton text={`/r/${r.id}`} label="Copy link to share" />
@@ -182,6 +203,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             <summary>Receipt JSON</summary>
             <pre>{JSON.stringify(r.receipt, null, 2)}</pre>
           </details>
+          {cf?.resolution && (
+            <details style={{ marginTop: "1.2rem" }}>
+              <summary>Outcome record JSON</summary>
+              <pre>{JSON.stringify({ ...cf.resolution, signature: cf.resolutionSignature }, null, 2)}</pre>
+            </details>
+          )}
         </div>
       </section>
     </>

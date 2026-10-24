@@ -21,18 +21,20 @@ export default function GasStep() {
   const key = view?.account?.hoaxKey ?? null;
   const gas = view?.keyBalance ? BigInt(view.keyBalance) : null;
   const low = gas !== null && gas < 10n ** 16n;
-  const sponsored = Boolean(hoax.engine?.info?.gasWallet);
+  const chainId = hoax.session?.chainId ?? 50383;
+  // The gas wallet of this account's own network's engine, not whichever engine beat last.
+  const sponsored = Boolean(hoax.engine?.networks?.[String(chainId)]?.info?.gasWallet);
 
   async function fund() {
     if (!hoax.wallet || !key) return;
     setErr(null);
     setBusy(true);
     try {
-      const chainId = hoax.session?.chainId ?? 50383;
       await hoax.ensureChain(chainId);
       const h = await sendTransaction(wagmiConfig(), { chainId: chainId, account: hoax.wallet, to: key as `0x${string}`, value: parseEther(AMOUNT) });
       setHash(h);
-      await waitForTransactionReceipt(wagmiConfig(), { hash: h, chainId: chainId });
+      const receipt = await waitForTransactionReceipt(wagmiConfig(), { hash: h, chainId: chainId });
+      if (receipt.status !== "success") throw new Error("The transfer reverted on chain; nothing was sent.");
       await refresh();
     } catch (e) {
       setErr(friendly(e));
@@ -66,7 +68,7 @@ export default function GasStep() {
                 {busy ? "Sending…" : `Send ${AMOUNT} STT from my wallet`}
               </button>
               {hash && (
-                <a className="cap accent" href={txUrl(hash)} target="_blank" rel="noreferrer">
+                <a className="cap accent" href={txUrl(hash, chainId)} target="_blank" rel="noreferrer">
                   {short(hash)} ↗
                 </a>
               )}

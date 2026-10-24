@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHead } from "@/components/AppHead";
 import { useApp, DEFAULT_POLICY_JSON } from "@/lib/appContext";
+import { BOUNDS, fromInput, policyProblems, toInput } from "@/lib/policyForm";
 import { api } from "@/lib/session";
 
 const FIELDS = [
@@ -32,7 +33,10 @@ export default function PolicyEditor() {
     }
   }, [view, current, loaded]);
 
+  const problems = policyProblems(form);
+
   async function save() {
+    if (problems.length > 0) return;
     setBusy(true);
     setErr(null);
     try {
@@ -58,7 +62,14 @@ export default function PolicyEditor() {
           {FIELDS.map(([k, label, step, help]) => (
             <label className="field" key={k}>
               <span>{label}</span>
-              <input type="number" step={step} value={form[k]} onChange={(e) => setForm({ ...form, [k]: Number(e.target.value) })} />
+              <input
+                type="number"
+                step={step}
+                min={BOUNDS[k]?.min}
+                max={BOUNDS[k]?.max}
+                value={toInput(form[k])}
+                onChange={(e) => setForm({ ...form, [k]: fromInput(e.target.value) })}
+              />
               <span className="cap soft" style={{ marginTop: "0.6rem", textTransform: "none", letterSpacing: "0.04em" }}>
                 {help}
               </span>
@@ -81,8 +92,15 @@ export default function PolicyEditor() {
             </span>
           </label>
         </div>
+        {problems.length > 0 && (
+          <ul className="note bad" style={{ marginTop: "2.4rem" }} role="alert">
+            {problems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        )}
         <div className="row" style={{ marginTop: "3.2rem" }}>
-          <button className="pill" disabled={busy} onClick={save}>
+          <button className="pill" disabled={busy || problems.length > 0} onClick={save}>
             Save policy
           </button>
           <button className="pill ghost" onClick={() => setForm({ ...DEFAULT_POLICY_JSON, enabled: true })}>

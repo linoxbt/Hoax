@@ -1,14 +1,33 @@
 // The hosts a sign-in message may name (lib/auth.ts): HOAX_SITE_HOSTS, plus the
-// URLs Netlify sets at build time. Captured here because Netlify only sets them for the build.
+// URLs Netlify and Vercel set at build time. Captured here because the platforms
+// only set them for the build. A production deployment with none refuses sign-in.
 const allowedHosts = [
   process.env.HOAX_SITE_HOSTS,
   process.env.URL,
   process.env.DEPLOY_PRIME_URL,
   process.env.DEPLOY_URL,
   process.env.SITE_NAME ? `${process.env.SITE_NAME}.netlify.app` : "",
+  process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  process.env.VERCEL_BRANCH_URL,
+  process.env.VERCEL_URL,
 ]
   .filter(Boolean)
   .join(",");
+
+// Which platform serves the app, so lib/server.ts trusts only that platform's
+// own client-IP header for rate limits.
+const platform = process.env.NETLIFY === "true" ? "netlify" : process.env.VERCEL === "1" ? "vercel" : "";
+
+// Clickjacking: pages that ask a wallet to sign must never be framed. The rest
+// locks down what the page itself cannot need.
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -16,7 +35,10 @@ const nextConfig = {
   serverExternalPackages: ["pg", "@somnia-chain/markets-sdk", "@somnia-chain/accounts-sdk", "ws"],
   poweredByHeader: false,
   // The client reads demo mode to offer the sample account.
-  env: { NEXT_PUBLIC_HOAX_DEMO: process.env.HOAX_DEMO === "1" ? "1" : "", HOAX_ALLOWED_HOSTS: allowedHosts },
+  env: { NEXT_PUBLIC_HOAX_DEMO: process.env.HOAX_DEMO === "1" ? "1" : "", HOAX_ALLOWED_HOSTS: allowedHosts, HOAX_PLATFORM: platform },
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   webpack: (config) => {
     // Optional dependencies of WalletConnect's logger and storage that never run in the browser.
     config.externals.push("pino-pretty", "lokijs", "encoding");

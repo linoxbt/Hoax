@@ -28,7 +28,8 @@ export default function StartLayout({ children }: { children: React.ReactNode })
     (href === "/start" && ready) ||
     (href === "/start/link" && linked) ||
     (href === "/start/gas" && linked && Boolean(view?.keyBalance && BigInt(view.keyBalance) > 10n ** 16n));
-  const reachable = (href: string) => href === "/start" || ready;
+  // Gas and policy only make sense once the key is linked.
+  const reachable = (href: string) => href === "/start" || (href === "/start/link" ? ready : ready && linked);
   // Steps past 01 are about the connected wallet's account: without one, back to step 01.
   // hoax.session is undefined while the wallet reconnects, so wait for it before deciding.
   const router = useRouter();

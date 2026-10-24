@@ -27,12 +27,22 @@ export function WalletButton() {
   const hoax = useHoax();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      button.current?.focus();
+    };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   if (hoax.sample && !hoax.wallet) {
@@ -59,14 +69,20 @@ export function WalletButton() {
 
   return (
     <div className="wmenu" ref={ref}>
-      <button className="wbtn" onClick={() => (needs ? hoax.openConnect() : setOpen(!open))} aria-expanded={open}>
+      <button
+        ref={button}
+        className="wbtn"
+        onClick={() => (needs ? hoax.openConnect() : setOpen(!open))}
+        aria-expanded={open}
+        aria-haspopup={needs ? "dialog" : "menu"}
+      >
         <Avatar address={hoax.wallet} />
         <span style={{ textTransform: "none" }}>{short(hoax.wallet)}</span>
         {needs && <span className="badge">● {needs}</span>}
         {!needs && <span className="corner" style={{ position: "absolute", right: "0.6rem", bottom: "0.6rem", width: "0.6rem", height: "0.6rem", borderRight: "var(--b) solid var(--ink-4)", borderBottom: "var(--b) solid var(--ink-4)" }} aria-hidden />}
       </button>
       {open && (
-        <div className="wdrop">
+        <div className="wdrop" role="menu" aria-label="Wallet">
           <div className="blk">
             <div className="mono-s soft">Wallet</div>
             <div className="val">{hoax.wallet}</div>

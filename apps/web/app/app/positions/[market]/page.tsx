@@ -5,11 +5,14 @@ import { AppHead } from "@/components/AppHead";
 import { HealthField } from "@/components/HealthField";
 import { useApp, DEFAULT_POLICY_JSON } from "@/lib/appContext";
 import { units, usd } from "@/lib/format";
+import { positionTag } from "@/lib/protection";
+import { useHoax } from "@/lib/wallet";
 
 export default function PositionDetail() {
   const { market } = useParams<{ market: string }>();
   const symbol = decodeURIComponent(market);
   const { view } = useApp();
+  const { engine } = useHoax();
   const p = view?.positions.find((x) => x.market === symbol);
   const saved = view?.policies.find((x) => x.market === symbol);
   const policy = saved ?? { ...DEFAULT_POLICY_JSON, market: symbol };
@@ -28,7 +31,10 @@ export default function PositionDetail() {
     <>
       <AppHead kicker={p ? `${p.side} · ${units(p.size.replace("-", ""), p.baseDecimals)} ${p.baseSymbol}` : "Position"} title={symbol}>
         <div className="row">
-          {saved?.enabled ? <span className="tag saved">protected</span> : <span className="tag not-needed">not protected</span>}
+          {(() => {
+            const tag = view ? positionTag(view, engine, saved) : null;
+            return tag && <span className={`tag ${tag.cls}`}>{tag.text}</span>;
+          })()}
           <Link href={`/app/positions/${symbol}/policy`} className="pill">
             Edit policy
           </Link>

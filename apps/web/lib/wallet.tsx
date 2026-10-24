@@ -53,7 +53,12 @@ interface Auth {
   wallet: string;
   token: string;
   expiresAt: string;
+  /** The chain a smart wallet's session is bound to; null for a plain key (every network). */
+  chainId: number | null;
 }
+
+/** The sample account exists only on a demo deployment; a remembered choice from one never carries over. */
+const DEMO_SITE = process.env.NEXT_PUBLIC_HOAX_DEMO === "1";
 
 export interface HoaxState {
   /** The connected wallet key, if any. */
@@ -103,7 +108,9 @@ function readAuth(wallet: string): Auth | null {
     const raw = localStorage.getItem(authKey(wallet));
     if (!raw) return null;
     const a = JSON.parse(raw) as Auth;
-    return Date.parse(a.expiresAt) > Date.now() + 60_000 ? a : null;
+    // Tokens of the older format are refused by the server: sign in again.
+    if (!a.token?.startsWith("hx2.")) return null;
+    return Date.parse(a.expiresAt) > Date.now() + 60_000 ? { ...a, chainId: a.chainId ?? null } : null;
   } catch {
     return null;
   }
@@ -156,7 +163,8 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
   useEffect(() => {
     setHydrated(true);
     try {
-      setSample(localStorage.getItem(SAMPLE_KEY) === "1");
+      if (DEMO_SITE) setSample(localStorage.getItem(SAMPLE_KEY) === "1");
+      else localStorage.removeItem(SAMPLE_KEY);
     } catch {}
   }, []);
 
@@ -197,9 +205,13 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     return () => clearInterval(t);
   }, []);
 
+  // The network the account on screen lives on (known once the wallet's accounts are read).
+  const accountChainRef = useRef<number | null>(null);
+
   const ensureChain = useCallback(
-    async (target: number = hideki.id) => {
-      if (chainId !== target) await switchChain(wagmiConfig(), { chainId: target });
+    async (target?: number) => {
+      const want = target ?? accountChainRef.current ?? (chainId === hideki.id || chainId === shannon.id ? chainId : hideki.id);
+      if (chainId !== want) await switchChain(wagmiConfig(), { chainId: want });
     },
     [chainId],
   );
@@ -208,15 +220,18 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     if (!address || signing.current) return false;
     signing.current = true;
     try {
-      // The wallet's own network, when Hoax serves it: a smart wallet's signature is checked there.
-      const chain = chainId === hideki.id || chainId === shannon.id ? chainId : hideki.id;
+      // Sign on the account's own network: a smart wallet's signature is checked
+      // there, and its session only works there.
+      const current = chainId === hideki.id || chainId === shannon.id ? chainId : null;
+      const chain = accountChainRef.current ?? current ?? hideki.id;
+      if (chainId !== chain) await switchChain(wagmiConfig(), { chainId: chain });
       const { message } = await api<{ message: string }>("/api/auth/challenge", { method: "POST", body: JSON.stringify({ address, chain }) });
       const signature = await signMessage(wagmiConfig(), { account: address, message });
-      const r = await api<{ wallet: string; token: string; expiresAt: string }>("/api/auth/verify", {
+      const r = await api<{ wallet: string; token: string; expiresAt: string; chainId: number | null }>("/api/auth/verify", {
         method: "POST",
         body: JSON.stringify({ message, signature }),
       });
-      const a = { wallet: r.wallet, token: r.token, expiresAt: r.expiresAt };
+      const a: Auth = { wallet: r.wallet, token: r.token, expiresAt: r.expiresAt, chainId: r.chainId ?? null };
       writeAuth(a, address);
       setAuth(a);
       return true;
@@ -269,7 +284,11 @@ function HoaxStateProvider({ children, reown }: { children: React.ReactNode; reo
     null;
   const account = shown?.address ?? null;
   const accountChain = shown?.chainId ?? null;
-  const signedIn = Boolean(auth && address && auth.wallet.toLowerCase() === address.toLowerCase());
+  accountChainRef.current = accountChain;
+  // A smart wallet's session covers only the chain it signed on.
+  const signedIn = Boolean(
+    auth && address && auth.wallet.toLowerCase() === address.toLowerCase() && (auth.chainId === null || accountChain === null || auth.chainId === accountChain),
+  );
 
   const session: Session | null | undefined = useMemo(() => {
     if (!hydrated) return undefined;

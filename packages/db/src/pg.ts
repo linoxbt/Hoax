@@ -545,7 +545,7 @@ export class PgStore implements Store {
     const [r] = await this.q(`
       SELECT
         (SELECT count(*) FROM accounts WHERE status = 'active' AND NOT paused) AS accounts,
-        (SELECT count(*) FROM actions WHERE tx_hash IS NOT NULL) AS taken,
+        (SELECT count(*) FROM actions WHERE size_filled > 0) AS taken,
         (SELECT count(*) FROM actions WHERE outcome = 'saved') AS saves,
         (SELECT coalesce(sum(c.preserved), 0) FROM actions a JOIN counterfactuals c ON c.action_id = a.id
            WHERE a.outcome = 'saved') AS saved_equity,
@@ -585,6 +585,19 @@ export class PgStore implements Store {
   async pruneRateHits(olderThan: Date) {
     const res = await this.pool.query(`DELETE FROM rate_hits WHERE at < $1`, [olderThan]);
     return res.rowCount ?? 0;
+  }
+
+  async revokeSessions(wallet: string, before: Date) {
+    await this.q(
+      `INSERT INTO session_revocations (wallet, revoked_before) VALUES ($1, $2)
+       ON CONFLICT (wallet) DO UPDATE SET revoked_before = GREATEST(session_revocations.revoked_before, EXCLUDED.revoked_before)`,
+      [wallet.toLowerCase(), before],
+    );
+  }
+
+  async sessionsRevokedBefore(wallet: string) {
+    const [r] = await this.q(`SELECT revoked_before FROM session_revocations WHERE wallet = $1`, [wallet.toLowerCase()]);
+    return (r?.revoked_before as Date | null) ?? null;
   }
 
   async beat(service: string, info: Record<string, unknown>) {

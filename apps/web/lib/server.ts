@@ -1,10 +1,9 @@
 // Server-only singletons and helpers for the API routes.
 import "server-only";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { DreamDexVenue, HIDEKI, NETWORKS, isNetworkId, networkOf, type MarketInfo, type Venue } from "@hoax/chain";
 import { MemoryStore, PgStore, type AccountRow, type Store } from "@hoax/db";
-import { bearer, controls, sessionWallet } from "./auth";
-import { seedDemo } from "./demo";
+import { bearer, controls, isProduction, parseSession, type Session } from "./auth";
+import { DEMO_OWNER, DEMO_TOKEN, seedDemo } from "./demo";
 
 const g = globalThis as unknown as { __hoaxStore?: Store; __hoaxVenues?: Map<number, Venue>; __hoaxSeeded?: Promise<void> };
 
@@ -18,8 +17,17 @@ export const DEMO = process.env.HOAX_DEMO === "1";
 export async function getStore(): Promise<Store> {
   if (!g.__hoaxStore) {
     const url = process.env.DATABASE_URL;
-    g.__hoaxStore = url ? new PgStore(url) : new MemoryStore();
-    if (!url && DEMO) g.__hoaxSeeded = seedDemo(g.__hoaxStore);
+    if (url) {
+      checkDatabaseTls(url);
+      g.__hoaxStore = new PgStore(url);
+    } else if (DEMO || !isProduction()) {
+      g.__hoaxStore = new MemoryStore();
+      if (DEMO) g.__hoaxSeeded = seedDemo(g.__hoaxStore);
+    } else {
+      // Each serverless instance would get its own empty store: registrations
+      // would vanish and the engine would never see them.
+      throw new Error("DATABASE_URL must be set on this deployment (or HOAX_DEMO=1 for sample data)");
+    }
   }
   if (g.__hoaxSeeded) await g.__hoaxSeeded;
   return g.__hoaxStore;
@@ -63,26 +71,47 @@ export async function getMarkets(chainId: number = HIDEKI.id): Promise<MarketInf
   return venue ? venue.listMarkets() : chainId === HIDEKI.id ? DEMO_MARKETS : [];
 }
 
-export function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-export function newToken(): string {
-  return randomBytes(24).toString("base64url");
+/**
+ * The Postgres connection must be TLS with the server's certificate pinned
+ * (DATABASE_CA_CERT), or sslmode=verify-full, unless the database is local.
+ * DATABASE_INSECURE_TLS=1 overrides it, for a database on a private network.
+ */
+function checkDatabaseTls(url: string): void {
+  if (!isProduction() || process.env.DATABASE_CA_CERT?.trim() || process.env.DATABASE_INSECURE_TLS === "1") return;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error("DATABASE_URL is not a valid URL");
+  }
+  if (["localhost", "127.0.0.1", "::1", ""].includes(u.hostname)) return;
+  if (u.searchParams.get("sslmode") === "verify-full") return;
+  throw new Error("DATABASE_URL reaches a remote Postgres without a verified TLS connection: set DATABASE_CA_CERT (or sslmode=verify-full)");
 }
 
 /**
- * True when the request may manage this account: a wallet session for a wallet
- * that owns the account's Safe, or the account's legacy manage token.
+ * The wallet session on this request, or null: a valid token, not revoked,
+ * and (for a smart wallet's session, with `chainId`) issued on that chain.
  */
-export async function authorized(req: Request, account: AccountRow): Promise<boolean> {
-  const token = bearer(req);
-  if (!token) return false;
-  const wallet = sessionWallet(token);
-  if (wallet) return controls(wallet, account.owner, account.chainId).catch(() => false);
-  const a = Buffer.from(hashToken(token));
-  const b = Buffer.from(account.manageTokenHash);
-  return a.length === b.length && timingSafeEqual(a, b);
+export async function sessionFor(req: Request, chainId?: number): Promise<Session | null> {
+  const session = parseSession(bearer(req), chainId);
+  if (!session) return null;
+  const revoked = await (await getStore()).sessionsRevokedBefore(session.wallet).catch(() => null);
+  if (revoked && session.issuedAt <= revoked.getTime()) return null;
+  return session;
+}
+
+/**
+ * True when the request may manage this account: a wallet session for a
+ * wallet that owns the account's Safe on the account's network. `fresh` asks
+ * the chain now instead of the short cache, for every change.
+ */
+export async function authorized(req: Request, account: AccountRow, opts: { fresh?: boolean } = {}): Promise<boolean> {
+  // The demo's sample account (sample data, nothing on chain) is open to the sample session.
+  if (DEMO && account.owner === DEMO_OWNER && bearer(req) === DEMO_TOKEN) return true;
+  const session = await sessionFor(req, account.chainId);
+  if (!session) return false;
+  return controls(session.wallet, account.owner, account.chainId, opts);
 }
 
 /**
@@ -140,14 +169,40 @@ export function error(status: number, message: string): Response {
 }
 
 /**
- * The caller's address. Netlify's own header comes first: the first entry of
- * X-Forwarded-For is whatever the client sent, so only the last one, added by
- * the nearest proxy, is used as a fallback.
+ * The header the host in front of the app sets itself (and overwrites if a
+ * client sends it): Netlify's and Vercel's are known, captured at build time
+ * (next.config.mjs); HOAX_CLIENT_IP_HEADER names another proxy's.
+ */
+function trustedIpHeader(): string | null {
+  if (process.env.HOAX_CLIENT_IP_HEADER) return process.env.HOAX_CLIENT_IP_HEADER.toLowerCase();
+  if (process.env.HOAX_PLATFORM === "netlify") return "x-nf-client-connection-ip";
+  if (process.env.HOAX_PLATFORM === "vercel") return "x-real-ip";
+  return null;
+}
+
+/**
+ * The caller's address, for rate limits. Only the platform's own header is
+ * trusted; elsewhere the last X-Forwarded-For entry, which the nearest proxy
+ * added (the first is whatever the client sent).
  */
 export function clientIp(req: Request): string {
   const h = req.headers;
+  const trusted = trustedIpHeader();
+  const own = trusted ? h.get(trusted)?.split(",")[0]?.trim() : null;
+  if (own) return own;
   const forwarded = (h.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return h.get("x-nf-client-connection-ip") ?? h.get("x-real-ip") ?? forwarded[forwarded.length - 1] ?? "local";
+  return forwarded[forwarded.length - 1] ?? "local";
+}
+
+/** Log the detail on the server and give the caller a message that leaks nothing (an RPC URL with a key, say). */
+export function failure(status: number, message: string, err: unknown): Response {
+  console.error(`${message}:`, err instanceof Error ? err.message : String(err));
+  return error(status, message);
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isUuid(s: string): boolean {
+  return UUID.test(s);
 }
 
 const hits = new Map<string, number[]>();
@@ -168,11 +223,26 @@ function memoryHit(bucket: string, windowMs: number): number {
 export async function rateLimited(bucket: string, max: number, windowMs: number): Promise<boolean> {
   let n: number;
   try {
-    n = await (await getStore()).rateHit(bucket, windowMs);
+    n = await (await getStore()).rateHit(bucket, windowMs, max);
   } catch {
     n = memoryHit(bucket, windowMs);
   }
   return n > max;
+}
+
+/**
+ * A limit counted in this instance's memory only: for read routes, where a
+ * database write per request would cost more than it protects. Best effort
+ * across serverless instances, which is enough to stop a scraper.
+ */
+export function rateLimitedLocal(bucket: string, max: number, windowMs: number): boolean {
+  if (hits.size > 50_000) hits.clear(); // bounded: a flood of distinct addresses cannot grow it forever
+  return memoryHit(bucket, windowMs) > max;
+}
+
+/** Spend a sign-in nonce: true the first time, false if it was used already. */
+export async function useNonce(nonce: string, ttlMs: number): Promise<boolean> {
+  return !(await rateLimited(`nonce:${nonce}`, 1, ttlMs));
 }
 
 export const BUILDER = {

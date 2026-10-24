@@ -2,7 +2,6 @@
 // (HOAX_DEMO=1). Every page that shows it says so.
 import { DEFAULT_POLICY, receiptHash, type Receipt } from "@hoax/core";
 import type { Store } from "@hoax/db";
-import { createHash } from "node:crypto";
 
 export const DEMO_OWNER = "0x00000000000000000000000000000000000d3e00";
 export const DEMO_TOKEN = "demo";
@@ -11,7 +10,7 @@ const E18 = 10n ** 18n;
 
 export async function seedDemo(store: Store): Promise<void> {
   const id = "00000000-0000-4000-8000-000000000001";
-  await store.createAccount({ id, owner: DEMO_OWNER, manageTokenHash: createHash("sha256").update(DEMO_TOKEN).digest("hex") });
+  await store.createAccount({ id, owner: DEMO_OWNER });
   await store.setHoaxKey(id, "0x00000000000000000000000000000000000b0a50");
   await store.setStatus(id, "active");
   await store.upsertPolicy(id, "ETH-PERP", DEFAULT_POLICY);
@@ -110,6 +109,9 @@ export async function seedDemo(store: Store): Promise<void> {
         preserved: r.preserved,
         finalOutcome: "saved",
         resolvedAt: new Date(),
+        resolution: null,
+        resolutionHash: null,
+        resolutionSignature: null,
       });
     }
   }

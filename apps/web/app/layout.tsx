@@ -7,7 +7,12 @@ import { Providers } from "@/lib/wallet";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.URL ?? "https://hoax-dreamdex.netlify.app"),
+  // The site's own address, wherever it is deployed (Netlify sets URL, Vercel VERCEL_PROJECT_PRODUCTION_URL).
+  metadataBase: new URL(
+    process.env.HOAX_SITE_URL ??
+      process.env.URL ??
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "https://hoax-dreamdex.netlify.app"),
+  ),
   title: { default: "Hoax · Liquidation protection for dreamDEX perps", template: "%s · Hoax" },
   description: "Hoax cuts a dreamDEX perp position down to safe size before liquidation can take it, and proves every save with an on-chain receipt.",
 };

@@ -3,7 +3,7 @@
 // project id the wallet itself is picked in the Reown modal; without one, every
 // wallet the browser has installed is listed here by name (EIP-6963).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useConnectors, type Connector } from "wagmi";
 import { short } from "@/lib/format";
 import { useHoax } from "@/lib/wallet";
@@ -30,13 +30,36 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
   const hoax = useHoax();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const dialog = useRef<HTMLDivElement>(null);
 
+  // A real dialog: focus moves in, Tab stays inside, Escape closes, focus goes back.
   useEffect(() => {
     if (!open) return;
     setErr(null);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const before = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      [...(dialog.current?.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], input, [tabindex]:not([tabindex='-1'])") ?? [])];
+    requestAnimationFrame(() => (focusables()[0] ?? dialog.current)?.focus());
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return onClose();
+      if (e.key !== "Tab") return;
+      const f = focusables();
+      if (f.length === 0) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      before?.focus?.();
+    };
   }, [open, onClose]);
 
   // Close once everything is done.
@@ -86,9 +109,9 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <div className="modal-back" onClick={onClose} role="presentation">
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Connect a wallet" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Connect a wallet" ref={dialog} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <span>Connect · Somnia Hideki</span>
+          <span>Connect · {hoax.accountChain === 50312 ? "Somnia Shannon" : hoax.accountChain === 50383 ? "Somnia Hideki" : "Somnia"}</span>
           <button className="x" onClick={onClose} aria-label="Close">
             ×
           </button>

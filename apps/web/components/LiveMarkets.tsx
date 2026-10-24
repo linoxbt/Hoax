@@ -15,7 +15,8 @@ function price(m: MarketJson): string {
   return v.toLocaleString(undefined, { minimumFractionDigits: frac, maximumFractionDigits: frac });
 }
 
-export function useMarkets(everyMs = 5000) {
+/** Live perp markets on one network: Hideki (50383) unless asked. */
+export function useMarkets(everyMs = 5000, chainId = 50383) {
   const [rows, setRows] = useState<MarketJson[] | null>(null);
   const [moves, setMoves] = useState<Record<string, "up" | "down">>({});
   const prev = useRef<Record<string, string | null>>({});
@@ -23,7 +24,7 @@ export function useMarkets(everyMs = 5000) {
     let alive = true;
     const load = async () => {
       try {
-        const { markets } = await api<{ markets: MarketJson[] }>("/api/markets");
+        const { markets } = await api<{ markets: MarketJson[] }>(`/api/markets?chain=${chainId}`);
         if (!alive) return;
         const next: Record<string, "up" | "down"> = {};
         for (const m of markets) {
@@ -43,7 +44,7 @@ export function useMarkets(everyMs = 5000) {
       alive = false;
       clearInterval(t);
     };
-  }, [everyMs]);
+  }, [everyMs, chainId]);
   return { rows, moves };
 }
 

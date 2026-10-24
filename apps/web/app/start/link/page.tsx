@@ -2,7 +2,7 @@
 // Step 2: register, receive a dedicated Hoax key, and link it on every perp
 // market with one transaction from the wallet to its dreamDEX account.
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import { LinkGrid } from "@/components/LinkGrid";
 import { StepNav } from "@/components/StepNav";
@@ -12,11 +12,7 @@ import { useStart } from "@/lib/startContext";
 import { useLinkTx } from "@/lib/useLinkTx";
 import { useHoax } from "@/lib/wallet";
 
-const GRANTS = [
-  ["Place orders", "placeOrderFor · immediate-or-cancel closes only"],
-  ["Cancel orders", "cancelOrderFor"],
-  ["Reduce orders", "reduceOrderFor"],
-] as const;
+const GRANTS = [["Place orders", "placeOrderFor · the engine only sends immediate-or-cancel closes"]] as const;
 
 export default function LinkStep() {
   const hoax = useHoax();
@@ -24,7 +20,8 @@ export default function LinkStep() {
   const tx = useLinkTx();
   const [registering, setRegistering] = useState(false);
   const [builderFee, setBuilderFee] = useState(true);
-  const asked = useRef(false);
+  const [registerErr, setRegisterErr] = useState<string | null>(null);
+  const asked = useRef<string | null>(null);
 
   const account = view?.account ?? null;
   const key = account?.hoaxKey ?? null;
@@ -33,16 +30,26 @@ export default function LinkStep() {
   const plainKey = Boolean(session && hoax.wallet && session.owner === hoax.wallet.toLowerCase());
   const feeOn = !plainKey && Boolean(view?.builder.address) && (view?.builder.feeBpsTimes1k ?? 0) > 0;
 
-  // Register once the wallet is verified and the account is known.
-  useEffect(() => {
-    if (!session || !hoax.signedIn || !view || account || offline || asked.current) return;
-    asked.current = true;
+  // Register once the wallet is verified and the account is known: once per
+  // account and network, again after a failure (Try again), or for another account.
+  const target = session ? `${session.chainId}:${session.owner}` : null;
+  const register = useCallback(() => {
+    if (!session || !target) return;
+    asked.current = target;
+    setRegisterErr(null);
     setRegistering(true);
     api("/api/accounts", { method: "POST", token: session.token, body: JSON.stringify({ owner: session.owner, chain: session.chainId }) })
       .then(() => refresh())
-      .catch((e) => setErr((e as Error).message))
+      .catch((e) => {
+        setRegisterErr((e as Error).message);
+        setErr((e as Error).message);
+      })
       .finally(() => setRegistering(false));
-  }, [session, hoax.signedIn, view, account, offline, refresh, setErr]);
+  }, [session, target, refresh, setErr]);
+  useEffect(() => {
+    if (!session || !hoax.signedIn || !view || account || offline || registerErr || asked.current === target) return;
+    register();
+  }, [session, hoax.signedIn, view, account, offline, registerErr, target, register]);
 
   if (session === undefined) return null;
   if (!session || !hoax.signedIn)
@@ -76,7 +83,9 @@ export default function LinkStep() {
           <div className="panel">
             <div className="cap soft">Your Hoax key</div>
             <p className="copy" style={{ marginTop: "0.8rem" }}>
-              {registering || account?.status === "pending_key" ? (
+              {registerErr ? (
+                <>Could not register: {registerErr}</>
+              ) : registering || account?.status === "pending_key" ? (
                 <>
                   <span className="spin" aria-hidden /> Issuing a dedicated key for {short(session.owner)}…
                 </>
@@ -84,6 +93,11 @@ export default function LinkStep() {
                 "Waiting for the engine…"
               )}
             </p>
+            {registerErr && (
+              <button className="pill ghost" style={{ marginTop: "1.2rem" }} disabled={registering} onClick={register}>
+                Try again
+              </button>
+            )}
             {hoax.engine && !(hoax.engine.networks?.[session.chainId]?.online ?? hoax.engine.online) && (
               <p className="cap soft" style={{ marginTop: "0.8rem" }}>
                 The engine has not reported in. Keys are issued as soon as it does.
@@ -96,7 +110,7 @@ export default function LinkStep() {
               <div className="spread" style={{ alignItems: "center" }}>
                 <div>
                   <div className="cap soft">Your Hoax key · one per account</div>
-                  <a className="mono" style={{ fontSize: "1.5rem" }} href={addressUrl(key)} target="_blank" rel="noreferrer">
+                  <a className="mono" style={{ fontSize: "1.5rem" }} href={addressUrl(key, session.chainId)} target="_blank" rel="noreferrer">
                     {key}
                   </a>
                 </div>
@@ -114,14 +128,19 @@ export default function LinkStep() {
               ))}
               <div className="no">
                 <span className="dot">×</span>
+                <b>Cancel or reduce your orders</b>
+                <small>Not granted: your own take-profits and stops are out of its reach.</small>
+              </div>
+              <div className="no">
+                <span className="dot">×</span>
                 <b>{plainKey ? "Withdraw, transfer" : "Withdraw, transfer, spot"}</b>
                 <small>Not granted. Fills always settle to your account.</small>
               </div>
             </div>
             {plainKey && (
               <p className="note" style={{ marginTop: "1.6rem" }}>
-                This account is your wallet itself, with no dreamDEX Safe to batch through, so the grant is registry-wide in one transaction, as
-                dreamDEX&apos;s own Link a bot does: the same three order permissions on every pool. Hoax only ever trades the perp markets.
+                This account is your wallet itself, with no dreamDEX Safe to batch through, so the grant is registry-wide in one transaction:
+                placing orders on every pool, spot included. Hoax only ever trades the perp markets. A builder fee cannot ride this link.
               </p>
             )}
 
@@ -144,7 +163,7 @@ export default function LinkStep() {
                 </button>
               )}
               {tx.hash && (
-                <a className="cap accent" href={txUrl(tx.hash)} target="_blank" rel="noreferrer">
+                <a className="cap accent" href={txUrl(tx.hash, session.chainId)} target="_blank" rel="noreferrer">
                   {short(tx.hash)} ↗
                 </a>
               )}

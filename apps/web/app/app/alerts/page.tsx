@@ -9,7 +9,7 @@ export default function Alerts() {
     <>
       <AppHead kicker="Alerts" title="Alerts" />
       <div className="wrap pad-s">
-        {view && view.isOwner === false && <p className="note">Requires a valid manage token.</p>}
+        {view && view.isOwner === false && <p className="note">Alerts are shown to the wallet that owns this account. Verify your wallet to see them.</p>}
         {view && view.alerts.length === 0 && view.isOwner && <p className="copy soft">No alerts.</p>}
         {view && view.alerts.length > 0 && (
           <div className="rows">

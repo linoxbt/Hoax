@@ -9,7 +9,9 @@ import { HealthField } from "@/components/HealthField";
 import { ReceiptTable } from "@/components/ReceiptRow";
 import { useApp } from "@/lib/appContext";
 import { short, units, usd } from "@/lib/format";
+import { PROTECTION_TITLE, positionTag, protectionState } from "@/lib/protection";
 import { api } from "@/lib/session";
+import { useHoax } from "@/lib/wallet";
 import type { ActionJson } from "@/lib/types";
 
 /** Health colour: red under the default trigger, amber under the target, green above. */
@@ -17,23 +19,16 @@ const hl = (h: number | null | undefined) => (h === null || h === undefined ? ""
 
 export default function Overview() {
   const { session, view } = useApp();
+  const { engine } = useHoax();
   const [recent, setRecent] = useState<ActionJson[] | null>(null);
   useEffect(() => {
-    api<ActionJson[]>(`/api/actions?owner=${session.owner}&limit=5`).then(setRecent, () => setRecent([]));
-  }, [session.owner]);
+    setRecent(null);
+    api<ActionJson[]>(`/api/actions?owner=${session.owner}&chain=${session.chainId}&limit=5`).then(setRecent, () => setRecent([]));
+  }, [session.owner, session.chainId]);
 
   const account = view?.account;
-  const status = !view
-    ? "Loading"
-    : account?.status === "active"
-      ? account.paused
-        ? "Paused"
-        : "Protecting"
-      : account?.status === "pending_key" || account?.status === "pending_link"
-        ? "Setting up"
-        : account?.status === "unlinked"
-          ? "Unlinked"
-          : "Not protected";
+  const state = protectionState(view, engine);
+  const status = PROTECTION_TITLE[state];
   const linkedCount = view?.links ? Object.values(view.links).filter(Boolean).length : null;
   const gas = view?.keyBalance ? Number(formatEther(BigInt(view.keyBalance))) : null;
   const lowest = view?.positions.reduce<number | null>((m, p) => (p.health === null ? m : m === null ? p.health : Math.min(m, p.health)), null) ?? null;
@@ -54,13 +49,13 @@ export default function Overview() {
         <div className="statusbar">
           <EngineBadge chainId={session.chainId} />
           <span>
-            <b>{linkedCount === null ? "–" : `${linkedCount}/${view?.markets.length ?? 21}`}</b> markets linked
+            <b>{linkedCount === null || !view ? "–" : `${linkedCount}/${view.markets.length}`}</b> markets linked
           </span>
           <span>
             <b>{gas === null ? "–" : gas.toFixed(3)}</b> STT key gas
           </span>
           <span>
-            <b>{view ? view.policies.filter((p) => p.enabled).length : "–"}</b> policies on
+            <b>{view?.isOwner ? view.policies.filter((p) => p.enabled).length : "–"}</b> policies on
           </span>
         </div>
         {view && (!account || account.status === "pending_key" || account.status === "pending_link") && (
@@ -76,9 +71,14 @@ export default function Overview() {
             </Link>
           </div>
         )}
-        {account?.status === "unlinked" && (
+        {(account?.status === "unlinked" || account?.status === "retired") && (
           <p className="note bad" style={{ marginBottom: "2.4rem" }}>
             Key unlinked in dreamDEX. Protection is off.
+          </p>
+        )}
+        {state === "engine-offline" && (
+          <p className="note bad" style={{ marginBottom: "2.4rem" }}>
+            The protection engine for this network has not reported in recently. Hoax is not acting on this account until it is back.
           </p>
         )}
         <div className="grid g4">
@@ -97,7 +97,7 @@ export default function Overview() {
           <div className="card">
             <div className="cap soft">Protected</div>
             <div className="num s" style={{ marginTop: "1rem" }}>
-              {view ? view.policies.filter((p) => p.enabled).length : "–"}
+              {view?.isOwner ? (state === "protecting" ? view.policies.filter((p) => p.enabled).length : 0) : "–"}
             </div>
           </div>
           <Link href="/app/alerts" className="card">
@@ -113,11 +113,12 @@ export default function Overview() {
         <div className="grid g3">
           {view?.positions.map((p) => {
             const policy = view.policies.find((x) => x.market === p.market);
+            const tag = positionTag(view, engine, policy);
             return (
               <Link key={p.market} href={`/app/positions/${p.market}`} className="card">
                 <div className="spread" style={{ alignItems: "center" }}>
                   <span className="cap soft">{p.side}</span>
-                  {policy?.enabled ? <span className="tag saved">protected</span> : <span className="tag not-needed">not protected</span>}
+                  {tag && <span className={`tag ${tag.cls}`}>{tag.text}</span>}
                 </div>
                 <h3 style={{ margin: "10px 0" }}>{p.market}</h3>
                 <div className={`num s ${hl(p.health)}`}>{p.health === null ? "–" : p.health.toFixed(2)}</div>
