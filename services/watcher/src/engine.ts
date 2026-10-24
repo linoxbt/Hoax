@@ -274,15 +274,22 @@ export class Engine {
    */
   async confirmOutstanding(account: AccountRow, byPool?: Map<string, MarketInfo>): Promise<Set<string>> {
     const { store, venue } = this.deps;
+    const chainId = venue.chainId ?? account.chainId;
     const pools = byPool ?? new Map((await venue.listMarkets()).map((m) => [m.pool.toLowerCase(), m]));
+    // Pauses and alerts go to the registration protecting the owner now, whoever sent the order.
+    const owner = await store.getAccountByOwner(account.owner, chainId);
+    const current = owner && owner.status === "active" ? owner : account;
+    // Called for an inactive registration (the orphan sweep), only orders of
+    // inactive registrations: the active one's are confirmed in its own tick.
+    const sweeping = account.status !== "active";
     const blocked = new Set<string>();
-    const rows = await store.listUnconfirmedForOwner(account.owner, venue.chainId ?? account.chainId);
-    for (const action of rows) {
+    for (const action of await store.listUnconfirmedForOwner(account.owner, chainId)) {
+      if (sweeping && current.status === "active" && action.accountId === current.id) continue;
       const market = pools.get(action.pool.toLowerCase());
       if (!market) continue;
       const sender = action.accountId === account.id ? account : await store.getAccount(action.accountId);
       if (!sender) continue;
-      const settled = await this.confirm(sender, this.mem(sender.id), action, market, account);
+      const settled = await this.confirm(sender, this.mem(sender.id), action, market, current);
       if (!settled) blocked.add(market.symbol);
     }
     return blocked;
@@ -697,10 +704,11 @@ export class Engine {
       const timeout = this.deps.config.confirmTimeoutMs;
       if (age < timeout) return false;
       if (action.txNonce === null || !signer) {
-        // An older record without a nonce: nothing to replace. Written off after a long wait, and said so.
-        if (age < timeout * 5) return false;
-        await this.settleWithoutFill(account, mem, action, hash, "the order was sent but never confirmed on chain; check the transaction", true);
-        return true;
+        // No nonce to replace (an older record) or no key to replace it with:
+        // it can never be shown dead, so it is never written off. The market
+        // stays held and the owner's protecting account is paused, once.
+        if (age >= timeout * 5) await this.stuckForGood(current, mem, action, hash, signer ? "it was sent before Hoax recorded nonces" : "its key is missing from the keystore");
+        return false;
       }
       if ((await venue.minedNonce(signer.address)) > action.txNonce) {
         // The nonce is used. Asked again now: the order itself may have landed
@@ -720,12 +728,10 @@ export class Engine {
           mem.cancelled.set(action.id, this.now());
           log.warn("order stuck; replaced at its nonce so it cannot land later", { account: account.owner, tx: hash, cancel });
         } catch (err) {
+          // Not written off: until its nonce is used the order can still land,
+          // so the market stays held (no second close) for as long as it takes.
           log.error("could not replace a stuck order", { account: account.owner, tx: hash, error: revertName(err).slice(0, 160) });
-          if (age >= timeout * 5) {
-            await this.settleWithoutFill(account, mem, action, hash, "the order never confirmed and could not be cancelled; check the transaction", true);
-            await this.pause(account, `An order Hoax sent on ${action.market} (tx ${hash}) never confirmed and could not be cancelled. Hoax paused this account; check the transaction.`);
-            return true;
-          }
+          if (age >= timeout * 5) await this.stuckForGood(current, mem, action, hash, "it could not be cancelled (the key may be out of gas)");
         }
       }
       return false;
@@ -736,13 +742,31 @@ export class Engine {
       await this.settleWithoutFill(account, mem, action, hash, "the order reverted on chain", true);
       return true;
     }
-    if (!signer) return false;
+    if (!signer) {
+      // Filled, but nothing can sign its receipt: held and paused, not ignored.
+      await this.stuckForGood(current, mem, action, hash, "it filled but its key is missing from the keystore, so its receipt cannot be signed");
+      return false;
+    }
     mem.lastActionAt.set(market.symbol, Math.max(mem.lastActionAt.get(market.symbol) ?? 0, Date.parse(action.receipt.createdAt) || 0));
     const liquidation = await venue.liquidationParams(market.marginBank);
     const { createdAt: _created, ...draft } = action;
     const pending: Pending = { draft, market, isBid: action.side === "short", fee: action.builderFee1k, penaltyBps: liquidation.penaltyBps, slippageBps: 0 };
     await this.finalize(account, mem, pending, result, signer, true, current);
     return true;
+  }
+
+  /**
+   * An order Hoax cannot settle on its own: pause the account now protecting
+   * this owner and tell the trader, once per order. The market stays held.
+   */
+  private async stuckForGood(current: AccountRow, mem: AccountMemory, action: ActionRow, hash: Hex, why: string): Promise<void> {
+    const key = `stuck:${action.id}`;
+    if (mem.lastSkipReceipt.has(key)) return;
+    mem.lastSkipReceipt.set(key, this.now());
+    await this.pause(
+      current,
+      `An order Hoax sent on ${action.market} (tx ${hash}) has not confirmed and ${why}. It may still land, so Hoax will not send another there and paused this account. Check the transaction, then resume.`,
+    );
   }
 
   /** An order that filled nothing: a skipped receipt, keeping its tx hash. */

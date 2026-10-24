@@ -155,6 +155,8 @@ NETLIFY_ENV="$DIR/netlify.env"
 (umask 077 && cat > "$NETLIFY_ENV") <<NETLIFY
 # Paste these into Netlify (Project configuration > Environment variables), scoped to Functions.
 # DATABASE_URL and HOAX_SESSION_SECRET are secrets: mark them so.
+# The sslmode in DATABASE_URL is ignored when DATABASE_CA_CERT is set (the web app
+# then trusts exactly that certificate); never use this URL without the certificate.
 DATABASE_URL=postgres://hoax_web:$(val WEB_DB_PASSWORD)@$IP:$(val POSTGRES_PUBLIC_PORT)/hoax?sslmode=no-verify
 DATABASE_CA_CERT=$(base64 -w0 deploy/pg-certs/server.crt)
 HOAX_SESSION_SECRET=$(val HOAX_SESSION_SECRET)

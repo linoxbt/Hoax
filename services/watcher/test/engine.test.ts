@@ -547,3 +547,38 @@ describe("round three", () => {
     expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
   });
 });
+
+describe("round four", () => {
+  it("never writes off a retired registration's stuck order it cannot cancel: the market stays held and the active account pauses", async () => {
+    const w = await world();
+    w.venue.setMark(ETH.pool, 2318n * E18);
+    w.venue.nextOrderFault = "unknown-dropped"; // registration A's close sits in the mempool
+    await w.engine.tick((await w.store.getAccount(w.account.id))!);
+    const [stuck] = [...w.store.actions.values()];
+    // The trader registers again (B); A retires. A's key cannot pay for a cancel.
+    await w.store.setStatus(w.account.id, "retired");
+    const b = await w.store.createAccount({ id: "acct-2", owner: PROTECTED });
+    await w.linker.run();
+    w.venue.link(PROTECTED, getAddress((await w.store.getAccount(b.id))!.hoaxKey!));
+    await w.linker.run();
+    await w.store.upsertPolicy(b.id, "ETH-PERP", DEFAULT_POLICY);
+    w.venue.cancelNonce = async () => {
+      throw new Error("insufficient funds for gas");
+    };
+    for (let i = 0; i < 8; i++) {
+      w.clock.now += DEFAULT_ENGINE_CONFIG.confirmTimeoutMs;
+      const r = await w.engine.tick((await w.store.getAccount(b.id))!);
+      expect(r.kind).not.toBe("acted"); // no second close, however long it takes
+    }
+    expect((await w.store.getAction(stuck.id))!.outcome).toBe("unconfirmed");
+    expect((await w.store.getAccount(b.id))!.paused).toBe(true);
+    expect(w.store.alerts.filter((a) => a.accountId === b.id && a.kind === "paused")).toHaveLength(1);
+    expect((await w.venue.readPosition(ETH, PROTECTED)).size).toBe(eth(1));
+    // When it finally lands, it is recorded as the fill it was.
+    w.venue.releaseStuck();
+    await w.engine.tick((await w.store.getAccount(b.id))!);
+    const settled = (await w.store.getAction(stuck.id))!;
+    expect(settled.sizeFilled).toBeGreaterThan(0n);
+    expect(settled.signature).toMatch(/^0x/);
+  });
+});

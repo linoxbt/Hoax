@@ -129,13 +129,18 @@ export class Watcher {
       if (this.busy.has(accountId)) continue;
       const account = await this.opts.store.getAccount(accountId);
       if (!account || account.status === "active") continue; // the health tick confirms those
-      this.busy.add(accountId);
+      // The owner's active registration, if any, holds its own tick: not at the same time.
+      const active = await this.opts.store.getAccountByOwner(account.owner, account.chainId);
+      if (active && active.status === "active" && this.busy.has(active.id)) continue;
+      // Hold both: the active registration does not tick while its owner's orders are being settled here.
+      const held = [accountId, ...(active && active.status === "active" ? [active.id] : [])];
+      for (const id of held) this.busy.add(id);
       try {
         await this.engine.confirmOutstanding(account);
       } catch (err) {
         this.opts.log.warn("could not confirm an order", { account: account.owner, error: String(err).slice(0, 200) });
       } finally {
-        this.busy.delete(accountId);
+        for (const id of held) this.busy.delete(id);
       }
     }
   }
