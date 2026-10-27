@@ -227,4 +227,31 @@ describe("gas", () => {
     expect(await gas.topUp(key, w.account.id)).toBeNull(); // cap reached
     expect(w.store.alerts.some((a) => a.kind === "gas")).toBe(true);
   });
+
+  it("warns, at most hourly, while the gas wallet itself runs low", async () => {
+    const w = await world();
+    const gasWallet = privateKeyToAccount(generatePrivateKey());
+    let t = 0;
+    const warns: string[] = [];
+    const log = { ...silentLogger, warn: (m: string) => warns.push(m) };
+    const gas = new GasManager(
+      w.venue,
+      w.store,
+      gasWallet,
+      { minBalance: parseEther("0.01"), dripAmount: parseEther("0.05"), perKeyDailyCap: parseEther("0.1"), dailyCap: parseEther("1"), walletLow: parseEther("0.5") },
+      log,
+      () => t,
+    );
+    w.venue.balances.set(gasWallet.address.toLowerCase(), parseEther("2"));
+    await gas.checkWallet();
+    expect(gas.walletLow).toBe(false);
+    w.venue.balances.set(gasWallet.address.toLowerCase(), parseEther("0.2"));
+    await gas.checkWallet();
+    await gas.checkWallet();
+    expect(gas.walletLow).toBe(true);
+    expect(warns).toHaveLength(1);
+    t += 60 * 60 * 1000;
+    await gas.checkWallet();
+    expect(warns).toHaveLength(2);
+  });
 });

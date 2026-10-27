@@ -13,6 +13,8 @@ export interface GasConfig {
   dripAmount: bigint;
   perKeyDailyCap: bigint;
   dailyCap: bigint;
+  /** Warn when the gas wallet itself holds less than this (wei). Default 0.5 STT, ten drips. */
+  walletLow?: bigint;
 }
 
 export const DEFAULT_GAS_CONFIG: GasConfig = {
@@ -23,6 +25,8 @@ export const DEFAULT_GAS_CONFIG: GasConfig = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const WALLET_LOW = parseEther("0.5");
 
 export class GasManager {
   constructor(
@@ -34,8 +38,24 @@ export class GasManager {
     private readonly now: () => number = Date.now,
   ) {}
 
+  /** The gas wallet's own balance at the last check; null before the first. */
+  walletBalance: bigint | null = null;
+  private warnedAt = -Infinity;
+
   get address() {
     return this.wallet.address;
+  }
+
+  get walletLow(): boolean {
+    return this.walletBalance !== null && this.walletBalance < (this.config.walletLow ?? WALLET_LOW);
+  }
+
+  /** Read the gas wallet's balance, warning at most hourly while it runs low so the operator refills it in time. */
+  async checkWallet(): Promise<void> {
+    this.walletBalance = await this.venue.nativeBalance(this.wallet.address);
+    if (!this.walletLow || this.now() - this.warnedAt < HOUR_MS) return;
+    this.warnedAt = this.now();
+    this.log.warn("gas wallet low: refill it so drips keep working", { wallet: this.wallet.address, balance: this.walletBalance });
   }
 
   /** Top a key up if it is low and the caps allow. Returns the tx hash, or null. */
@@ -70,6 +90,7 @@ export class GasManager {
   }
 
   async run(): Promise<void> {
+    await this.checkWallet();
     for (const a of await this.store.listAccounts("active", this.venue.chainId)) {
       if (a.hoaxKey) await this.topUp(a.hoaxKey, a.id);
     }

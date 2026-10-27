@@ -1,0 +1,7 @@
+# Secrets and data never enter the build context; the Dockerfile copies named folders only.
+.env
+deploy/pg-certs
+deploy/backups
+**/node_modules
+apps/web/.next
+.git

@@ -71,6 +71,11 @@ val() { grep "^$1=" .env | cut -d= -f2 || true; }
 
 docker compose up -d --build --remove-orphans
 
+# Nightly database dump at 03:17 UTC, 14 kept (deploy/backup.sh). Replaces any earlier Hoax entry.
+chmod 755 deploy/backup.sh
+( crontab -l 2>/dev/null | grep -v 'hoax-backup' || true
+  echo "17 3 * * * $DIR/deploy/backup.sh >> /var/log/hoax-backup.log 2>&1 # hoax-backup" ) | crontab -
+
 # Open the ports if ufw is active: the engines' health endpoints, Postgres for Netlify.
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   for k in HEALTH_PORT HEALTH_PORT_SHANNON POSTGRES_PUBLIC_PORT; do ufw allow "$(val $k)"/tcp; done
@@ -105,6 +110,6 @@ echo "DATABASE_CA_CERT is the database's public certificate, not a secret. With 
 echo "web app trusts that one certificate and nothing else (the sslmode in the URL is"
 echo "then ignored); without it the connection is encrypted but unverified."
 echo
-echo "Mark DATABASE_URL secret, scope both to Functions. Then turn off demo mode (delete HOAX_DEMO)"
+echo "Mark DATABASE_URL secret (plans that refuse scoped variables need all scopes). Then turn off demo mode (delete HOAX_DEMO)"
 echo "and redeploy. The site's engine badge turns green within seconds."
 echo "Back up $DIR/.env somewhere safe: it holds the key that decrypts every Hoax key."

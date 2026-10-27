@@ -3,10 +3,18 @@
 # Postgres over the public port with the same password, over TLS only (the
 # script makes a self-signed certificate in deploy/pg-certs, which the web app
 # pins through DATABASE_CA_CERT; deploy/pg_hba.conf refuses plain connections).
+# Docker keeps container logs forever by default; cap each service at 3 × 10 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16
     restart: always
+    logging: *logging
     command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/certs/server.crt", "-c", "ssl_key_file=/certs/server.key", "-c", "hba_file=/etc/hoax/pg_hba.conf"]
     environment:
       POSTGRES_USER: hoax
@@ -29,6 +37,7 @@ services:
   watcher: &watcher
     build: .
     restart: always
+    logging: *logging
     depends_on:
       db:
         condition: service_healthy

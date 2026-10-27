@@ -9,3 +9,4 @@ demo/out/
 .netlify
 e2e/out/
 deploy/pg-certs/
+deploy/backups/

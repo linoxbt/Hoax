@@ -7,7 +7,7 @@ import { Providers } from "@/lib/wallet";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.URL ?? "https://hoax-dreamdex.netlify.app"),
+  metadataBase: new URL(process.env.URL ?? "https://usehoax.netlify.app"),
   title: { default: "Hoax · Liquidation protection for dreamDEX perps", template: "%s · Hoax" },
   description: "Hoax cuts a dreamDEX perp position down to safe size before liquidation can take it, and proves every save with an on-chain receipt.",
 };

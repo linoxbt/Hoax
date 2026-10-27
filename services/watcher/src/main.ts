@@ -6,7 +6,7 @@
 import { createServer } from "node:http";
 import { DreamDexVenue, NETWORKS } from "@hoax/chain";
 import { MemoryStore, PgStore, migrate, type Store } from "@hoax/db";
-import { getAddress, parseEther, type Hex } from "viem";
+import { formatEther, getAddress, parseEther, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { DEFAULT_ENGINE_CONFIG } from "./engine.ts";
 import { GasManager } from "./gas.ts";
@@ -50,6 +50,7 @@ async function main() {
           dripAmount: parseEther(env("GAS_DRIP_AMOUNT", "0.05")!),
           perKeyDailyCap: parseEther(env("GAS_PER_KEY_DAILY_CAP", "0.2")!),
           dailyCap: parseEther(env("GAS_DAILY_CAP", "2")!),
+          walletLow: parseEther(env("GAS_WALLET_LOW", "0.5")!),
         },
         log,
       )
@@ -77,7 +78,15 @@ async function main() {
   const server = createServer((req, res) => {
     if (req.url === "/healthz" || req.url === "/") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, gasWallet: gas?.address ?? null, ...watcher.status }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          gasWallet: gas?.address ?? null,
+          gasBalance: gas?.walletBalance == null ? null : formatEther(gas.walletBalance),
+          gasLow: gas?.walletLow ?? false,
+          ...watcher.status,
+        }),
+      );
       return;
     }
     res.writeHead(404).end();

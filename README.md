@@ -70,8 +70,8 @@ To protect a wallet: open `/start`, connect the wallet you trade dreamDEX perps 
 ### Tests and checks
 
 ```sh
-npm test                                         # 45 unit and end-to-end tests
-TEST_DATABASE_URL=postgres://… npm test          # also runs the store contract against Postgres
+npm test                                         # 46 unit and end-to-end tests
+TEST_DATABASE_URL=postgres://… npm test          # 52: also runs the store contract against Postgres
 npm run typecheck
 npm run build -w @hoax/web
 ```
@@ -83,6 +83,14 @@ The watcher's end-to-end tests drive the real engine against `SimVenue`: onboard
 - **Engines and Postgres on a server.** `deploy/vps-setup.sh` runs `docker-compose.yml`: Postgres 16 (TLS only, with a self-signed certificate) and one engine per network, Hideki and Shannon, sharing the database, the keystore volume and the gas wallet. The engines run the migrations on start. See [deploy/README.md](deploy/README.md).
 - **Web on Netlify.** `netlify.toml` builds `apps/web` with the Next.js runtime. Set `DATABASE_URL` and `DATABASE_CA_CERT` (both printed by the setup script; the second pins the database's certificate), `HOAX_SESSION_SECRET`, `HOAX_SITE_HOSTS` for a custom domain, and `HOAX_BUILDER_ADDRESS` / `HOAX_BUILDER_FEE_BPS_1K` if a fee is charged.
 - Other hosts still work but are not what runs: `railway.toml` builds the same engine image (one network per service, a volume at `/data`), and `apps/web/vercel.json` deploys the web app to Vercel.
+
+## Operations
+
+- **Health.** Each engine answers `GET /healthz` with `ok`, its last tick, error count, and the gas wallet's address, balance (`gasBalance`, in STT) and `gasLow`. Below `GAS_WALLET_LOW` (default 0.5 STT, ten drips) the engine also logs a warning once an hour: refill the wallet on that network.
+- **Backups.** `deploy/vps-setup.sh` installs `deploy/backup.sh` as a nightly cron job (03:17 UTC). It dumps the database over the container's socket into `deploy/backups/` and keeps 14. Restore with `gunzip -c deploy/backups/hoax-<stamp>.sql.gz | docker compose exec -T db psql -U hoax -d hoax`. The dumps hold no keys: back up `.env` and the `keystore` volume separately, since `HOAX_KEYSTORE_SECRET` decrypts every Hoax key.
+- **Logs.** Each container keeps at most 3 × 10 MB of logs (`docker compose logs --tail=100 watcher`).
+- **Web.** Pages refuse to be framed, so a wallet prompt can never sit under someone else's page. Wallet pages (`/app`, `/start`) show only to a connected wallet and are kept out of search engines.
+- **CI.** `.github/workflows/ci.yml` runs the typecheck, the tests (with the store contract against Postgres 16) and the web build on every push to `main`.
 
 ## Spike tests
 
