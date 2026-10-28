@@ -100,6 +100,7 @@ Hoax's own engines, running against the live chain, closed part of a real perp p
 
 | When (UTC) | Network | Close | Health before → after (target) | Transaction | Receipt |
 |---|---|---|---|---|---|
+| 2026-10-28 18:12 | **Somnia Tokyo (Hideki)** | 1.08 SOL of a 5 SOL long | 7.858 → 10.025 (10) | [`0x3ac958f7…`](https://explorer.testnet.somnia.network/tokyo/tx/0x3ac958f755a13ab1e0ea228bef96fb9b68afda56bf5df0a3bfb2a88cc6501c37) | [`ab7d3d84`](https://usehoax.netlify.app/r/ab7d3d84-1e64-4cf5-bd43-4fdbe3cc4739) |
 | 2026-10-28 08:19 | Shannon | 1.08 SOL of a 5 SOL long | 7.85 → 10.006 (10) | [`0xbe529fe1…`](https://shannon-explorer.somnia.network/tx/0xbe529fe1d7accfd4df3277cecaa69e275a7b59b0fdf186753f9a9aa9d61cfa6e) | [`521ac803`](https://usehoax.netlify.app/r/521ac803-437d-4e68-9c4b-22a2f6fcaa1b) |
 | 2026-10-28 09:35 | Shannon | 0.96 SOL, after 40 USDso of margin was withdrawn | 6.06 → 8.024 (8) | [`0x855b2dc0…`](https://shannon-explorer.somnia.network/tx/0x855b2dc0ff41daa3e457c0a234316c4cfe8a84d65bf680459237f931acb12289) | [`f94e4895`](https://usehoax.netlify.app/r/f94e4895-91ae-4735-9f05-6b32ab0a932a) |
 
@@ -110,7 +111,13 @@ The path to the first close:
 
 The second close ran on the release with the hardened close path.
 
-The same run on Hideki (Tokyo) is blocked on chain. Hideki perps settle in bridged USDso, and the Shannon USDso bridge route currently reverts on every transfer. See [feedback 006](feedback/006-usdso-bridge-to-hideki-reverts.md). The Hideki engine is live and watching. `spike/10-engine-fork.ts` shows the same close on a fork of Hideki.
+On Somnia Tokyo the same wallet ran the same flow against the Hideki engine. Hideki perps settle in bridged USDso, but the Shannon USDso bridge route reverts on every transfer ([feedback 006](feedback/006-usdso-bridge-to-hideki-reverts.md)). So the margin took another route:
+1. Mint 0.05 test WETH on Shannon and bridge it to Hideki ([`0x63b994b4…`](https://shannon-explorer.somnia.network/tx/0x63b994b4f7795471cbb9f3fccb15d4999379f9fad4f8f35b172015ee2c41151e)).
+2. Sell it on Hideki's WETH/USDso spot book for 116.97 USDso ([`0xc4ae7b0d…`](https://explorer.testnet.somnia.network/tokyo/tx/0xc4ae7b0dd054489987d1e9548eac95554d1ee6a6d02ddf9fd11f45c249090a73)).
+3. Deposit 100 USDso as margin ([`0x1585b64b…`](https://explorer.testnet.somnia.network/tokyo/tx/0x1585b64baf4f018c1a11e19efe9db1c34ee55f12e5f710ed28c09a03cab966eb)) and buy 5 SOL ([`0x8c2171ea…`](https://explorer.testnet.somnia.network/tokyo/tx/0x8c2171eae80791414979a777998c31520137c5438997868e10956251bfe78a92)).
+4. Link Hoax on all 21 Hideki perp pools in one transaction ([`0x9055160e…`](https://explorer.testnet.somnia.network/tokyo/tx/0x9055160edcc1a0c78de76bdced68a99a2972bed349f35d5a397f40eb68070bfe)).
+
+The engine activated the account and funded the key within 11 s, then closed within seconds of the policy being saved. Both accounts stay linked under the default policy (trigger 1.25, target 1.6).
 
 ## Spike tests
 
@@ -119,9 +126,9 @@ Each script writes block numbers, the SDK version and every tx hash to `spike/ev
 | # | Test | Result |
 |---|------|--------|
 | 0 | Read everything a decision needs | **Pass.** 21 perp markets, all with a live mark. LiquidationEngine penalty 100 bps, min spread 50 bps. Builder fee cap 10 bps. ETH: maintenance 2.5%, close-out 1.25%, taker fee 0 |
-| 1 | Operator can trade (`placeOrderFor` for the owner) | **Pass, live on Shannon.** The engine's Hoax key closed 1.08 SOL for a linked wallet ([`0xbe529fe1…`](https://shannon-explorer.somnia.network/tx/0xbe529fe1d7accfd4df3277cecaa69e275a7b59b0fdf186753f9a9aa9d61cfa6e)). See [Live on Somnia testnet](#live-on-somnia-testnet) |
+| 1 | Operator can trade (`placeOrderFor` for the owner) | **Pass, live on Somnia Tokyo and Shannon.** On Tokyo the engine's Hoax key closed 1.08 SOL for a linked wallet ([`0x3ac958f7…`](https://explorer.testnet.somnia.network/tokyo/tx/0x3ac958f755a13ab1e0ea228bef96fb9b68afda56bf5df0a3bfb2a88cc6501c37)); on Shannon it closed 1.08 SOL ([`0xbe529fe1…`](https://shannon-explorer.somnia.network/tx/0xbe529fe1d7accfd4df3277cecaa69e275a7b59b0fdf186753f9a9aa9d61cfa6e)). See [Live on Somnia testnet](#live-on-somnia-testnet) |
 | 1b | Contract as operator | Not attempted: v1 uses the off-chain watcher with a bot key, the spec's fallback |
-| 2 | Partial close raises health as the formula predicts (within 5%) | **Pass, live.** Target 10, reached 10.006; target 8, reached 8.024 (0.06% and 0.3%) |
+| 2 | Partial close raises health as the formula predicts (within 5%) | **Pass, live.** Tokyo: target 10, reached 10.025. Shannon: target 10, reached 10.006; target 8, reached 8.024. All within 0.3% |
 | 3 | Watcher catches idle drift within 2 s | **Pass.** 62/62 mark moves showed in health within 2 s, median 478 ms (polling at 250 ms). No funding settlement fell in the 2-minute window |
 | 4 | No flip under races (50 runs) | Script ready (`04-race`); needs two keys linked to one wallet. The simulated race passes in the test suite |
 | 5 | Latency, trigger to close | Script ready (`05-latency`); reads the watcher's records after live closes |
