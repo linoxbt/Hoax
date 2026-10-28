@@ -228,6 +228,26 @@ describe("gas", () => {
     expect(w.store.alerts.some((a) => a.kind === "gas")).toBe(true);
   });
 
+  it("keeps a key above the chain's up-front charge for one close, not just the configured floor", async () => {
+    const w = await world();
+    const gasWallet = privateKeyToAccount(generatePrivateKey());
+    w.venue.balances.set(gasWallet.address.toLowerCase(), parseEther("1"));
+    // 10M gas at 7.2 gwei: what Somnia demands before it accepts the order.
+    w.venue.gasReserve = parseEther("0.072");
+    const gas = new GasManager(
+      w.venue,
+      w.store,
+      gasWallet,
+      { minBalance: parseEther("0.01"), dripAmount: parseEther("0.05"), perKeyDailyCap: parseEther("1"), dailyCap: parseEther("1") },
+      silentLogger,
+    );
+    const key = w.account.hoaxKey!;
+    w.venue.balances.set(key.toLowerCase(), parseEther("0.05"));
+    expect(await gas.topUp(key, w.account.id)).not.toBeNull(); // 0.05 is above the floor but below the reserve
+    expect(await w.venue.nativeBalance(getAddress(key))).toBe(parseEther("0.144")); // room for two closes
+    expect(await gas.topUp(key, w.account.id)).toBeNull();
+  });
+
   it("warns, at most hourly, while the gas wallet itself runs low", async () => {
     const w = await world();
     const gasWallet = privateKeyToAccount(generatePrivateKey());

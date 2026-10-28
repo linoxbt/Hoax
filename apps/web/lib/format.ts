@@ -47,3 +47,10 @@ export const txUrl = (hash: string, chainId?: number) => `${explorerOf(chainId)}
 export const addressUrl = (addr: string, chainId?: number) => `${explorerOf(chainId)}/address/${addr}`;
 export const NETWORK_NAMES: Record<number, string> = { 50383: "Somnia Hideki", 50312: "Somnia Shannon" };
 export const DREAMDEX_APP = process.env.NEXT_PUBLIC_DREAMDEX_APP_URL || "https://app.testnet.dreamdex.io";
+
+/**
+ * The STT a Hoax key needs before the chain accepts a close from it: Somnia admits a
+ * transaction only when the balance covers its whole gas limit (10M gas, 0.072 STT
+ * at today's fee), with room for a second. Matches the engine's GAS_MIN_BALANCE.
+ */
+export const KEY_GAS_FLOOR = 15n * 10n ** 16n;

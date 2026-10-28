@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { EngineBadge } from "@/components/EngineBadge";
+import { KEY_GAS_FLOOR } from "@/lib/format";
 import { LogoLoader } from "@/components/Logo";
 import { Label, Split } from "@/components/Ui";
 import { StartContext } from "@/lib/startContext";
@@ -27,7 +28,7 @@ export default function StartLayout({ children }: { children: React.ReactNode })
   const done = (href: string) =>
     (href === "/start" && ready) ||
     (href === "/start/link" && linked) ||
-    (href === "/start/gas" && linked && Boolean(view?.keyBalance && BigInt(view.keyBalance) > 10n ** 16n));
+    (href === "/start/gas" && linked && Boolean(view?.keyBalance && BigInt(view.keyBalance) >= KEY_GAS_FLOOR));
   const reachable = (href: string) => href === "/start" || ready;
   // Steps past 01 are about the connected wallet's account: without one, back to step 01.
   // hoax.session is undefined while the wallet reconnects, so wait for it before deciding.

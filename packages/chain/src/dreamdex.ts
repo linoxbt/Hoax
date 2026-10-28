@@ -287,6 +287,11 @@ export class DreamDexVenue implements Venue {
     return this.publicClient.getBalance({ address });
   }
 
+  async orderGasReserve(): Promise<bigint> {
+    const fees = await this.publicClient.estimateFeesPerGas();
+    return ORDER_GAS * (fees.maxFeePerGas ?? fees.gasPrice ?? 0n);
+  }
+
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {
     const wallet = createWalletClient({ account: from, chain: this.network.chain, transport: http(this.rpcUrl, { timeout: this.rpcTimeoutMs }) });
     const hash = await wallet.sendTransaction({ to, value: amount, chain: this.network.chain });
