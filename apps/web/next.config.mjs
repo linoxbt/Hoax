@@ -18,15 +18,17 @@ const allowedHosts = [
 // own client-IP header for rate limits.
 const platform = process.env.NETLIFY === "true" ? "netlify" : process.env.VERCEL === "1" ? "vercel" : "";
 
-// Clickjacking: pages that ask a wallet to sign must never be framed. The rest
-// locks down what the page itself cannot need.
+// Clickjacking: a page that asks a wallet to sign must never sit inside someone
+// else's frame, so framing is refused outright. The rest locks down what the page
+// itself cannot need. Netlify already sends HSTS and nosniff; they are set here too
+// for any other host, and a duplicate of the same value is harmless.
 const securityHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
 ];
 
 /** @type {import('next').NextConfig} */

@@ -160,6 +160,12 @@ export interface Venue {
    */
   liquidationsSince(marginBank: Address, owner: Address, fromBlock: bigint, maxBlocks?: bigint): Promise<LiquidationScan>;
   nativeBalance(address: Address): Promise<bigint>;
+  /**
+   * The STT a key must hold before the chain will accept one close from it: the
+   * order's gas limit times the fee it would offer now. Somnia bills gas used, but
+   * admits a transaction only when the balance covers the whole limit.
+   */
+  orderGasReserve(): Promise<bigint>;
   /** Throws TxUnknownError when it was sent but not confirmed. */
   sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex>;
   blockNumber(): Promise<bigint>;

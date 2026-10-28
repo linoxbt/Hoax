@@ -102,6 +102,11 @@ fi
 
 docker compose up -d --build --remove-orphans
 
+# Nightly database dump at 03:17 UTC, 14 kept (deploy/backup.sh). Replaces any earlier Hoax entry.
+chmod 755 deploy/backup.sh
+( crontab -l 2>/dev/null | grep -v 'hoax-backup' || true
+  echo "17 3 * * * $DIR/deploy/backup.sh >> /var/log/hoax-backup.log 2>&1 # hoax-backup" ) | crontab -
+
 # Open Postgres if ufw is active: Netlify reaches it over TLS. The engines'
 # health endpoints listen on 127.0.0.1 only and stay closed.
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
@@ -168,7 +173,8 @@ NETLIFY
 echo
 echo "The web app's settings are in $NETLIFY_ENV (readable by root only):"
 echo "  sudo cat $NETLIFY_ENV"
-echo "Add each to Netlify, scoped to Functions; mark DATABASE_URL and HOAX_SESSION_SECRET secret."
+echo "Add each to Netlify, scoped to Functions (plans that refuse scoped variables need all scopes);"
+echo "mark DATABASE_URL and HOAX_SESSION_SECRET secret."
 echo "DATABASE_CA_CERT pins the database's own certificate: the web app trusts it and nothing else."
 echo "Then turn off demo mode (delete HOAX_DEMO) and redeploy. The engine badge turns green within seconds."
 echo "Back up $DIR/.env somewhere safe: it holds the key that decrypts every Hoax key."

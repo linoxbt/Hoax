@@ -8,7 +8,7 @@
 import { createServer } from "node:http";
 import { DreamDexVenue, NETWORKS } from "@hoax/chain";
 import { MemoryStore, PgStore, migrate, type Store } from "@hoax/db";
-import { getAddress, parseEther, type Hex } from "viem";
+import { formatEther, getAddress, parseEther, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { DEFAULT_ENGINE_CONFIG } from "./engine.ts";
 import { GasManager } from "./gas.ts";
@@ -54,10 +54,11 @@ async function main() {
         store,
         privateKeyToAccount(gasKey as Hex),
         {
-          minBalance: parseEther(env("GAS_MIN_BALANCE", "0.01")!),
-          dripAmount: parseEther(env("GAS_DRIP_AMOUNT", "0.05")!),
-          perKeyDailyCap: parseEther(env("GAS_PER_KEY_DAILY_CAP", "0.2")!),
-          dailyCap: parseEther(env("GAS_DAILY_CAP", "2")!),
+          minBalance: parseEther(env("GAS_MIN_BALANCE", "0.15")!),
+          dripAmount: parseEther(env("GAS_DRIP_AMOUNT", "0.25")!),
+          perKeyDailyCap: parseEther(env("GAS_PER_KEY_DAILY_CAP", "0.75")!),
+          dailyCap: parseEther(env("GAS_DAILY_CAP", "3")!),
+          walletLow: parseEther(env("GAS_WALLET_LOW", "0.5")!),
           minGapMs: 5 * 60_000,
         },
         log,
@@ -91,7 +92,18 @@ async function main() {
       const ok = h.problems.length === 0;
       res.writeHead(ok ? 200 : 503, { "content-type": "application/json" });
       // Served on 127.0.0.1 by docker-compose; the gas wallet's address is public on chain anyway.
-      res.end(JSON.stringify({ ok, problems: h.problems, network: network.key, gasWallet: gas?.address ?? null, ...watcher.status }));
+      // A low gas wallet is reported (gasLow) but does not fail the check: the engine itself is fine.
+      res.end(
+        JSON.stringify({
+          ok,
+          problems: h.problems,
+          network: network.key,
+          gasWallet: gas?.address ?? null,
+          gasBalance: gas?.walletBalance == null ? null : formatEther(gas.walletBalance),
+          gasLow: gas?.walletLow ?? false,
+          ...watcher.status,
+        }),
+      );
       return;
     }
     res.writeHead(404).end();

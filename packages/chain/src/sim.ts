@@ -479,6 +479,13 @@ export class SimVenue implements Venue {
     return this.balances.get(key(address)) ?? 0n;
   }
 
+  /** What a close needs up front; tests set it to model the chain's gas envelope. */
+  gasReserve = 0n;
+
+  async orderGasReserve(): Promise<bigint> {
+    return this.gasReserve;
+  }
+
   async sendNative(from: TradingSigner, to: Address, amount: bigint): Promise<Hex> {
     const have = this.balances.get(key(from.address)) ?? 0n;
     if (have < amount) throw new Error("insufficient funds");

@@ -5,12 +5,12 @@ import { useState } from "react";
 import { formatEther, parseEther } from "viem";
 import { sendTransaction, waitForTransactionReceipt } from "wagmi/actions";
 import { StepNav } from "@/components/StepNav";
-import { short, txUrl } from "@/lib/format";
+import { KEY_GAS_FLOOR, short, txUrl } from "@/lib/format";
 import { useStart } from "@/lib/startContext";
 import { friendly } from "@/lib/useLinkTx";
 import { useHoax, wagmiConfig } from "@/lib/wallet";
 
-const AMOUNT = "0.1";
+const AMOUNT = "0.3";
 
 export default function GasStep() {
   const hoax = useHoax();
@@ -20,7 +20,7 @@ export default function GasStep() {
   const [err, setErr] = useState<string | null>(null);
   const key = view?.account?.hoaxKey ?? null;
   const gas = view?.keyBalance ? BigInt(view.keyBalance) : null;
-  const low = gas !== null && gas < 10n ** 16n;
+  const low = gas !== null && gas < KEY_GAS_FLOOR;
   const chainId = hoax.session?.chainId ?? 50383;
   // The gas wallet of this account's own network's engine, not whichever engine beat last.
   const sponsored = Boolean(hoax.engine?.networks?.[String(chainId)]?.info?.gasWallet);

@@ -386,6 +386,11 @@ export class DreamDexVenue implements Venue {
     return this.publicClient.getBalance({ address });
   }
 
+  async orderGasReserve(): Promise<bigint> {
+    const fees = await this.publicClient.estimateFeesPerGas();
+    return ORDER_GAS * (fees.maxFeePerGas ?? fees.gasPrice ?? 0n);
+  }
+
   async minedNonce(address: Address): Promise<number> {
     return this.publicClient.getTransactionCount({ address, blockTag: "latest" });
   }

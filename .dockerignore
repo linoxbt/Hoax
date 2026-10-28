@@ -1,4 +1,4 @@
-# Nothing local reaches the image: secrets, keys, builds and installed modules.
+# Nothing local reaches the image: secrets, keys, backups, builds and installed modules.
 .git
 .env
 .env.*
@@ -8,6 +8,7 @@
 **/out
 keystore
 deploy/pg-certs
+deploy/backups
 demo/out
 e2e/out
 spike/evidence
