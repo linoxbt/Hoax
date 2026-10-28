@@ -94,6 +94,24 @@ The watcher's end-to-end tests drive the real engine against `SimVenue`: onboard
 - **Web.** Pages refuse to be framed, so a wallet prompt can never sit under someone else's page. Wallet pages (`/app`, `/start`) show only to a connected wallet and are kept out of search engines.
 - **CI.** `.github/workflows/ci.yml` runs the typecheck, the tests (with the store contract against Postgres 16) and the web build on every push to `main`.
 
+## Live on Somnia testnet
+
+Hoax's own engines, running against the live chain, closed part of a real perp position for a linked wallet through `placeOrderFor`. Each close has an EIP-191 signed receipt with a public page. The trader is a fresh test wallet, `0xFB9b…143b`, that trades from the wallet itself: 100 USDso margin and a 5 SOL long at 102.22, about 5x.
+
+| When (UTC) | Network | Close | Health before → after (target) | Transaction | Receipt |
+|---|---|---|---|---|---|
+| 2026-10-28 08:19 | Shannon | 1.08 SOL of a 5 SOL long | 7.85 → 10.006 (10) | [`0xbe529fe1…`](https://shannon-explorer.somnia.network/tx/0xbe529fe1d7accfd4df3277cecaa69e275a7b59b0fdf186753f9a9aa9d61cfa6e) | [`521ac803`](https://usehoax.netlify.app/r/521ac803-437d-4e68-9c4b-22a2f6fcaa1b) |
+| 2026-10-28 09:35 | Shannon | 0.96 SOL, after 40 USDso of margin was withdrawn | 6.06 → 8.024 (8) | [`0x855b2dc0…`](https://shannon-explorer.somnia.network/tx/0x855b2dc0ff41daa3e457c0a234316c4cfe8a84d65bf680459237f931acb12289) | [`f94e4895`](https://usehoax.netlify.app/r/f94e4895-91ae-4735-9f05-6b32ab0a932a) |
+
+The path to the first close:
+1. The trader opened the position ([`0xea1b8a91…`](https://shannon-explorer.somnia.network/tx/0xea1b8a91ad37f994eb84acdd58f7a54928572031586e9977f0e43be47488033b)), signed in on usehoax.netlify.app, and linked Hoax in one transaction ([`0x11397541…`](https://shannon-explorer.somnia.network/tx/0x11397541ac1b5486a51151b643bef18802202bbaafed96fb3c0ad0a9e2722377)). That was one registry-wide grant over all 24 Shannon perp pools.
+2. The engine saw the link 2 s later and topped the key up with gas ([`0xc7d9a2f7…`](https://shannon-explorer.somnia.network/tx/0xc7d9a2f7ea95fe93351e00eb1a7efdf45e292debe1ca6bfa2d3e51553ccc8f57)).
+3. It closed 1.5 s after the policy was saved. The close used 672,139 gas, about 0.004 STT.
+
+The second close ran on the release with the hardened close path.
+
+The same run on Hideki (Tokyo) is blocked on chain. Hideki perps settle in bridged USDso, and the Shannon USDso bridge route currently reverts on every transfer. See [feedback 006](feedback/006-usdso-bridge-to-hideki-reverts.md). The Hideki engine is live and watching. `spike/10-engine-fork.ts` shows the same close on a fork of Hideki.
+
 ## Spike tests
 
 Each script writes block numbers, the SDK version and every tx hash to `spike/evidence/`. See [spike/README.md](spike/README.md).
@@ -101,9 +119,9 @@ Each script writes block numbers, the SDK version and every tx hash to `spike/ev
 | # | Test | Result |
 |---|------|--------|
 | 0 | Read everything a decision needs | **Pass.** 21 perp markets, all with a live mark. LiquidationEngine penalty 100 bps, min spread 50 bps. Builder fee cap 10 bps. ETH: maintenance 2.5%, close-out 1.25%, taker fee 0 |
-| 1 | Operator can trade (`placeOrderFor` for the owner) | Script ready (`02-operator-close`); needs a linked wallet |
+| 1 | Operator can trade (`placeOrderFor` for the owner) | **Pass, live on Shannon.** The engine's Hoax key closed 1.08 SOL for a linked wallet ([`0xbe529fe1…`](https://shannon-explorer.somnia.network/tx/0xbe529fe1d7accfd4df3277cecaa69e275a7b59b0fdf186753f9a9aa9d61cfa6e)). See [Live on Somnia testnet](#live-on-somnia-testnet) |
 | 1b | Contract as operator | Not attempted: v1 uses the off-chain watcher with a bot key, the spec's fallback |
-| 2 | Partial close raises health as the formula predicts (within 5%) | Script ready (`02-operator-close`); needs a linked wallet |
+| 2 | Partial close raises health as the formula predicts (within 5%) | **Pass, live.** Target 10, reached 10.006; target 8, reached 8.024 (0.06% and 0.3%) |
 | 3 | Watcher catches idle drift within 2 s | **Pass.** 62/62 mark moves showed in health within 2 s, median 478 ms (polling at 250 ms). No funding settlement fell in the 2-minute window |
 | 4 | No flip under races (50 runs) | Script ready (`04-race`); needs two keys linked to one wallet. The simulated race passes in the test suite |
 | 5 | Latency, trigger to close | Script ready (`05-latency`); reads the watcher's records after live closes |
@@ -151,13 +169,14 @@ Receipts are public: anyone can fetch one and re-check it.
 
 ## Feedback track
 
-Five verified items are in [feedback/](feedback/):
+Six verified items are in [feedback/](feedback/):
 
 1. The SDK docs give Hideki 10 ms blocks; the chain runs 100 ms blocks.
 2. The Hideki Multicall3 address in `CHAINS.md` contradicts the chain and the SDK.
 3. `PERPS.md`'s testnet pool count is stale (10 pools with 4 restricted, versus 21 with none).
 4. The RPC caps `eth_getLogs` at a 1000-block span, undocumented, with a generic `-1` error.
 5. The SDK has no perp writes for a linked bot.
+6. USDso cannot be bridged from Shannon to Hideki: the route's custom hook makes every transfer and quote revert, so a Hideki perps account cannot be funded the documented way.
 
 ## X posts
 
