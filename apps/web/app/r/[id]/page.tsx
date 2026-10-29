@@ -4,7 +4,7 @@ import { Label } from "@/components/Ui";
 import { OutcomeBadge } from "@/components/Outcome";
 import { DEMO, getStore, isUuid } from "@/lib/server";
 import { receiptView } from "@/lib/views";
-import { addressUrl, health, txUrl, units, usd } from "@/lib/format";
+import { addressUrl, closeCost, health, txUrl, units, usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +105,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             </div>
             <div className="r">
               <span>Close cost</span>
-              <span>{r.cost !== null ? `${usd(r.cost, 4)} USDso` : "–"}</span>
+              <span>{closeCost(r.cost, 4)}</span>
             </div>
             <div className="r">
               <span>Estimated beforehand</span>
@@ -154,7 +154,12 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                 </div>
               </>
             )}
-            {r.outcome === "not-needed" && <p className="txt ink">Liquidation price not reached in 24 h. The close cost was insurance.</p>}
+            {r.outcome === "not-needed" && (
+              <p className="txt ink">
+                Liquidation price not reached in 24 h.{" "}
+                {r.cost !== null && BigInt(r.cost) < 0n ? "The close filled better than the mark, so the insurance cost nothing." : "The close cost was insurance."}
+              </p>
+            )}
             {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && <p className="txt ink">{r.reason ?? r.outcome}</p>}
             <p className="mono-xs soft" style={{ marginTop: "2.4rem" }}>
               Preserved = equity at the old liquidation price − equity after liquidating the whole position there. dreamDEX liquidates in

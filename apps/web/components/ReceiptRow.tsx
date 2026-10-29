@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { OutcomeBadge } from "./Outcome";
-import { ago, health, units, usd } from "@/lib/format";
+import { ago, closeCost, health, units } from "@/lib/format";
 import type { ActionJson } from "@/lib/types";
 
 /** One receipt in a list: what happened, what it cost, how health moved. */
@@ -18,7 +18,7 @@ export function ReceiptRow({ a, decimals = 18 }: { a: ActionJson; decimals?: num
       <td>
         {health(a.healthBefore)} → {health(a.healthAfter)}
       </td>
-      <td>{a.cost ? `${usd(a.cost)} USDso` : "–"}</td>
+      <td>{closeCost(a.cost)}</td>
     </tr>
   );
 }

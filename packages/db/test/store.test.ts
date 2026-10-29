@@ -138,6 +138,9 @@ function contract(name: string, make: () => Promise<Store>) {
       const nn = await store.insertAction(action(id, { outcome: "not-needed", cost: 2n * 10n ** 18n }));
       expect((await store.getAction(nn.id))?.outcome).toBe("not-needed");
       expect((await store.stats()).insuranceCost - after.insuranceCost).toBe(2n * 10n ** 18n);
+      // A close that filled better than the mark cost nothing; it does not lower the total.
+      await store.insertAction(action(id, { outcome: "not-needed", cost: -5n * 10n ** 17n }));
+      expect((await store.stats()).insuranceCost - after.insuranceCost).toBe(2n * 10n ** 18n);
 
       await store.insertAlert({ accountId: id, kind: "stale", message: "mark stale for 60 s" });
       expect((await store.listAlerts(id, 5))[0].kind).toBe("stale");

@@ -589,7 +589,7 @@ export class PgStore implements Store {
         (SELECT count(*) FROM actions WHERE outcome = 'saved') AS saves,
         (SELECT coalesce(sum(c.preserved), 0) FROM actions a JOIN counterfactuals c ON c.action_id = a.id
            WHERE a.outcome = 'saved') AS saved_equity,
-        (SELECT coalesce(sum(cost), 0) FROM actions WHERE outcome = 'not-needed') AS insurance,
+        (SELECT coalesce(sum(GREATEST(cost, 0)), 0) FROM actions WHERE outcome = 'not-needed') AS insurance,
         (SELECT count(*) FROM actions WHERE outcome = 'missed') AS misses,
         (SELECT count(*) FROM actions WHERE outcome = 'conflict') AS conflicts,
         (SELECT count(*) FROM actions WHERE outcome = 'pending') AS pending`);

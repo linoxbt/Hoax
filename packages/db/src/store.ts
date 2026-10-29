@@ -114,7 +114,7 @@ export interface Stats {
   saves: number;
   /** Sum of equity preserved on saved actions, 18-decimal quote units. */
   savedEquity: bigint;
-  /** Sum of close costs on not-needed actions: the price of insurance. */
+  /** Sum of close costs on not-needed actions: the price of insurance. A close that filled better than the mark counts as 0. */
   insuranceCost: bigint;
   misses: number;
   conflicts: number;

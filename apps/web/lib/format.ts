@@ -19,6 +19,16 @@ export function usd(raw: string | bigint | null | undefined, maxFrac = 2): strin
   return units(raw, 18, maxFrac);
 }
 
+/**
+ * A close's cost in USDso. A negative cost means the fill beat the mark; it is
+ * shown as that, not as a minus sign.
+ */
+export function closeCost(raw: string | bigint | null | undefined, maxFrac = 2): string {
+  if (raw === null || raw === undefined || raw === "") return "–";
+  const v = typeof raw === "bigint" ? raw : BigInt(raw);
+  return v < 0n ? `${usd(-v, maxFrac)} USDso better than mark` : `${usd(v, maxFrac)} USDso`;
+}
+
 export function health(h: number | null | undefined): string {
   if (h === null || h === undefined) return "–";
   if (!Number.isFinite(h)) return "∞";

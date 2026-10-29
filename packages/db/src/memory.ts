@@ -347,7 +347,7 @@ export class MemoryStore implements Store {
       actionsTaken: actions.filter((a) => a.sizeFilled > 0n).length,
       saves: actions.filter((a) => a.outcome === "saved").length,
       savedEquity,
-      insuranceCost: actions.filter((a) => a.outcome === "not-needed").reduce((s, a) => s + (a.cost ?? 0n), 0n),
+      insuranceCost: actions.filter((a) => a.outcome === "not-needed").reduce((s, a) => s + (a.cost && a.cost > 0n ? a.cost : 0n), 0n),
       misses: actions.filter((a) => a.outcome === "missed").length,
       conflicts: actions.filter((a) => a.outcome === "conflict").length,
       pending: actions.filter((a) => a.outcome === "pending").length,
