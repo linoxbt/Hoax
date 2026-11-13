@@ -52,7 +52,8 @@ export function useMarkets(everyMs = 5000, chainId = 50383) {
 export function MarketTape() {
   const { rows, moves } = useMarkets();
   if (!rows) return <div className="tape" aria-hidden style={{ height: "4.4rem" }} />;
-  const items = [...rows, ...rows];
+  const real = rows.filter((m) => !m.baseSymbol.toUpperCase().startsWith("LOADTEST"));
+  const items = [...real, ...real];
   return (
     <div className="tape" aria-label="Live dreamDEX perp marks">
       <div className="tape-track">

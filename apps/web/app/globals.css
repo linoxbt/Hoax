@@ -239,8 +239,6 @@ html.js [data-reveal] { opacity: 0; transform: translateY(1.6rem); transition: o
 html.js [data-reveal].in { opacity: 1; transform: none; }
 html.js [data-draw] { transform: scaleX(0); transform-origin: left; transition: transform 0.9s cubic-bezier(0.6, 0, 0.2, 1); transition-delay: var(--d, 0s); }
 html.js [data-draw].in { transform: none; }
-.scrolltext .wd { color: var(--muted); transition: color 0.3s; }
-.scrolltext .wd.lit { color: var(--ink); }
 .marquee { display: flex; overflow: hidden; white-space: nowrap; }
 .marquee-track { display: flex; flex: none; animation: marquee 30s linear infinite; }
 @keyframes marquee { to { transform: translateX(-100%); } }
@@ -538,8 +536,8 @@ code { font-family: var(--mono); letter-spacing: 0; }
 
 /* liquidations keep no office hours */
 .h-night { position: relative; border-radius: 2rem; overflow: hidden; min-height: 60rem; display: flex; flex-direction: column; justify-content: flex-end; padding: 4.8rem; background: radial-gradient(120% 90% at 70% 0%, #11161a 0%, var(--paper) 60%); border: var(--b) solid var(--line); }
-.h-dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(225, 229, 229, 0.55) 1px, transparent 1.4px); background-size: 1.2rem 1.2rem;
-  -webkit-mask-image: radial-gradient(60% 70% at 68% 30%, #000 0%, rgba(0, 0, 0, 0.55) 35%, transparent 72%); mask-image: radial-gradient(60% 70% at 68% 30%, #000 0%, rgba(0, 0, 0, 0.55) 35%, transparent 72%); opacity: 0.55; }
+.h-dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(225, 229, 229, 0.85) 1.1px, transparent 1.6px); background-size: 1.2rem 1.2rem;
+  -webkit-mask-image: radial-gradient(60% 70% at 68% 30%, #000 0%, rgba(0, 0, 0, 0.55) 35%, transparent 72%); mask-image: radial-gradient(60% 70% at 68% 30%, #000 0%, rgba(0, 0, 0, 0.55) 35%, transparent 72%); opacity: 0.8; }
 .h-dots.alt { -webkit-mask-image: radial-gradient(45% 60% at 30% 70%, #000 0%, transparent 70%); mask-image: radial-gradient(45% 60% at 30% 70%, #000 0%, transparent 70%); }
 .h-night .h2 { position: relative; font-size: 7.2rem; max-width: 12em; }
 .h-night .txt { position: relative; max-width: 46rem; margin-top: 2rem; }
@@ -559,11 +557,12 @@ code { font-family: var(--mono); letter-spacing: 0; }
 .h-lvl .bar u { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(239, 91, 63, 0.5) 0 0.3rem, transparent 0.3rem 0.7rem); text-decoration: none; }
 .h-lvl.hit .bar i { background: rgba(250, 54, 0, 0.35); border-right-color: var(--brand); }
 .h-lvl b { font-weight: 400; color: var(--ink); text-align: right; }
-.h-book-sum { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2.4rem; padding-top: 2rem; border-top: var(--b) solid var(--line); }
+.h-book-sum { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.8rem 1.6rem; margin-top: 2.4rem; padding-top: 2rem; border-top: var(--b) solid var(--line); }
 .h-book-sum .num { font-size: 3.6rem; }
 
 /* the loop, annotated on a chart */
 .h-flow { position: relative; background: var(--surface); border: var(--b) solid var(--line); border-radius: 2rem; padding: 2.4rem; overflow: hidden; }
+.h-flow .h-note { width: 18%; }
 .h-flow svg { width: 100%; height: auto; display: block; }
 .h-note { position: absolute; width: 22rem; padding: 1.2rem 1.4rem; border-radius: 1.2rem; background: rgba(21, 24, 26, 0.94); border: var(--b) solid var(--line-2); backdrop-filter: blur(6px); }
 .h-note .k { font-family: var(--mono); font-size: 1.1rem; color: var(--ink-4); }
@@ -701,10 +700,10 @@ pre { margin-top: 1.2rem; padding: 1.6rem; border: var(--b) solid var(--line); b
 .mock-row.act { background: rgba(250, 54, 0, 0.12); color: var(--ink); }
 .prob-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 2.4rem; padding: 3.2rem var(--pad); }
 .prob-sub { max-width: 39.6rem; }
+.prob-item-head { display: flex; justify-content: space-between; align-items: center; gap: 1.2rem; padding: 1.4rem 2.4rem; border-bottom: var(--b) solid var(--line); }
 .cta-main { text-align: center; padding: 4.8rem 2.4rem; }
 .cta-main .h2 { max-width: 64rem; margin: 0 auto; }
 .cta-main .txt { max-width: 56rem; margin: 1.6rem auto 0; }
 .cta-main .row .btn { margin: 0 0.4rem; }
 .record .p { min-height: 15rem; display: flex; flex-direction: column; justify-content: space-between; }
-.art, .art-fill { color: var(--ink-3); }
 @media (max-width: 767px) { .prob-head { flex-direction: column; align-items: flex-start; } }

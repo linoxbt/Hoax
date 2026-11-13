@@ -20,11 +20,11 @@ const SESSIONS: Array<[string, string]> = [
 
 // The loop, annotated on a chart. Numbers are from a real close on Shannon (receipt 69bdf902).
 const NOTES: Array<{ k: string; t: string; p: string; x: number; y: number; act?: boolean }> = [
-  { k: "01 Watch", t: "Health read every second", p: "Mark and funding move it while you sleep.", x: 4, y: 8 },
-  { k: "02 Size", t: "Smallest close to target 1.60", p: "Solved from equity, margin and the live book.", x: 30, y: 4 },
-  { k: "03 Gate", t: "0.064 vs 3.69 USDso", p: "The close costs far less than liquidation, so it may go.", x: 26, y: 70, act: true },
-  { k: "04 Close", t: "0.8 of 2.96 SOL, one IOC order", p: "Health 1.18 → 1.60. Liquidation price moves away.", x: 54, y: 66, act: true },
-  { k: "05 Prove", t: "Signed receipt, judged in 24 h", p: "The old liquidation price was reached. Saved.", x: 74, y: 6 },
+  { k: "01 Watch", t: "Health read every second", p: "Mark and funding move it while you sleep.", x: 2, y: 4 },
+  { k: "02 Size", t: "Smallest close to target 1.60", p: "Solved from equity, margin and the live book.", x: 21.5, y: 4 },
+  { k: "03 Gate", t: "0.064 vs 3.69 USDso", p: "The close costs far less than liquidation, so it may go.", x: 41, y: 4, act: true },
+  { k: "04 Close", t: "0.8 of 2.96 SOL, one IOC order", p: "Health 1.18 → 1.60. Liquidation price moves away.", x: 60.5, y: 4, act: true },
+  { k: "05 Prove", t: "Signed receipt, judged in 24 h", p: "The old liquidation price was reached. Saved.", x: 80, y: 4 },
 ];
 
 // Not a stop-loss: the same bad night, two tools.
@@ -266,7 +266,7 @@ export default async function Landing() {
               <div className="between">
                 <span className="tag saved">Saved</span>
                 <span className="mono-s muted">
-                  {NETWORK_NAMES[saved.receipt.chainId] ?? "dreamDEX"} · {saved.market}
+                  {(saved.receipt.chainId && NETWORK_NAMES[saved.receipt.chainId]) || "dreamDEX"} · {saved.market}
                   {sample}
                 </span>
               </div>
@@ -515,26 +515,27 @@ function Plan({ title, sub, rows, hoax }: { title: string; sub: string; rows: Ar
 /** A position sliding to its trigger, trimmed once, then surviving the drop: candles in the desk's style. */
 function FlowChart() {
   const W = 1200;
-  const H = 460;
+  const H = 600;
+  const OFF = 150; // room above the chart for the callouts
   const n = 52;
   const trimAt = 25;
   // price path: drift, slide to the trigger, a little further, then recover
   const px = (i: number) => {
-    if (i < 10) return 120 + Math.sin(i * 0.9) * 8 + i * 1.5;
-    if (i <= trimAt) return 135 + ((i - 10) / (trimAt - 10)) ** 1.4 * 165;
-    if (i <= trimAt + 7) return 300 + Math.sin(((i - trimAt) / 7) * Math.PI) * 42;
-    return 300 - (i - trimAt - 7) * 9 + Math.sin(i * 1.3) * 7;
+    if (i < 10) return OFF + 120 + Math.sin(i * 0.9) * 8 + i * 1.5;
+    if (i <= trimAt) return OFF + 135 + ((i - 10) / (trimAt - 10)) ** 1.4 * 165;
+    if (i <= trimAt + 7) return OFF + 300 + Math.sin(((i - trimAt) / 7) * Math.PI) * 42;
+    return OFF + 300 - (i - trimAt - 7) * 9 + Math.sin(i * 1.3) * 7;
   };
   const x = (i: number) => 60 + (i * (W - 160)) / (n - 1);
-  const ACT = 300;
-  const LIQ0 = 368;
-  const LIQ1 = 416;
+  const ACT = OFF + 300;
+  const LIQ0 = OFF + 368;
+  const LIQ1 = OFF + 416;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="A position slides to its trigger, Hoax trims it once, the liquidation price moves away, and the position survives the drop.">
       {Array.from({ length: 13 }, (_, i) => (
         <line key={`v${i}`} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="#1a1d20" strokeWidth="1" />
       ))}
-      {Array.from({ length: 5 }, (_, i) => (
+      {Array.from({ length: 6 }, (_, i) => (
         <line key={`h${i}`} x1={0} x2={W} y1={i * 100 + 30} y2={i * 100 + 30} stroke="#1a1d20" strokeWidth="1" />
       ))}
       <g fontFamily="var(--mono)" fontSize="13">
