@@ -7,6 +7,7 @@ import { useHoax } from "@/lib/wallet";
 import { WalletButton } from "./WalletButton";
 
 const NAV = [
+  ["/radar", "Radar"],
   ["/how-it-works", "How it works"],
   ["/markets", "Markets"],
   ["/security", "Security"],
@@ -16,6 +17,7 @@ const NAV = [
 
 const MENU = [
   ["/", "Home"],
+  ["/radar", "Radar · live"],
   ["/how-it-works", "How it works"],
   ["/markets", "Markets"],
   ["/security", "Security"],
@@ -32,7 +34,7 @@ export function Header() {
   const path = usePathname();
   const { wallet } = useHoax();
   const menu = MENU.filter(([href]) => wallet || !WALLET_ONLY.has(href));
-  const nav = wallet ? [...NAV.slice(0, 4), ["/app", "Dashboard"] as const] : NAV;
+  const nav = wallet ? [...NAV.slice(0, 5), ["/app", "Dashboard"] as const] : NAV;
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -74,6 +76,7 @@ export function Header() {
           <nav className="header-nav" aria-label="Primary">
             {nav.map(([href, label]) => (
               <Link key={href} href={href} className={`hlink${on(href) ? " on" : ""}`}>
+                {href === "/radar" && <span className="live-dot" aria-hidden />}
                 {label}
               </Link>
             ))}

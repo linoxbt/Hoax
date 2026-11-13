@@ -5,6 +5,8 @@ import { MarketTape } from "@/components/LiveMarkets";
 import { LiveSimulator } from "@/components/Simulator";
 import { Split } from "@/components/Ui";
 import { NETWORK_NAMES, closeCost, usd } from "@/lib/format";
+import { RADAR_CHAINS, radarSnapshot } from "@/lib/radar";
+import { usdso } from "@/lib/radarFormat";
 import { DEMO, getStore } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +86,8 @@ export default async function Landing() {
       console.error("track record unavailable:", err instanceof Error ? err.message : String(err));
       return null;
     });
+  // Radar's last 24 hours, for the teaser: public indexer data, so it renders even without the database.
+  const radar = await radarSnapshot([...RADAR_CHAINS], 24).catch(() => null);
   const stats = data?.stats ?? null;
   const saved = data?.saved ?? null;
   const sample = DEMO ? " · sample" : "";
@@ -139,6 +143,45 @@ export default async function Landing() {
         <HeroLive />
         <div className="console-tape">
           <MarketTape />
+        </div>
+      </section>
+
+      {/* radar: every liquidation on dreamDEX, live */}
+      <section className="h-sec tight">
+        <div className="h-head">
+          <div>
+            <div className="h-label">
+              <i style={{ background: "var(--bad)" }} />
+              Radar · live
+            </div>
+            <Split className="h2">Every liquidation on dreamDEX, as it happens.</Split>
+          </div>
+          <div className="stack" style={{ gap: "2rem" }} data-reveal>
+            <p className="txt">
+              Hoax Radar reads every liquidation on Somnia Tokyo and Shannon from dreamDEX&apos;s indexer and prices it with the protocol&apos;s own rates:
+              what the engine closed, and what the trader paid for it.
+            </p>
+            <Link className="pill" href="/radar" style={{ alignSelf: "flex-start" }}>
+              Open the Radar
+            </Link>
+          </div>
+        </div>
+        <div className="rd-teaser" data-reveal>
+          {(
+            [
+              ["Liquidations, last 24 h", radar ? radar.totals.count.toLocaleString("en-US") : "–", ""],
+              ["Notional closed by the engine", radar ? usdso(radar.totals.notional) : "–", "USDso"],
+              ["Lost to penalty and spread, at least", radar ? usdso(radar.totals.penalty + radar.totals.spreadFloor) : "–", "USDso"],
+            ] as const
+          ).map(([k, v, u], i) => (
+            <div key={k}>
+              <span className="mono-s soft">{k}</span>
+              <span className="num" style={i === 2 ? { color: "var(--bad)" } : undefined}>
+                {v}
+                {u && <small>{u}</small>}
+              </span>
+            </div>
+          ))}
         </div>
       </section>
 

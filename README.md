@@ -166,17 +166,24 @@ The numbers move with the book and mark read at the time; these are from a run o
 - **Management is by wallet sign-in, not by the account's own signature.** dreamDEX accounts are Safes that a browser wallet does not sign for directly, so the wallet signs in and Hoax checks on chain that it owns the Safe. Linking the key is the proof of control that activates protection.
 - **Equity preserved does not subtract the close cost a second time.** The cost was already paid out of the equity being compared. It is an upper bound (see Prove, above).
 
+## Radar
+
+[`/radar`](https://usehoax.netlify.app/radar) shows every liquidation on dreamDEX perps as it happens, on Somnia Tokyo and Shannon, for anyone, with no wallet. It reads `LiquidationEvent` from dreamDEX's markets indexer every 10 seconds, groups the events into one liquidation per transaction and account, and prices each one with the LiquidationEngine's own rates, read from chain: the 1% penalty plus the 0.5% minimum forced-close spread. That sum is a floor on what the trader lost to the engine, and the page says so. The real spread can be wider. dreamDEX's test pools (`LOADTEST*`, and numbered instances like `T1C1033`) are left out of every figure.
+
+Every liquidation has a share card at `/radar/<chain>/<tx>`, with its own Open Graph image: what the engine took, the legs it closed, the keeper reward and any bad debt from the event, and what a Hoax trim would have cost at most. A trim is only sent when it costs at most half of that.
+
 ## Public API
 
 Receipts are public: anyone can fetch one and re-check it.
 
 - `GET /api/actions?owner=&chain=&limit=` receipts, newest first, each with its counterfactual.
 - `GET /api/actions/<id>` one receipt with both signature checks (the receipt, and its outcome record).
+- `GET /api/radar?chain=all|50383|50312&hours=24|168` every liquidation in the window, with totals and the busiest markets.
 - `GET /api/stats` the track record. `GET /api/markets?chain=` live marks. `GET /api/engine` whether each network's engine is alive.
 
 ## Feedback track
 
-Six verified items are in [feedback/](feedback/):
+Seven verified items are in [feedback/](feedback/):
 
 1. The SDK docs give Hideki 10 ms blocks; the chain runs 100 ms blocks.
 2. The Hideki Multicall3 address in `CHAINS.md` contradicts the chain and the SDK.
@@ -184,6 +191,7 @@ Six verified items are in [feedback/](feedback/):
 4. The RPC caps `eth_getLogs` at a 1000-block span, undocumented, with a generic `-1` error.
 5. The SDK has no perp writes for a linked bot.
 6. USDso cannot be bridged from Shannon to Hideki: the route's custom hook makes every transfer and quote revert, so a Hideki perps account cannot be funded the documented way.
+7. `listPerpMarkets()` returns the newest 50 markets by default with no sign it stopped. Hideki has 60, so BTC, ETH and SOL drop out of the list.
 
 ## X posts
 

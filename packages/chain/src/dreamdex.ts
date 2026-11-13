@@ -70,6 +70,7 @@ const ORDER_GAS = 10_000_000n;
 const ORDER_TYPE_IOC = 2;
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const MARKET_TTL_MS = 5 * 60 * 1000;
+const MARKET_PAGE = 500;
 /** eth_getLogs span the Hideki RPC accepts: toBlock - fromBlock <= 1000. */
 const LOG_WINDOW = 1000n;
 /** Blocks one liquidation scan covers at most (20 windows); callers page forward from toBlock + 1. */
@@ -155,7 +156,10 @@ export class DreamDexVenue implements Venue {
 
   async listMarkets(): Promise<MarketInfo[]> {
     if (this.markets && Date.now() - this.markets.at < MARKET_TTL_MS) return this.markets.list;
-    const rows = await this.timed("listPerpMarkets", this.client.listPerpMarkets());
+    // The SDK returns the newest 50 markets unless told otherwise: Tokyo already has more than 50, and
+    // the oldest (BTC, ETH, SOL) fell off the default page.
+    const rows = await this.timed("listPerpMarkets", this.client.listPerpMarkets({ limit: MARKET_PAGE }));
+    if (rows.length >= MARKET_PAGE) console.warn(`[dreamdex] listPerpMarkets returned ${rows.length} rows, the page limit: some markets may be missing`);
     const list = await Promise.all(
       rows.map(async (m): Promise<MarketInfo> => {
         const risk = await this.timed("getPerpRiskParams", this.client.getPerpRiskParams(m.poolAddress));
