@@ -1,0 +1,80 @@
+/* ===================== radar (rd-*) ===================== */
+.rd-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2rem; margin-bottom: 2.4rem; }
+.rd-live { margin-left: auto; }
+
+/* overview: stat tiles beside the activity chart, inside one white card */
+.rd-over { padding: 3.2rem; display: grid; gap: 2.4rem; }
+.rd-over-body { display: grid; grid-template-columns: 1fr 1fr; gap: 3.2rem; align-items: end; }
+.rd-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+.rd-kpis > div { background: var(--bg); border: var(--b) solid var(--line); border-radius: var(--r-m); padding: 1.8rem 2rem; display: grid; gap: 1.2rem; }
+.rd-kpis span { font-size: 1.3rem; color: var(--soft); }
+.rd-kpis b { font-size: 3.6rem; font-weight: 500; letter-spacing: -0.04em; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rd-kpis b small { font-family: var(--ui); font-size: 1.2rem; font-weight: 500; letter-spacing: 0; color: var(--muted); margin-left: 0.6rem; }
+.rd-kpis .bad b { color: var(--bad); }
+.rd-activity { display: grid; gap: 1.6rem; }
+
+/* signals */
+.rd-signals { margin-top: 4rem; display: grid; gap: 2rem; }
+.rd-sig-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6rem; }
+.rd-sig { display: grid; gap: 1rem; align-content: start; padding: 2.2rem; }
+.rd-sig.card .mono-s { color: var(--soft); }
+.rd-sig.blueblock .eyebrow { color: rgba(255, 255, 255, 0.9); }
+.rd-sig.blueblock .h4 { color: var(--white); }
+
+/* feed and context */
+.rd-grid { display: grid; grid-template-columns: 1fr 36rem; gap: 2.4rem; align-items: start; margin-top: 4rem; }
+.rd-feed { padding: 0; overflow: hidden; }
+.rd-feed-head { padding: 2.8rem var(--pad) 2rem; align-items: flex-end; }
+.rd-table td { vertical-align: middle; }
+.rd-table td.rd-closed { white-space: normal; min-width: 22rem; color: var(--ink-2); }
+.rd-mkt { display: inline-flex; align-items: center; height: 2.6rem; padding: 0 1rem; border-radius: 0.6rem; background: var(--blue-50); color: var(--blue); font-weight: 500; font-size: 1.3rem; }
+.rd-long, .rd-short { font-weight: 500; }
+.rd-long { color: var(--ink); } .rd-short { color: var(--ink); }
+.rd-cost { color: var(--bad); font-weight: 500; }
+.rd-cardlink { white-space: nowrap; }
+.rd-new td { animation: rd-in 2.4s ease-out; }
+@keyframes rd-in { 0% { background: var(--blue-50); } 100% { background: transparent; } }
+.rd-more { display: flex; justify-content: center; padding: 2rem var(--pad) 2.4rem; border-top: var(--b) solid var(--line); }
+.rd-side { display: grid; gap: 2rem; position: sticky; top: calc(var(--header) + 2.4rem); }
+.rd-where { display: grid; gap: 1rem; padding: 2.4rem; }
+.rd-bars { display: grid; gap: 1.4rem; margin-top: 0.6rem; padding: 2rem; }
+.rd-bar .between { align-items: baseline; margin-bottom: 0.8rem; }
+.rd-bar .ink { font-weight: 500; font-size: 1.45rem; }
+.rd-gate { display: grid; gap: 1.4rem; padding: 2.4rem; }
+.rd-gate .btn { justify-self: start; margin-top: 0.6rem; }
+.rd-foot { line-height: 1.55; }
+
+/* the liquidation card page */
+.rd-card { display: grid; grid-template-columns: 1.3fr 1fr; gap: 2.4rem; margin-top: 2.4rem; align-items: stretch; }
+.rd-sheet { padding: 0; overflow: hidden; }
+.rd-lost { display: flex; flex-direction: column; gap: 1.4rem; padding: 3.6rem var(--pad); background: linear-gradient(180deg, var(--bad-bg), rgba(253, 235, 231, 0)); border-bottom: var(--b) solid var(--line); }
+.rd-big { font-size: 11rem; font-weight: 500; letter-spacing: -0.05em; line-height: 0.92; color: var(--bad); font-variant-numeric: tabular-nums; }
+.rd-big small { font-family: var(--ui); font-size: 1.8rem; letter-spacing: 0; color: var(--muted); margin-left: 1rem; font-weight: 500; }
+.rd-sheet .rows { border-top: 0; }
+.rd-sheet .rows-wrap { padding: 1.2rem var(--pad) 2.4rem; }
+.rd-with { display: flex; flex-direction: column; gap: 1.8rem; padding: 3.2rem; }
+.rd-with .btn { align-self: flex-start; margin-top: auto; }
+.rd-with .panel-in { display: grid; gap: 0.6rem; }
+
+@media (max-width: 991px) {
+  .rd-over-body { grid-template-columns: 1fr; }
+  .rd-sig-grid { grid-template-columns: 1fr 1fr; }
+  .rd-grid, .rd-card { grid-template-columns: 1fr; }
+  .rd-side { position: static; }
+}
+@media (max-width: 767px) {
+  .rd-live { margin-left: 0; }
+  .rd-over { padding: 2rem; }
+  .rd-kpis { gap: 0.8rem; }
+  .rd-kpis > div { padding: 1.4rem; gap: 0.8rem; }
+  .rd-kpis b { font-size: 2.6rem; }
+  .rd-kpis b small { display: block; margin: 0.4rem 0 0; }
+  .rd-sig-grid { grid-template-columns: 1fr; }
+  .rd-table .rd-closed, .rd-table .rd-notional, .rd-table .rd-net { display: none; }
+  table.rd-table th, table.rd-table td { padding-left: 1rem; padding-right: 1rem; }
+  table.rd-table th:first-child, table.rd-table td:first-child { padding-left: var(--pad); }
+  table.rd-table th:last-child, table.rd-table td:last-child { padding-right: var(--pad); }
+  .rd-big { font-size: 6.4rem; }
+  .rd-lost { padding: 2.8rem var(--pad); }
+  .rd-with { padding: 2.2rem; }
+}

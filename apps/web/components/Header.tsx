@@ -4,21 +4,21 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
 import { useHoax } from "@/lib/wallet";
+import { Arrow } from "./Ui";
 import { WalletButton } from "./WalletButton";
 
 const NAV = [
   ["/radar", "Radar"],
-  ["/how-it-works", "How it works"],
   ["/markets", "Markets"],
-  ["/security", "Security"],
+  ["/how-it-works", "Method"],
   ["/stats", "Track record"],
-  ["/replay", "Replay"],
+  ["/security", "Security"],
 ] as const;
 
 const MENU = [
   ["/", "Home"],
   ["/radar", "Radar · live"],
-  ["/how-it-works", "How it works"],
+  ["/how-it-works", "Method"],
   ["/markets", "Markets"],
   ["/security", "Security"],
   ["/stats", "Track record"],
@@ -34,7 +34,7 @@ export function Header() {
   const path = usePathname();
   const { wallet } = useHoax();
   const menu = MENU.filter(([href]) => wallet || !WALLET_ONLY.has(href));
-  const nav = wallet ? [...NAV.slice(0, 5), ["/app", "Dashboard"] as const] : NAV;
+  const nav = wallet ? [...NAV.slice(0, 4), ["/app", "Dashboard"] as const] : NAV;
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -85,8 +85,9 @@ export function Header() {
             <div className="wallet-slot">
               <WalletButton />
             </div>
-            <Link href="/start" className="pill sm">
+            <Link href="/start" className="btn sm">
               Get protected
+              <Arrow />
             </Link>
             <button className="hmenu-btn" aria-expanded={open} aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen(!open)}>
               <span className="burger-lines" aria-hidden>
@@ -118,7 +119,7 @@ export function Header() {
           <div>
             <div className="mono-s soft">Network</div>
             <p className="txt ink" style={{ marginTop: "1rem" }}>
-              dreamDEX perps · Somnia Tokyo and Shannon
+              Market intelligence for dreamDEX perps · Somnia Tokyo and Shannon
             </p>
           </div>
         </div>

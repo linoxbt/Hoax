@@ -1,10 +1,10 @@
 "use client";
 // The motion layer: inertial scrolling, headings that rise in line by line,
-// blocks that fade up, rules that draw, a square cursor, and the first-visit
-// loader. Everything respects prefers-reduced-motion.
+// blocks that fade up, rules that draw, and the first-visit loader. Everything respects prefers-reduced-motion.
 import Lenis from "lenis";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { Logo } from "./Logo";
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -15,7 +15,6 @@ function useReducedMotion() {
 export function Motion() {
   const path = usePathname();
   const reduced = useReducedMotion();
-  const cursor = useRef<HTMLDivElement>(null);
 
   // Inertial scroll, as one continuous drawing being panned.
   useEffect(() => {
@@ -70,46 +69,17 @@ export function Motion() {
     };
   }, [path]);
 
-  // The cursor: a small orange square that trails the pointer.
-  useEffect(() => {
-    if (reduced || !window.matchMedia("(pointer: fine)").matches) return;
-    let x = -100;
-    let y = -100;
-    let cx = x;
-    let cy = y;
-    let raf = 0;
-    const move = (e: PointerEvent) => {
-      x = e.clientX;
-      y = e.clientY;
-    };
-    const tick = () => {
-      cx += (x - cx) * 0.4;
-      cy += (y - cy) * 0.4;
-      if (cursor.current) cursor.current.style.transform = `translate(${cx - 3}px, ${cy - 3}px)`;
-      raf = requestAnimationFrame(tick);
-    };
-    window.addEventListener("pointermove", move);
-    raf = requestAnimationFrame(tick);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      cancelAnimationFrame(raf);
-    };
-  }, [reduced]);
-
   return (
     <>
-      <div className="frame" aria-hidden />
-      <div className="cursor" ref={cursor} aria-hidden style={{ transform: "translate(-100px,-100px)" }} />
       <Loader />
     </>
   );
 }
 
-/** Once per session: a progress rule across the frame with the pointer's coordinates. */
+/** Once per session: the mark and a short progress bar while the page settles. */
 function Loader() {
   const [pct, setPct] = useState(0);
   const [done, setDone] = useState(true);
-  const [xy, setXy] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     let seen = true;
@@ -119,13 +89,11 @@ function Loader() {
     } catch {}
     if (seen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     setDone(false);
-    setXy({ x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) });
     const start = performance.now();
     let raf = 0;
     const tick = (t: number) => {
-      const k = Math.min(1, (t - start) / 800);
-      const eased = 1 - Math.pow(1 - k, 3);
-      setPct(Math.round(eased * 100));
+      const k = Math.min(1, (t - start) / 700);
+      setPct(Math.round((1 - Math.pow(1 - k, 3)) * 100));
       if (k < 1) raf = requestAnimationFrame(tick);
       else setTimeout(() => setDone(true), 120);
     };
@@ -135,25 +103,9 @@ function Loader() {
 
   return (
     <div className={`loader${done ? " done" : ""}`} aria-hidden>
+      <Logo size={40} />
       <div className="loader-line">
         <i style={{ ["--p" as string]: `${pct}%` }} />
-      </div>
-      <div className="loader-pct">{pct}%</div>
-      <span className="loader-plus" style={{ left: "50%", top: "50%" }} />
-      <div className="loader-xy" style={{ left: "calc(50% + 1.2rem)", top: "calc(50% - 3.6rem)" }}>
-        X:{xy.x}PX
-        <br />
-        Y:{xy.y}PX
-      </div>
-      <div className="loader-foot">
-        <div className="h4" style={{ maxWidth: "40rem" }}>
-          Liquidation protection for dreamDEX perps
-        </div>
-        <div className="mono-s soft" style={{ textAlign: "right" }}>
-          Hoax · Somnia Hideki
-          <br />
-          Opening the desk
-        </div>
       </div>
     </div>
   );

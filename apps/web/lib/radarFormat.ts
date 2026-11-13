@@ -13,3 +13,18 @@ export function qty(n: number): string {
 }
 
 export const NET_SHORT: Record<number, string> = { 50383: "Somnia Tokyo", 50312: "Somnia Shannon" };
+
+/** A large amount in short form: 1.9M, 71.9K, 842. */
+export function compact(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
+  if (a >= 1e4) return `${(n / 1e3).toFixed(a >= 1e5 ? 0 : 1)}K`;
+  return Math.round(n).toLocaleString("en-US");
+}
+
+/** "BTC-PERP" → "BTC". */
+export const base = (symbol: string) => symbol.replace(/-PERP$/, "");
+
+/** A unix time as HH:MM UTC. */
+export const hhmm = (t: number) => new Date(t * 1000).toISOString().slice(11, 16);

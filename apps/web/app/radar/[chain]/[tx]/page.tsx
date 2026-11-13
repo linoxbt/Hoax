@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Label } from "@/components/Ui";
+import { Arrow, Eyebrow } from "@/components/Ui";
 import { addressUrl, short, txUrl } from "@/lib/format";
 import { RADAR_CHAINS, radarTx, type RadarLiquidation } from "@/lib/radar";
 import { NET_SHORT, qty, usdso } from "@/lib/radarFormat";
@@ -39,13 +39,14 @@ export default async function LiquidationCard({ params }: { params: Promise<Para
   const { items, params: rates } = await radarTx(p.chainId, p.tx);
   if (!items.length) notFound();
   const url = `${site()}/radar/${p.chainId}/${p.tx}`;
+  const shareText = `A dreamDEX perp just got liquidated: at least ${usdso(items[0].penalty + items[0].spreadFloor)} USDso to the engine. Every liquidation, live on Hoax Radar. @DreamDEXSomnia`;
   return (
     <>
-      <section className="phead">
+      <section className="phead split">
         <div className="phead-title">
-          <Label dot>
-            <Link href="/radar">Radar</Link> · {NET_SHORT[p.chainId]}
-          </Label>
+          <Eyebrow>
+            <Link href="/radar">Radar</Link> / {NET_SHORT[p.chainId]}
+          </Eyebrow>
           <h1 className="h1">Liquidated on dreamDEX.</h1>
         </div>
         <div className="phead-side">
@@ -53,17 +54,14 @@ export default async function LiquidationCard({ params }: { params: Promise<Para
             The liquidation engine closed this position at the price it could get and charged the penalty. Every figure below is from the chain or the
             protocol&apos;s own rates.
           </div>
-          <div className="row" style={{ gap: "1rem" }}>
-            <a
-              className="pill"
-              href={`https://x.com/intent/post?text=${encodeURIComponent(`A dreamDEX perp just got liquidated: at least ${usdso(items[0].penalty + items[0].spreadFloor)} USDso to the engine. Every liquidation, live on Hoax Radar. @DreamDEXSomnia`)}&url=${encodeURIComponent(url)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Share on X ↗
+          <div className="actions">
+            <a className="btn" href={`https://x.com/intent/post?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">
+              Share on X
+              <Arrow dir="ne" />
             </a>
-            <Link className="pill ghost" href="/radar">
+            <Link className="btn ghost" href="/radar">
               All liquidations
+              <Arrow />
             </Link>
           </div>
         </div>
@@ -71,18 +69,18 @@ export default async function LiquidationCard({ params }: { params: Promise<Para
 
       {items.map((l) => (
         <div key={l.account} className="rd-card">
-          <section className="sec" style={{ marginTop: 0 }}>
-            <div className="p rd-lost">
-              <span className="mono-s soft">Lost to the engine, at least</span>
+          <section className="card rd-sheet">
+            <div className="rd-lost">
+              <span className="eyebrow">Lost to the engine, at least</span>
               <span className="rd-big">
                 {usdso(l.penalty + l.spreadFloor)}
                 <small>USDso</small>
               </span>
-              <span className="mono-s muted">
+              <span className="mono-s soft">
                 {new Date(l.time * 1000).toISOString().replace("T", " ").slice(0, 16)} UTC · {NET_SHORT[l.chainId]}
               </span>
             </div>
-            <div className="p bt">
+            <div className="rows-wrap">
               <div className="rows">
                 {l.legs.map((x, i) => (
                   <div className="r" key={i}>
@@ -135,24 +133,24 @@ export default async function LiquidationCard({ params }: { params: Promise<Para
               </div>
             </div>
           </section>
-          <section className="sec rd-gate" style={{ marginTop: 0 }}>
-            <div className="p stack" style={{ gap: "1.6rem", height: "100%" }}>
-              <span className="mono-s" style={{ color: "var(--brand)" }}>
-                With Hoax
-              </span>
-              <div className="h3">A trim first, for at most {usdso((l.penalty + l.spreadFloor) / 2)} USDso.</div>
-              <p className="txt">
-                Hoax reads health every second and closes the smallest slice that restores your target before health reaches 1. It only sends that trim
-                when it costs at most half of the liquidation it prevents, and signs a receipt for it.
-              </p>
-              <p className="mono-xs muted">
+          <section className="dark rd-with">
+            <span className="eyebrow">With Hoax</span>
+            <div className="h3">A trim first, for at most {usdso((l.penalty + l.spreadFloor) / 2)} USDso.</div>
+            <p className="txt">
+              Hoax reads health every second and closes the smallest slice that restores your target before health reaches 1. It only sends that trim
+              when it costs at most half of the liquidation it prevents, and signs a receipt for it.
+            </p>
+            <div className="panel-in">
+              <span className="eyebrow">The honest limits</span>
+              <span className="mono-s soft">
                 Hoax cannot beat a price that gaps through the liquidation level faster than one block, and it skips a trim the book cannot fill inside
                 your slippage.
-              </p>
-              <Link className="pill" href="/start" style={{ alignSelf: "flex-start", marginTop: "auto" }}>
-                Protect my positions
-              </Link>
+              </span>
             </div>
+            <Link className="btn white" href="/start">
+              Protect my positions
+              <Arrow />
+            </Link>
           </section>
         </div>
       ))}

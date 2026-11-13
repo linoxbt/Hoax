@@ -38,14 +38,40 @@ export interface RadarParams {
   source: "chain" | "default";
 }
 
+export interface RadarMarket {
+  chainId: number;
+  symbol: string;
+  count: number;
+  notional: number;
+  /** Notional liquidated per bucket of `series`, oldest first. */
+  series: number[];
+}
+
 export interface RadarSnapshot {
   generatedAt: number;
   hours: number;
   chains: number[];
   params: Record<number, RadarParams>;
   totals: { count: number; accounts: number; notional: number; penalty: number; spreadFloor: number; keeper: number };
-  markets: Array<{ chainId: number; symbol: string; count: number; notional: number }>;
+  /** Every market with a liquidation in the window, by notional. */
+  markets: RadarMarket[];
+  /** Buckets across the window: hourly for a day, six-hourly for a week. Oldest first. */
+  series: Array<{ t: number; count: number; notional: number }>;
+  bucketSec: number;
   items: RadarLiquidation[];
+}
+
+/** A market liquidating faster than its own recent pace. */
+export interface RadarSignal {
+  chainId: number;
+  symbol: string;
+  /** Liquidations in the last 24 hours. */
+  count: number;
+  notional: number;
+  /** Its daily average over the last 7 days. */
+  baseline: number;
+  /** count / baseline. */
+  ratio: number;
 }
 
 type Row = {
@@ -188,7 +214,8 @@ function group(chainId: number, rows: Row[], markets: Map<string, MarketInfo>, p
 
 /** Every liquidation in the last `hours`, on one network or both, with totals and the busiest markets. */
 export async function radarSnapshot(chains: number[], hours: number): Promise<RadarSnapshot> {
-  return cached(`snap:${chains.join(",")}:${hours}`, 10_000, async () => {
+  // A week of events is heavier to read and changes slowly: kept a minute.
+  return cached(`snap:${chains.join(",")}:${hours}`, hours > 24 ? 60_000 : 10_000, async () => {
     const since = Math.floor(Date.now() / 1000) - hours * 3600;
     const params: Record<number, RadarParams> = {};
     const all: RadarLiquidation[] = [];
@@ -201,15 +228,25 @@ export async function radarSnapshot(chains: number[], hours: number): Promise<Ra
       }),
     );
     all.sort((a, b) => b.time - a.time);
-    const bySym = new Map<string, { chainId: number; symbol: string; count: number; notional: number }>();
-    for (const l of all)
+    const bucketSec = hours > 24 ? 6 * 3600 : 3600;
+    const n = Math.ceil((hours * 3600) / bucketSec);
+    const start = Math.floor(Date.now() / 1000 / bucketSec) * bucketSec - (n - 1) * bucketSec;
+    const slot = (t: number) => Math.min(n - 1, Math.max(0, Math.floor((t - start) / bucketSec)));
+    const series = Array.from({ length: n }, (_, i) => ({ t: start + i * bucketSec, count: 0, notional: 0 }));
+    const bySym = new Map<string, RadarMarket>();
+    for (const l of all) {
+      const b = series[slot(l.time)];
+      b.count++;
+      b.notional += l.notional;
       for (const leg of l.legs) {
         const k = `${l.chainId}:${leg.symbol}`;
-        const e = bySym.get(k) ?? { chainId: l.chainId, symbol: leg.symbol, count: 0, notional: 0 };
+        const e = bySym.get(k) ?? { chainId: l.chainId, symbol: leg.symbol, count: 0, notional: 0, series: new Array<number>(n).fill(0) };
         e.count++;
         e.notional += leg.notional;
+        e.series[slot(l.time)] += leg.notional;
         bySym.set(k, e);
       }
+    }
     return {
       generatedAt: Date.now(),
       hours,
@@ -223,10 +260,30 @@ export async function radarSnapshot(chains: number[], hours: number): Promise<Ra
         spreadFloor: all.reduce((s, l) => s + l.spreadFloor, 0),
         keeper: all.reduce((s, l) => s + (l.keeperReward ?? 0), 0),
       },
-      markets: [...bySym.values()].sort((a, b) => b.notional - a.notional).slice(0, 8),
+      markets: [...bySym.values()].sort((a, b) => b.notional - a.notional),
+      series,
+      bucketSec,
       items: all.slice(0, 120),
     };
   });
+}
+
+/**
+ * Markets liquidating faster than their own 7-day pace: the last 24 hours against
+ * the 7-day daily average, for markets with at least `min` liquidations today.
+ */
+export async function radarSignals(chains: number[], min = 3): Promise<{ day: RadarSnapshot; week: RadarSnapshot; signals: RadarSignal[] }> {
+  const [day, week] = await Promise.all([radarSnapshot(chains, 24), radarSnapshot(chains, 168)]);
+  const weekBy = new Map(week.markets.map((m) => [`${m.chainId}:${m.symbol}`, m]));
+  const signals: RadarSignal[] = [];
+  for (const m of day.markets) {
+    if (m.count < min) continue;
+    const w = weekBy.get(`${m.chainId}:${m.symbol}`);
+    const baseline = (w?.count ?? m.count) / 7;
+    signals.push({ chainId: m.chainId, symbol: m.symbol, count: m.count, notional: m.notional, baseline, ratio: baseline > 0 ? m.count / baseline : 0 });
+  }
+  signals.sort((a, b) => b.ratio - a.ratio || b.notional - a.notional);
+  return { day, week, signals };
 }
 
 /** The liquidations in one transaction, for its share page. */

@@ -1,48 +1,44 @@
-// Small building blocks of the drawing system: the arrow, the rolling label,
-// the two-cell button, corner links and drawing furniture.
+// Building blocks of the system: the arrow, the button, the eyebrow and the
+// heading that rises into place.
 import Link from "next/link";
 
-export function Arrow({ dir = "ne", className = "arrow" }: { dir?: "ne" | "e" | "w"; className?: string }) {
+export function Arrow({ dir = "e", className = "arrow" }: { dir?: "ne" | "e" | "w"; className?: string }) {
   if (dir === "w")
     return (
-      <svg className={className} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden>
-        <path d="M13 7H1M6 2L1 7l5 5" />
+      <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M14 8H2M7 3L2 8l5 5" />
       </svg>
     );
   return dir === "e" ? (
-    <svg className={className} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden>
-      <path d="M1 7h12M8 2l5 5-5 5" />
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 8h12M9 3l5 5-5 5" />
     </svg>
   ) : (
-    <svg className={className} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden>
-      <path d="M3 11L11 3M4.5 3H11v6.5" />
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 12L12 4M5.5 4H12v6.5" />
     </svg>
   );
 }
 
-/** Text that rolls up to a copy of itself on hover. */
+/** Kept for older call sites: plain text. */
 export function Roll({ children }: { children: string }) {
-  return (
-    <span className="roll">
-      <span>{children}</span>
-      <span aria-hidden>{children}</span>
-    </span>
-  );
+  return <span>{children}</span>;
 }
 
-type BtnProps = { children: string; fill?: boolean; sm?: boolean; wide?: boolean; arrow?: "ne" | "e" | "w" };
+type BtnProps = { children: React.ReactNode; fill?: boolean; white?: boolean; sm?: boolean; wide?: boolean; arrow?: "ne" | "e" | "w" | false };
 
-/** The two-cell button: a rolling label and an arrow cell. Renders a Link, an anchor or a button. */
-export function Btn({ href, onClick, disabled, children, fill, sm, wide, arrow = "e", external, type }: BtnProps & { href?: string; onClick?: () => void; disabled?: boolean; external?: boolean; type?: "button" | "submit" }) {
-  const cls = `btn${fill ? " fill" : ""}${sm ? " sm" : ""}${wide ? " wide" : ""}`;
+/**
+ * The button: a label and an arrow. `fill` is the blue primary, `white` the
+ * button on blue, and the default the white outlined secondary.
+ * Renders a Link, an anchor or a button.
+ */
+export function Btn({ href, onClick, disabled, children, fill, white, sm, wide, arrow = "e", external, type }: BtnProps & { href?: string; onClick?: () => void; disabled?: boolean; external?: boolean; type?: "button" | "submit" }) {
+  const cls = `btn${fill ? "" : white ? " white" : " ghost"}${sm ? " sm" : ""}${wide ? " wide" : ""}`;
   const inner = (
     <>
-      <span className="lbl">
-        <Roll>{children}</Roll>
-      </span>
-      <span className="ico">
-        <Arrow dir={arrow} />
-      </span>
+      {arrow === "w" && <Arrow dir="w" />}
+      <span>{children}</span>
+      {arrow && arrow !== "w" && <Arrow dir={external && arrow === "e" ? "ne" : arrow} />}
     </>
   );
   if (href && external)
@@ -64,13 +60,13 @@ export function Btn({ href, onClick, disabled, children, fill, sm, wide, arrow =
   );
 }
 
-/** A cell-filling link: mono label top-left, arrow bottom-right. */
-export function CornerLink({ href, children, ink, external }: { href: string; children: string; ink?: boolean; external?: boolean }) {
+/** A text link with an arrow. */
+export function CornerLink({ href, children, ink, external }: { href: string; children: React.ReactNode; ink?: boolean; external?: boolean }) {
   const cls = `corner-link${ink ? " ink" : ""}`;
   const body = (
     <>
-      <Roll>{children}</Roll>
-      <Arrow />
+      <span>{children}</span>
+      <Arrow dir={external ? "ne" : "e"} />
     </>
   );
   return external ? (
@@ -84,22 +80,25 @@ export function CornerLink({ href, children, ink, external }: { href: string; ch
   );
 }
 
-/** Crosshairs at the four corners of a drawing. */
+/** Kept for older call sites: renders nothing. */
 export function Corners() {
+  return null;
+}
+
+/** The eyebrow: "01 / A CLEARER PERSPECTIVE", small, uppercase, blue. */
+export function Eyebrow({ children, className = "", tone }: { children: React.ReactNode; className?: string; tone?: "ink" | "soft" | "white" }) {
+  const style = tone === "white" ? { color: "var(--white)" } : undefined;
   return (
-    <>
-      <span className="plus tl" aria-hidden />
-      <span className="plus tr" aria-hidden />
-      <span className="plus bl" aria-hidden />
-      <span className="plus br" aria-hidden />
-    </>
+    <div className={`eyebrow${tone && tone !== "white" ? ` ${tone}` : ""}${className ? ` ${className}` : ""}`} style={style}>
+      {children}
+    </div>
   );
 }
 
-/** A mono label like PROBLEMS, optionally with an orange square. */
+/** Older name for the eyebrow; `dot` adds a live dot before it. */
 export function Label({ children, dot, className = "" }: { children: React.ReactNode; dot?: boolean; className?: string }) {
   return (
-    <div className={`mono-s ink row ${className}`} style={{ gap: "0.8rem" }}>
+    <div className={`eyebrow row ${className}`} style={{ gap: "0.8rem" }}>
       {dot && <span className="dotsq" aria-hidden />}
       {children}
     </div>

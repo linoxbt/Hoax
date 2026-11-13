@@ -2,7 +2,7 @@
 
 # Hoax
 
-Hoax cuts a dreamDEX perp position down to safe size before the liquidation engine can take it, and proves every save with an on-chain receipt.
+**From billions of trades to one clear signal.** Hoax is market intelligence for dreamDEX perps. [Radar](#radar) reads every liquidation on dreamDEX as it happens, prices what each one cost, and surfaces the markets unwinding faster than their own pace. For your own positions, Hoax acts on the one signal that liquidates you, account health: it cuts a position down to safe size before the liquidation engine can take it, and proves every save with an on-chain receipt.
 
 Liquidation is the worst exit in perps: a 1% penalty, a forced close at whatever the book pays, and no say in the exit. Hoax gives traders a cheaper one, automatically, without ever touching their funds. A trader links Hoax to a dreamDEX wallet as a place-order-only bot and sets a trigger health and a target health. When health falls to the trigger, Hoax closes the smallest slice that restores the target, but only when that close costs less than the liquidation it prevents.
 
@@ -170,6 +170,8 @@ The numbers move with the book and mark read at the time; these are from a run o
 
 [`/radar`](https://usehoax.netlify.app/radar) shows every liquidation on dreamDEX perps as it happens, on Somnia Tokyo and Shannon, for anyone, with no wallet. It reads `LiquidationEvent` from dreamDEX's markets indexer every 10 seconds, groups the events into one liquidation per transaction and account, and prices each one with the LiquidationEngine's own rates, read from chain: the 1% penalty plus the 0.5% minimum forced-close spread. That sum is a floor on what the trader lost to the engine, and the page says so. The real spread can be wider. dreamDEX's test pools (`LOADTEST*`, and numbered instances like `T1C1033`) are left out of every figure.
 
+**Signals** compare each market's last 24 hours with its own 7-day daily pace: a market liquidating at 1.5× its pace or faster is surfaced, on Radar and on the home page. A signal is a reason to look closer, not a prediction.
+
 Every liquidation has a share card at `/radar/<chain>/<tx>`, with its own Open Graph image: what the engine took, the legs it closed, the keeper reward and any bad debt from the event, and what a Hoax trim would have cost at most. A trim is only sent when it costs at most half of that.
 
 ## Public API
@@ -178,7 +180,7 @@ Receipts are public: anyone can fetch one and re-check it.
 
 - `GET /api/actions?owner=&chain=&limit=` receipts, newest first, each with its counterfactual.
 - `GET /api/actions/<id>` one receipt with both signature checks (the receipt, and its outcome record).
-- `GET /api/radar?chain=all|50383|50312&hours=24|168` every liquidation in the window, with totals and the busiest markets.
+- `GET /api/radar?chain=all|50383|50312&hours=24|168` every liquidation in the window, with totals, hourly activity and the busiest markets; the 24-hour view adds `signals`.
 - `GET /api/stats` the track record. `GET /api/markets?chain=` live marks. `GET /api/engine` whether each network's engine is alive.
 
 ## Feedback track
