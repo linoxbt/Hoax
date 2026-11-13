@@ -74,8 +74,9 @@ export default async function Landing() {
   // The track record and the featured receipt are one part of the page: without the database the rest still renders.
   const data = await getStore()
     .then(async (store) => {
-      const [stats, actions] = await Promise.all([store.stats(), store.listActions({ limit: 200 })]);
-      const saved = actions.find((a) => a.outcome === "saved") ?? null;
+      // Asked for by outcome: skipped attempts can far outnumber closes and push a save out of any recent window.
+      const [stats, savedRows] = await Promise.all([store.stats(), store.listActions({ outcome: "saved", limit: 1 })]);
+      const saved = savedRows[0] ?? null;
       const cf = saved ? await store.getCounterfactual(saved.id) : null;
       return { stats, saved, cf };
     })

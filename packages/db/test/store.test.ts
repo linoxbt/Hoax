@@ -141,6 +141,11 @@ function contract(name: string, make: () => Promise<Store>) {
       // A close that filled better than the mark cost nothing; it does not lower the total.
       await store.insertAction(action(id, { outcome: "not-needed", cost: -5n * 10n ** 17n }));
       expect((await store.stats()).insuranceCost - after.insuranceCost).toBe(2n * 10n ** 18n);
+      // Filtered by outcome, however many newer actions of other outcomes there are.
+      const savedOnly = await store.listActions({ outcome: "saved", limit: 5 });
+      expect(savedOnly.length).toBeGreaterThan(0);
+      expect(savedOnly.every((x) => x.outcome === "saved")).toBe(true);
+      expect(savedOnly.some((x) => x.id === a.id)).toBe(true);
 
       await store.insertAlert({ accountId: id, kind: "stale", message: "mark stale for 60 s" });
       expect((await store.listAlerts(id, 5))[0].kind).toBe("stale");

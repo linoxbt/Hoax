@@ -348,7 +348,7 @@ export class PgStore implements Store {
     return r ? toAction(r) : null;
   }
 
-  async listActions(opts: { owner?: string; chainId?: number; limit: number }) {
+  async listActions(opts: { owner?: string; chainId?: number; outcome?: Outcome; limit: number }) {
     const where: string[] = [];
     const params: unknown[] = [];
     if (opts.owner) {
@@ -358,6 +358,10 @@ export class PgStore implements Store {
     if (opts.chainId !== undefined) {
       params.push(opts.chainId);
       where.push(`c.chain_id = $${params.length}`);
+    }
+    if (opts.outcome) {
+      params.push(opts.outcome);
+      where.push(`a.outcome = $${params.length}`);
     }
     params.push(Math.max(1, Math.min(500, Math.floor(opts.limit))));
     const rows = await this.q(

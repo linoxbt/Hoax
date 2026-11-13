@@ -164,8 +164,8 @@ export interface Store {
   insertAction(a: NewAction): Promise<ActionRow>;
   updateActionOutcome(id: string, outcome: Outcome, reason?: string | null): Promise<void>;
   getAction(id: string): Promise<ActionRow | null>;
-  /** Newest first; on one network when chainId is given. */
-  listActions(opts: { owner?: string; chainId?: number; limit: number }): Promise<ActionRow[]>;
+  /** Newest first; on one network when chainId is given, and only with that outcome when outcome is given. */
+  listActions(opts: { owner?: string; chainId?: number; outcome?: Outcome; limit: number }): Promise<ActionRow[]>;
   /** Orders sent whose result is not confirmed yet. */
   listUnconfirmedActions(accountId: string): Promise<ActionRow[]>;
   /** Actions still waiting on their counterfactual, on one network when chainId is given. */

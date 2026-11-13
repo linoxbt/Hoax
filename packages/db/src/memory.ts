@@ -153,10 +153,11 @@ export class MemoryStore implements Store {
     return a ? { ...a } : null;
   }
 
-  async listActions(opts: { owner?: string; chainId?: number; limit: number }) {
+  async listActions(opts: { owner?: string; chainId?: number; outcome?: Outcome; limit: number }) {
     return [...this.actions.values()]
       .filter((a) => !opts.owner || a.owner === opts.owner.toLowerCase())
       .filter((a) => opts.chainId === undefined || this.accounts.get(a.accountId)?.chainId === opts.chainId)
+      .filter((a) => !opts.outcome || a.outcome === opts.outcome)
       .sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime())
       .slice(0, Math.max(1, Math.min(500, Math.floor(opts.limit))))
       .map((a) => ({ ...a }));
