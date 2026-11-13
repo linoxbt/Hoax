@@ -11,6 +11,8 @@ import type {
   HealthTickRow,
   HeartbeatRow,
   NewAction,
+  NotifyKind,
+  NotifyTargetRow,
   PolicyRow,
   Stats,
   Store,
@@ -23,6 +25,7 @@ export class MemoryStore implements Store {
   actions = new Map<string, ActionRow>();
   counterfactuals = new Map<string, CounterfactualRow>();
   alerts: AlertRow[] = [];
+  notify = new Map<string, NotifyTargetRow & { codeHash: string | null; expiresAt: Date | null }>();
   drips: Array<{ id: string; hoaxKey: string; chainId: number | null; amount: bigint; txHash: string | null; at: Date }> = [];
   private dripSeq = 0;
   private leases = new Set<string>();
@@ -279,6 +282,37 @@ export class MemoryStore implements Store {
       if (c) out.set(id, { ...c });
     }
     return out;
+  }
+
+  async startNotifyTarget(t: { owner: string; kind: NotifyKind; target: string | null; codeHash: string; expiresAt: Date }) {
+    const owner = t.owner.toLowerCase();
+    this.notify.set(`${owner}:${t.kind}`, { owner, kind: t.kind, target: t.target, verified: false, updatedAt: new Date(), codeHash: t.codeHash, expiresAt: t.expiresAt });
+  }
+
+  async verifyNotifyTarget(kind: NotifyKind, codeHash: string, now: Date, target?: string): Promise<NotifyTargetRow | null> {
+    for (const r of this.notify.values()) {
+      if (r.kind !== kind || r.codeHash !== codeHash || !r.expiresAt || r.expiresAt <= now) continue;
+      Object.assign(r, { verified: true, target: target ?? r.target, codeHash: null, expiresAt: null, updatedAt: new Date() });
+      return { owner: r.owner, kind: r.kind, target: r.target, verified: true, updatedAt: r.updatedAt };
+    }
+    return null;
+  }
+
+  async listNotifyTargets(owner: string): Promise<NotifyTargetRow[]> {
+    return [...this.notify.values()]
+      .filter((r) => r.owner === owner.toLowerCase())
+      .sort((a, b) => a.kind.localeCompare(b.kind))
+      .map(({ owner: o, kind, target, verified, updatedAt }) => ({ owner: o, kind, target, verified, updatedAt }));
+  }
+
+  async deleteNotifyTarget(owner: string, kind: NotifyKind) {
+    this.notify.delete(`${owner.toLowerCase()}:${kind}`);
+  }
+
+  async deleteNotifyTargetByValue(kind: NotifyKind, target: string): Promise<number> {
+    let n = 0;
+    for (const [k, r] of this.notify) if (r.kind === kind && r.target === target) (this.notify.delete(k), n++);
+    return n;
   }
 
   async insertAlert(a: { accountId: string; kind: string; message: string }) {

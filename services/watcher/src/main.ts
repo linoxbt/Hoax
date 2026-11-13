@@ -6,6 +6,7 @@
 // second one (an overlapping redeploy, a NETWORK left unset) exits.
 
 import { createServer } from "node:http";
+import { emailConfigFromEnv } from "@hoax/core";
 import { DreamDexVenue, NETWORKS } from "@hoax/chain";
 import { MemoryStore, PgStore, migrate, type Store } from "@hoax/db";
 import { formatEther, getAddress, parseEther, type Hex } from "viem";
@@ -14,6 +15,7 @@ import { DEFAULT_ENGINE_CONFIG } from "./engine.ts";
 import { GasManager } from "./gas.ts";
 import { FileKeystore } from "./keystore.ts";
 import { consoleLogger as log } from "./log.ts";
+import { Notifier } from "./notifier.ts";
 import { Watcher } from "./watcher.ts";
 
 function env(name: string, fallback?: string): string | undefined {
@@ -66,6 +68,19 @@ async function main() {
     : null;
   if (!gas) log.warn("GAS_WALLET_PRIVATE_KEY is not set: traders fund their Hoax key themselves (Send it for gas when linking)");
 
+  // Telegram and email copies of alerts: TELEGRAM_BOT_TOKEN, and RESEND_API_KEY or BREVO_API_KEY with HOAX_EMAIL_FROM.
+  const notify = new Notifier(
+    store,
+    {
+      telegramToken: env("TELEGRAM_BOT_TOKEN") ?? null,
+      email: emailConfigFromEnv(process.env),
+      siteUrl: (env("HOAX_SITE_URL", "https://usehoax.netlify.app") as string).replace(/\/+$/, ""),
+      networkName: network.name,
+    },
+    log,
+  );
+  log.info("alert channels", { telegram: Boolean(notify.cfg.telegramToken), email: notify.cfg.email?.provider ?? null });
+
   const builder = env("HOAX_BUILDER_ADDRESS");
   const watcher = new Watcher({
     venue,
@@ -75,6 +90,7 @@ async function main() {
     log,
     tickMs: Number(env("TICK_MS", "1000")),
     service: `watcher-${network.key}`,
+    notify,
     engine: {
       ...DEFAULT_ENGINE_CONFIG,
       builder: builder ? getAddress(builder) : null,

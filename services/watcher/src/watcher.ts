@@ -14,6 +14,7 @@ import type { GasManager } from "./gas.ts";
 import type { KeyProvider } from "./keystore.ts";
 import { Linker } from "./linker.ts";
 import type { Logger } from "./log.ts";
+import type { Notifier } from "./notifier.ts";
 import { CounterfactualTracker } from "./tracker.ts";
 
 export interface WatcherOptions {
@@ -26,6 +27,8 @@ export interface WatcherOptions {
   tickMs: number;
   /** The heartbeat's name: one per engine process, e.g. watcher-hideki. */
   service?: string;
+  /** Telegram and email copies of alerts, closes and outcomes. */
+  notify?: Notifier | null;
 }
 
 export interface WatcherStatus {
@@ -59,9 +62,9 @@ export class Watcher {
   readonly status: WatcherStatus;
 
   constructor(private readonly opts: WatcherOptions) {
-    this.engine = new Engine({ venue: opts.venue, store: opts.store, keys: opts.keys, log: opts.log, config: opts.engine });
+    this.engine = new Engine({ venue: opts.venue, store: opts.store, keys: opts.keys, log: opts.log, config: opts.engine, notify: opts.notify ?? null });
     this.linker = new Linker(opts.venue, opts.store, opts.keys, opts.engine.dryRun ? null : opts.gas, opts.log);
-    this.tracker = new CounterfactualTracker(opts.venue, opts.store, opts.log, Date.now, opts.keys);
+    this.tracker = new CounterfactualTracker(opts.venue, opts.store, opts.log, Date.now, opts.keys, opts.notify ?? null);
     this.status = {
       startedAt: new Date().toISOString(),
       lastTickAt: null,

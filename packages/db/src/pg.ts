@@ -12,6 +12,8 @@ import type {
   HealthTickRow,
   HeartbeatRow,
   NewAction,
+  NotifyKind,
+  NotifyTargetRow,
   PolicyRow,
   Stats,
   Store,
@@ -499,6 +501,38 @@ export class PgStore implements Store {
     await this.q(`INSERT INTO alerts (account_id, kind, message) VALUES ($1, $2, $3)`, [a.accountId, a.kind, a.message]);
   }
 
+  async startNotifyTarget(t: { owner: string; kind: NotifyKind; target: string | null; codeHash: string; expiresAt: Date }) {
+    await this.q(
+      `INSERT INTO notify_targets (owner, kind, target, verified, code_hash, code_expires_at, updated_at)
+       VALUES ($1, $2, $3, false, $4, $5, now())
+       ON CONFLICT (owner, kind) DO UPDATE SET target = EXCLUDED.target, verified = false, code_hash = EXCLUDED.code_hash,
+         code_expires_at = EXCLUDED.code_expires_at, updated_at = now()`,
+      [t.owner.toLowerCase(), t.kind, t.target, t.codeHash, t.expiresAt],
+    );
+  }
+
+  async verifyNotifyTarget(kind: NotifyKind, codeHash: string, now: Date, target?: string): Promise<NotifyTargetRow | null> {
+    const rows = await this.q(
+      `UPDATE notify_targets SET verified = true, target = COALESCE($4, target), code_hash = NULL, code_expires_at = NULL, updated_at = now()
+       WHERE kind = $1 AND code_hash = $2 AND code_expires_at > $3
+       RETURNING owner, kind, target, verified, updated_at`,
+      [kind, codeHash, now, target ?? null],
+    );
+    return rows[0] ? notifyRow(rows[0]) : null;
+  }
+
+  async listNotifyTargets(owner: string): Promise<NotifyTargetRow[]> {
+    return (await this.q(`SELECT owner, kind, target, verified, updated_at FROM notify_targets WHERE owner = $1 ORDER BY kind`, [owner.toLowerCase()])).map(notifyRow);
+  }
+
+  async deleteNotifyTarget(owner: string, kind: NotifyKind) {
+    await this.q(`DELETE FROM notify_targets WHERE owner = $1 AND kind = $2`, [owner.toLowerCase(), kind]);
+  }
+
+  async deleteNotifyTargetByValue(kind: NotifyKind, target: string): Promise<number> {
+    return (await this.q(`DELETE FROM notify_targets WHERE kind = $1 AND target = $2 RETURNING owner`, [kind, target])).length;
+  }
+
   async listAlerts(accountId: string, limit: number): Promise<AlertRow[]> {
     return (
       await this.q(`SELECT * FROM alerts WHERE account_id = $1 ORDER BY id DESC LIMIT $2`, [accountId, limit])
@@ -724,4 +758,14 @@ export class PgStore implements Store {
     }
     await this.pool.end();
   }
+}
+
+function notifyRow(r: Record<string, unknown>): NotifyTargetRow {
+  return {
+    owner: String(r.owner),
+    kind: r.kind as NotifyKind,
+    target: r.target === null ? null : String(r.target),
+    verified: Boolean(r.verified),
+    updatedAt: r.updated_at as Date,
+  };
 }

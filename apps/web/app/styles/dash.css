@@ -325,3 +325,19 @@
   .db-rtable table.list td { display: block; padding: 0 !important; border: 0; white-space: normal; background: none !important; min-width: 0; overflow-wrap: anywhere; }
   .db-rtable table.list td::before { content: attr(data-label); display: block; margin-bottom: 0.3rem; font-size: 1.1rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
 }
+
+/* ---------- alert channels (al-*) ---------- */
+.al { display: grid; gap: 2.4rem; margin-top: 2.4rem; padding: 3.2rem; }
+.al-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 2.4rem; flex-wrap: wrap; }
+.al-head .txt { max-width: 62ch; }
+.al-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem; }
+.al-card { display: flex; flex-direction: column; gap: 1.6rem; align-items: flex-start; padding: 2.4rem; }
+.al-card .between { width: 100%; align-items: center; }
+.al-form { display: flex; gap: 0.8rem; width: 100%; }
+.al-form input { height: 4rem; }
+@media (max-width: 767px) {
+  .al { padding: 2rem; }
+  .al-grid { grid-template-columns: 1fr; }
+  .al-form { flex-direction: column; }
+}
+.al .note { background: var(--white); }

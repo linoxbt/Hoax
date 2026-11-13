@@ -7,3 +7,4 @@ export * from "./flipGuard.ts";
 export * from "./decide.ts";
 export * from "./counterfactual.ts";
 export * from "./receipt.ts";
+export * from "./notify.ts";

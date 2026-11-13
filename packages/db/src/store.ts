@@ -107,6 +107,18 @@ export interface AlertRow {
   seen: boolean;
 }
 
+export type NotifyKind = "telegram" | "email";
+
+/** Where an owner's alerts are delivered besides the dashboard. */
+export interface NotifyTargetRow {
+  owner: string;
+  kind: NotifyKind;
+  /** The Telegram chat id or the email address; null until a Telegram chat claims the code. */
+  target: string | null;
+  verified: boolean;
+  updatedAt: Date;
+}
+
 export interface Stats {
   accountsProtected: number;
   /** Closes that filled something (a reverted or empty order is not an action taken). */
@@ -198,6 +210,22 @@ export interface Store {
 
   insertAlert(a: { accountId: string; kind: string; message: string }): Promise<void>;
   listAlerts(accountId: string, limit: number): Promise<AlertRow[]>;
+
+  /**
+   * Start linking a channel: replaces the owner's target of this kind with an
+   * unverified one carrying a hashed code that expires (an email address, or no
+   * target yet for Telegram, whose chat arrives with the code).
+   */
+  startNotifyTarget(t: { owner: string; kind: NotifyKind; target: string | null; codeHash: string; expiresAt: Date }): Promise<void>;
+  /**
+   * Spend a code: marks its target verified (setting the Telegram chat id when
+   * given) and returns the row, or null when the code is unknown or expired.
+   */
+  verifyNotifyTarget(kind: NotifyKind, codeHash: string, now: Date, target?: string): Promise<NotifyTargetRow | null>;
+  listNotifyTargets(owner: string): Promise<NotifyTargetRow[]>;
+  deleteNotifyTarget(owner: string, kind: NotifyKind): Promise<void>;
+  /** Unlink a target wherever it is used (a Telegram chat that sent /stop). Returns how many were removed. */
+  deleteNotifyTargetByValue(kind: NotifyKind, target: string): Promise<number>;
 
   /**
    * Reserve a gas drip atomically against the caps (per key and per network,

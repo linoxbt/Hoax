@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { formatEther } from "viem";
+import { AlertChannels } from "@/components/AlertChannels";
 import { AppHead } from "@/components/AppHead";
 import { CopyButton } from "@/components/CopyButton";
 import { LinkGrid } from "@/components/LinkGrid";
@@ -97,6 +98,8 @@ export default function Settings() {
           {revoke.err && <p className="note bad">{revoke.err}</p>}
         </section>
       </div>
+
+      <AlertChannels owner={session.owner} token={session.token} chainId={session.chainId} sample={hoax.sample} canManage={canManage} />
 
       <section className="panel db-access">
         <Eyebrow>Your access / by market</Eyebrow>

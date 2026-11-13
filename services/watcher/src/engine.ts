@@ -46,6 +46,7 @@ import type { AccountRow, ActionRow, NewAction, PolicyRow, Store } from "@hoax/d
 import { getAddress, type Address, type Hex } from "viem";
 import type { KeyProvider } from "./keystore.ts";
 import type { Logger } from "./log.ts";
+import { type Notifier, alertNotice, closeNotice } from "./notifier.ts";
 
 export interface EngineConfig {
   /** Builder address Hoax attaches fees to, or null for none. */
@@ -104,6 +105,8 @@ export interface EngineDeps {
   log: Logger;
   config: EngineConfig;
   now?: () => number;
+  /** Telegram and email copies of alerts and closes; none when not configured. */
+  notify?: Notifier | null;
 }
 
 interface PositionView {
@@ -1039,6 +1042,23 @@ export class Engine {
       signature,
     });
     mem.unsaved.delete(draft.id);
+    const n = this.deps.notify;
+    if (n && !isFlatten && filled > 0n) {
+      n.send(
+        owner,
+        closeNotice(n, {
+          id: draft.id,
+          market: key,
+          side: draft.side,
+          filled,
+          baseDecimals: market.baseDecimals,
+          healthBefore: draft.healthBefore,
+          healthAfter: Number.isFinite(healthAfter) ? healthAfter : null,
+          cost,
+          estLiqCost: draft.estLiqCost,
+        }),
+      );
+    }
     if (outcome === "pending") {
       await store.upsertCounterfactual({
         actionId: draft.id,
@@ -1375,6 +1395,8 @@ export class Engine {
   private async alert(account: AccountRow, kind: string, message: string): Promise<void> {
     this.deps.log.warn(`alert: ${message}`, { account: account.owner, kind });
     await this.deps.store.insertAlert({ accountId: account.id, kind, message });
+    const n = this.deps.notify;
+    if (n) n.send(account.owner, alertNotice(n, kind, message));
   }
 }
 

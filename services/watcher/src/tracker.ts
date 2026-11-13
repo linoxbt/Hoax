@@ -13,6 +13,7 @@ import type { ActionRow, CounterfactualRow, Store } from "@hoax/db";
 import { getAddress } from "viem";
 import type { KeyProvider } from "./keystore.ts";
 import type { Logger } from "./log.ts";
+import { type Notifier, outcomeNotice } from "./notifier.ts";
 
 export class CounterfactualTracker {
   constructor(
@@ -21,6 +22,7 @@ export class CounterfactualTracker {
     private readonly log: Logger,
     private readonly now: () => number = Date.now,
     private readonly keys: KeyProvider | null = null,
+    private readonly notify: Notifier | null = null,
   ) {}
 
   async run(): Promise<number> {
@@ -148,6 +150,9 @@ export class CounterfactualTracker {
     await this.store.upsertCounterfactual({ ...row, ...signed });
     await this.store.updateActionOutcome(action.id, outcome, reason ?? undefined);
     if (outcome === "saved") this.log.info("save confirmed", { action: action.id, mark, preserved: row.preserved });
+    if (this.notify && (outcome === "saved" || outcome === "missed")) {
+      this.notify.send(action.owner, outcomeNotice(this.notify, { id: action.id, market: action.market, outcome, preserved: row.preserved }));
+    }
   }
 
   private async sign(
