@@ -207,10 +207,6 @@
 .dark.db-set .eyebrow { color: var(--blue-300); }
 .dark.db-set .btn:disabled { opacity: 0.4; }
 .db-access { display: grid; gap: 1.6rem; padding: 2.8rem; }
-.db-access .lgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.4rem, 1fr)); gap: 0.6rem; }
-.db-access .lgrid span { text-align: center; padding: 0.9rem 0.4rem; border-radius: var(--r-s); background: var(--bg); border: var(--b) solid var(--line); font-family: var(--ui); font-size: 1.25rem; font-weight: 500; color: var(--muted); }
-.db-access .lgrid span.on { background: var(--blue-50); border-color: var(--blue-100); color: var(--blue); }
-.db-access .lgrid span.off { color: var(--soft); }
 .db-addr { display: grid; gap: 2rem; padding: 2.8rem 3.2rem; }
 .db-addr .mono { font-size: 1.3rem; }
 .db-keyval { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 1rem; }
