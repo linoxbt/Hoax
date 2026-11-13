@@ -1,4 +1,5 @@
 import { PageHead, SectionHead } from "@/components/Kicker";
+import { Btn, Eyebrow, Split } from "@/components/Ui";
 
 export const metadata = { title: "Security" };
 
@@ -28,6 +29,8 @@ const KEYS: Array<[string, string]> = [
 ];
 
 export default function Security() {
+  const can = GRANT.filter((g) => g[2]);
+  const cannot = GRANT.filter((g) => !g[2]);
   return (
     <>
       <PageHead
@@ -44,59 +47,98 @@ export default function Security() {
         ]}
       />
 
-      <section className="sec cells c2">
-        <div className="p formula-cell">
-          <div className="mono-s ink">The link</div>
-          <div>
-            <h2 className="h2">One transaction. Less than dreamDEX asks.</h2>
-            <p className="txt" style={{ marginTop: "2.4rem", maxWidth: "52rem" }}>
-              dreamDEX&apos;s own Link a bot adds a registry-wide grant. For a dreamDEX Safe, Hoax grants per perp pool only, from your wallet to your Safe.
-              Verified on a fork of Hideki: 21 pools linked in one transaction, revoked in one, and refused from anyone but the owner. A wallet that
-              trades without a Safe gets the same registry-wide grant Link a bot gives, and the link step says so before you sign.
-            </p>
+      {/* the link: what the key can and cannot do */}
+      <section className="pg-sec-first">
+        <div className="shead split">
+          <div className="stack" style={{ gap: "2rem" }}>
+            <Eyebrow>01 / The link</Eyebrow>
+            <Split className="h2" delay={0.05}>
+              One transaction. Less than dreamDEX asks.
+            </Split>
           </div>
+          <p className="txt" data-reveal>
+            dreamDEX&apos;s own Link a bot adds a registry-wide grant. For a dreamDEX Safe, Hoax grants per perp pool only, from your wallet to your Safe.
+            Verified on a fork of Hideki: 21 pools linked in one transaction, revoked in one, and refused from anyone but the owner. A wallet that trades
+            without a Safe gets the same registry-wide grant Link a bot gives, and the link step says so before you sign.
+          </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          <div className="grants" style={{ margin: 0, border: 0, borderTop: "var(--b) solid var(--line)" }}>
-            {GRANT.map(([fn, what, ok]) => (
-              <div key={fn} className={ok ? "" : "no"}>
-                <span className="dot">{ok ? "✓" : "×"}</span>
-                <b className="mono" style={{ fontWeight: 500, fontSize: "1.4rem" }}>
-                  {fn}
-                </b>
-                <small>{what}</small>
-              </div>
-            ))}
+        <div className="pg-two">
+          <div className="card pg-grant" data-reveal>
+            <Eyebrow>What the Hoax key can do</Eyebrow>
+            <div className="h3">Three order selectors.</div>
+            <ul className="pg-glist">
+              {can.map(([fn, what]) => (
+                <li key={fn}>
+                  <i className="yes" aria-label="granted">
+                    ✓
+                  </i>
+                  <span>
+                    <b className="mono">{fn}</b>
+                    <small>{what}</small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="dark pg-grant" data-reveal style={{ ["--d" as string]: "0.08s" }}>
+            <Eyebrow>What it cannot do</Eyebrow>
+            <div className="h3">Move your funds.</div>
+            <ul className="pg-glist">
+              {cannot.map(([fn, what]) => (
+                <li key={fn}>
+                  <i className="no" aria-label="not granted">
+                    ×
+                  </i>
+                  <span>
+                    <b className="mono">{fn}</b>
+                    <small>{what}</small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="pg-grant-foot">Pause in Settings. Revoke from Settings or from dreamDEX, instantly.</p>
           </div>
         </div>
       </section>
 
-      <section className="sec">
-        <SectionHead label="Threat model" title="What could go wrong" sub="Each threat, and the control that limits it." />
-        <div className="cells c4 bt threats">
+      {/* threat model, as FAQ-style rows */}
+      <section className="sp pg-faq">
+        <div className="pg-faq-head">
+          <Eyebrow>02 / Threat model</Eyebrow>
+          <Split className="h2" delay={0.05}>
+            What could go wrong
+          </Split>
+          <p className="txt" data-reveal>
+            Each threat, and the control that limits it.
+          </p>
+          <div data-reveal>
+            <Btn href="https://github.com/linoxbt/Hoax" external>
+              Read the code
+            </Btn>
+          </div>
+        </div>
+        <ol className="pg-faq-rows">
           {THREATS.map(([t, c], i) => (
-            <div key={t} className="p" data-reveal style={{ ["--d" as string]: `${(i % 4) * 0.05}s` }}>
-              <div className="mono-s muted">[{String(i + 1).padStart(2, "0")}]</div>
-              <div className="h5" style={{ marginTop: "3.2rem" }}>
-                {t}
-              </div>
-              <p className="txt" style={{ marginTop: "1.2rem" }}>
-                {c}
-              </p>
+            <li key={t} data-reveal style={{ ["--d" as string]: `${(i % 4) * 0.04}s` }}>
+              <span className="pg-faq-n">{String(i + 1).padStart(2, "0")}</span>
+              <b>{t}</b>
+              <p>{c}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* keys and control, in a pale-blue frame */}
+      <section className="sp">
+        <SectionHead label="03 / Keys and control" title="Your wallet stays in charge" />
+        <div className="panel pg-keys">
+          {KEYS.map(([t, d], i) => (
+            <div key={t} className="panel-in" data-reveal style={{ ["--d" as string]: `${i * 0.06}s` }}>
+              <span className="eyebrow">{t}</span>
+              <p className="h5 ink">{d}</p>
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="sec cells c3">
-        {KEYS.map(([t, d], i) => (
-          <div key={t} className="p stat-cell" data-reveal style={{ ["--d" as string]: `${i * 0.06}s` }}>
-            <div className="mono-s accent">{t}</div>
-            <p className="h5" style={{ fontWeight: 600 }}>
-              {d}
-            </p>
-          </div>
-        ))}
       </section>
     </>
   );

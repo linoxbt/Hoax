@@ -64,7 +64,7 @@
 .pg-brief-cap { font-size: 1.2rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em; color: var(--blue-300); margin-top: 0.4rem; }
 .pg-brief-title { margin-top: -0.8rem; }
 .pg-brief-in { background: var(--white); border-radius: var(--r-m); padding: 2.4rem; display: grid; gap: 1.2rem; }
-.pg-brief-in .txt { font-size: 1.5rem; }
+.pg-brief-in .txt, .dark .pg-brief-in .txt { font-size: 1.5rem; color: var(--soft); }
 .pg-brief-in .pg-eq > span { transition: color 0.2s; color: var(--muted); }
 .pg-brief-in .pg-eq.on-close .t-close, .pg-brief-in .pg-eq.on-liq .t-liq, .pg-brief-in .pg-eq.on-lambda .t-lambda { color: var(--blue); }
 .pg-brief-in .pg-eq.on-lambda > span { color: var(--blue); }
@@ -187,6 +187,15 @@
 .pg-tape-track .up { color: var(--ok); }
 .pg-tape-track .down { color: var(--bad); }
 
+
+/* ---------- 404 and error: one centred card ---------- */
+.pg-center-wrap { display: flex; align-items: center; justify-content: center; min-height: 68vh; padding: 8rem 0 4rem; }
+.pg-center { position: relative; overflow: hidden; width: 100%; max-width: 64rem; padding: 4.8rem; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1.8rem; }
+.pg-center .txt { max-width: 48ch; }
+.pg-center-code { font-family: var(--sans); font-size: 12rem; font-weight: 500; line-height: 0.9; letter-spacing: -0.05em; color: var(--blue-50); margin-bottom: 0.8rem; }
+.pg-center-ref { font-family: var(--mono); font-size: 1.3rem; color: var(--muted); background: var(--bg); border-radius: var(--r-s); padding: 0.6rem 1.2rem; }
+.pg-center-act { display: flex; gap: 1.2rem; flex-wrap: wrap; justify-content: center; margin-top: 1.2rem; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 991px) {
   .pg-step { gap: 4.8rem; }
@@ -222,9 +231,29 @@
   .pg-tile .num.s { font-size: 2.4rem; }
   .pg-list-head { padding: 1.8rem var(--pad); }
   .pg-explorer { padding: 2rem; gap: 1.8rem; }
+  .pg-center { padding: 3.2rem 2.2rem; }
+  .pg-center-code { font-size: 8rem; }
   .pg-markets-head { padding: 2rem var(--pad) 0; flex-direction: column; align-items: flex-start; }
   .pg-markets-tiles { padding: 1.6rem var(--pad); }
   .pg-markets-tiles .pg-tile { padding: 1.4rem 1.6rem; }
+  .pg-markets .scroll-x { overflow: visible; }
+  .pg-mtable, .pg-mtable tbody { display: block; }
+  .pg-mtable thead { display: none; }
+  .pg-mtable tr { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "mk mark" "mm feed" "min act"; gap: 0.8rem 1.6rem; padding: 1.6rem var(--pad); border-bottom: var(--b) solid var(--line); }
+  .pg-mtable tr:last-child { border-bottom: 0; }
+  table.list.pg-mtable td { display: block; padding: 0 !important; border: 0; background: none !important; min-width: 0; white-space: normal; }
+  .pg-mtable .c-mk { grid-area: mk; }
+  .pg-mtable .c-mark { grid-area: mark; text-align: right; align-self: center; font-size: 1.5rem; }
+  .pg-mtable .c-mm { grid-area: mm; }
+  .pg-mtable .c-min { grid-area: min; }
+  .pg-mtable .c-feed { grid-area: feed; text-align: right; }
+  .pg-mtable .c-act { grid-area: act; text-align: right; }
+  .pg-mtable td[data-label] { font-size: 1.3rem; color: var(--ink-2); }
+  .pg-mtable td[data-label]::before { content: attr(data-label) " "; color: var(--muted); margin-right: 0.4rem; }
+  .pg-mtable .pg-skel { grid-template-areas: none; grid-template-columns: 1fr 1fr; }
+  .pg-mtable .pg-skel td { grid-area: auto; }
+  .pg-explorer .seg { display: flex; flex-wrap: nowrap; }
+  .pg-explorer .seg button { flex: 1; justify-content: center; padding: 0 0.8rem; font-size: 1.3rem; }
   .pg-explorer-body { grid-template-columns: 1fr; }
   .pg-field { padding-right: 0; }
   .pg-field-l { right: 0.4rem; background: rgba(255, 255, 255, 0.85); padding: 0 0.4rem; border-radius: 0.3rem; }

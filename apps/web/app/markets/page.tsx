@@ -16,7 +16,7 @@ export default function Markets() {
         }
         actions={[{ href: "/start", label: "Protect my positions" }]}
       />
-      <section className="sec">
+      <section data-reveal>
         <MarketTable />
       </section>
     </>

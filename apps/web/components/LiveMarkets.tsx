@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { Arrow } from "@/components/Ui";
 import { units } from "@/lib/format";
 import { api } from "@/lib/session";
 import type { MarketJson } from "@/lib/types";
@@ -28,9 +29,9 @@ export function useMarkets(everyMs = 5000, chainId = 50383) {
         if (!alive) return;
         const next: Record<string, "up" | "down"> = {};
         for (const m of markets) {
-          const before = prev.current[m.symbol];
-          if (before && m.mark && before !== m.mark) next[m.symbol] = BigInt(m.mark) > BigInt(before) ? "up" : "down";
-          prev.current[m.symbol] = m.mark;
+          const before = prev.current[m.pool];
+          if (before && m.mark && before !== m.mark) next[m.pool] = BigInt(m.mark) > BigInt(before) ? "up" : "down";
+          prev.current[m.pool] = m.mark;
         }
         setRows(markets);
         setMoves(next);
@@ -51,14 +52,14 @@ export function useMarkets(everyMs = 5000, chainId = 50383) {
 /** A scrolling tape of every market's mark. */
 export function MarketTape() {
   const { rows, moves } = useMarkets();
-  if (!rows) return <div className="tape" aria-hidden style={{ height: "4.4rem" }} />;
+  if (!rows) return <div className="pg-tape" aria-hidden style={{ height: "4.4rem" }} />;
   const real = rows.filter((m) => !m.baseSymbol.toUpperCase().startsWith("LOADTEST"));
   const items = [...real, ...real];
   return (
-    <div className="tape" aria-label="Live dreamDEX perp marks">
-      <div className="tape-track">
+    <div className="pg-tape" aria-label="Live dreamDEX perp marks">
+      <div className="pg-tape-track">
         {items.map((m, i) => (
-          <span key={`${m.symbol}-${i}`} className={moves[m.symbol] ?? ""}>
+          <span key={`${m.pool}-${i}`} className={moves[m.pool] ?? ""}>
             <b>{m.baseSymbol}</b> {price(m)}
           </span>
         ))}
@@ -67,49 +68,95 @@ export function MarketTape() {
   );
 }
 
-/** The full table, for /markets. */
+/** The full table, for /markets: a white card with a live pill, three overview tiles and the table. */
 export function MarketTable() {
   const { rows, moves } = useMarkets();
+  const live = rows?.filter((m) => m.markOk).length ?? 0;
   return (
-    <div className="mtable" role="table" aria-label="dreamDEX perp markets">
-      <div className="mrow head" role="row">
-        <span>Market</span>
-        <span>Mark</span>
-        <span>Maintenance</span>
-        <span>Min size</span>
-        <span>Feed</span>
-        <span />
-      </div>
-      {!rows &&
-        Array.from({ length: 8 }, (_, i) => (
-          <div key={i} className="mrow skel" role="row">
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-        ))}
-      {rows?.map((m) => (
-        <div key={m.symbol} className="mrow" role="row">
-          <span>
-            <b>{m.baseSymbol}</b>
-            <small>-PERP</small>
-          </span>
-          <span className={`mono ${moves[m.symbol] ?? ""}`}>{price(m)}</span>
-          <span className="mono">{(m.maintenanceMarginBps / 100).toFixed(2)}%</span>
-          <span className="mono">
-            {units(m.minQuantity, m.baseDecimals, 6)} {m.baseSymbol}
-          </span>
-          <span>{m.markOk ? <span className="tag saved">live</span> : <span className="tag skipped">stale</span>}</span>
-          <span>
-            <Link href="/start" className="cap accent">
-              Protect →
-            </Link>
-          </span>
+    <div className="card pg-markets">
+      <div className="pg-card-head pg-markets-head">
+        <div className="stack" style={{ gap: "0.6rem" }}>
+          <span className="eyebrow">Coverage / Somnia Hideki</span>
+          <div className="h4">dreamDEX perp markets</div>
         </div>
-      ))}
+        <span className={`live-pill${rows && live === 0 ? " err" : ""}`}>
+          <i />
+          {rows ? `Live · ${live} of ${rows.length} feeds` : "Connecting"}
+        </span>
+      </div>
+      <div className="pg-tiles pg-markets-tiles">
+        <div className="pg-tile lead">
+          <span className="pg-tile-k">Markets</span>
+          <div className="num s accent">{rows ? rows.length : "–"}</div>
+        </div>
+        <div className="pg-tile">
+          <span className="pg-tile-k">Live marks</span>
+          <div className="num s">{rows ? live : "–"}</div>
+        </div>
+        <div className="pg-tile">
+          <span className="pg-tile-k">Refresh</span>
+          <div className="num s">
+            5<small>s</small>
+          </div>
+        </div>
+        <div className="pg-tile">
+          <span className="pg-tile-k">Links needed</span>
+          <div className="num s">1</div>
+        </div>
+      </div>
+      <div className="scroll-x">
+        <table className="list pg-mtable" aria-label="dreamDEX perp markets">
+          <thead>
+            <tr>
+              <th>Market</th>
+              <th>Mark</th>
+              <th>Maintenance</th>
+              <th>Min size</th>
+              <th>Feed</th>
+              <th aria-label="Action" />
+            </tr>
+          </thead>
+          <tbody>
+            {!rows &&
+              Array.from({ length: 8 }, (_, i) => (
+                <tr key={i} className="pg-skel">
+                  {Array.from({ length: 6 }, (_, j) => (
+                    <td key={j}>
+                      <i />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            {rows?.map((m) => (
+              <tr key={m.pool}>
+                <td className="c-mk">
+                  <span className="pg-mk">
+                    <span className="pg-mk-ico" aria-hidden>
+                      {m.baseSymbol.slice(0, 1)}
+                    </span>
+                    <b>{m.baseSymbol}</b>
+                    <small>-PERP</small>
+                  </span>
+                </td>
+                <td className={`c-mark pg-mark-cell ${moves[m.pool] ?? ""}`}>{price(m)}</td>
+                <td className="c-mm" data-label="Maintenance">
+                  {(m.maintenanceMarginBps / 100).toFixed(2)}%
+                </td>
+                <td className="c-min" data-label="Min size">
+                  {units(m.minQuantity, m.baseDecimals, 6)} {m.baseSymbol}
+                </td>
+                <td className="c-feed">{m.markOk ? <span className="tag saved">live</span> : <span className="tag skipped">stale</span>}</td>
+                <td className="c-act pg-act">
+                  <Link href="/start" className="corner-link">
+                    <span>Protect</span>
+                    <Arrow />
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

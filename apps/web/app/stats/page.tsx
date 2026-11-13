@@ -34,30 +34,44 @@ export default async function StatsPage() {
         }
         actions={[{ href: "/replay", label: "Watch the replay" }]}
       />
-      <section className="sec cells c4">
-        {cells.slice(0, 4).map(([k, v, u], i) => (
-          <div key={k} className="p stat-cell" data-reveal style={{ ["--d" as string]: `${i * 0.05}s` }}>
-            <div className="mono-s soft">{k}</div>
-            <div className={`num m${i === 0 ? " accent" : ""}`}>
-              {v}
-              {u && <small>{u}</small>}
+
+      {/* the overview card: stat tiles inside one white sheet */}
+      <section className="card pg-kpi" data-reveal>
+        <div className="pg-card-head">
+          <div className="h4">Protection overview</div>
+          <span className="mono-xs muted">{DEMO ? "SAMPLE DATA" : "ALL PROTECTED ACCOUNTS"}</span>
+        </div>
+        <div className="pg-tiles">
+          {cells.slice(0, 4).map(([k, v, u], i) => (
+            <div key={k} className={`pg-tile${i === 0 ? " lead" : ""}`}>
+              <span className="pg-tile-k">{k}</span>
+              <div className={`num m${i === 0 ? " accent" : ""}`}>
+                {v}
+                {u && <small>{u}</small>}
+              </div>
             </div>
-          </div>
-        ))}
-      </section>
-      <section className="sec cells c4">
-        {cells.slice(4).map(([k, v]) => (
-          <div key={k} className="p">
-            <div className="mono-s soft">{k}</div>
-            <div className="num s" style={{ marginTop: "1.6rem" }}>
-              {v}
+          ))}
+        </div>
+        <div className="pg-tiles small">
+          {cells.slice(4).map(([k, v]) => (
+            <div key={k} className="pg-tile">
+              <span className="pg-tile-k">{k}</span>
+              <div className="num s">{v}</div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </section>
-      <section className="sec">
-        <SectionHead label="Receipts" title="Latest receipts" sub="Each row links to a public receipt page with its transaction, signature and counterfactual." />
-        <div className="bt">
+
+      {/* receipts */}
+      <section className="sp">
+        <SectionHead label="Receipts" title="Latest receipts" sub="Each row links to a public receipt page with its transaction, signature and counterfactual." split />
+        <div className="card pg-list" data-reveal>
+          <div className="pg-card-head pg-list-head">
+            <div className="h5 ink">Newest first</div>
+            <span className="mono-xs muted">
+              {rows.length} SHOWN{DEMO ? " · SAMPLE DATA" : ""}
+            </span>
+          </div>
           <ReceiptTable actions={rows} />
         </div>
       </section>
