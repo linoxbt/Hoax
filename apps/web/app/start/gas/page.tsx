@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatEther, parseEther } from "viem";
 import { sendTransaction, waitForTransactionReceipt } from "wagmi/actions";
 import { StepNav } from "@/components/StepNav";
+import { Btn, Eyebrow } from "@/components/Ui";
 import { KEY_GAS_FLOOR, short, txUrl } from "@/lib/format";
 import { useStart } from "@/lib/startContext";
 import { friendly } from "@/lib/useLinkTx";
@@ -44,44 +45,67 @@ export default function GasStep() {
   }
 
   return (
-    <div className="grid g-aside" style={{ gap: "4.8rem" }}>
-      <div>
-        <h2>Gas for Hoax&apos;s closes</h2>
-        <p className="copy soft" style={{ marginTop: "2rem" }}>
-          Each protective close is one transaction from your Hoax key.
-        </p>
-      </div>
-      <div>
-        {!linked ? (
-          <p className="copy soft">Link Hoax first.</p>
-        ) : (
-          <>
-            <div className="num accent">
-              {gas !== null ? Number(formatEther(gas)).toFixed(4) : "–"}
-              <small>STT on {short(key)}</small>
+    <article className="card st-step">
+      <div className="st-grid">
+        <div className="st-explain">
+          <Eyebrow>Step 03 / Gas</Eyebrow>
+          <h2 className="h2">Gas for Hoax&apos;s closes</h2>
+          <p className="txt">Each protective close is one transaction from your Hoax key.</p>
+          <div className="panel st-ctx">
+            <Eyebrow>How the key&apos;s gas works</Eyebrow>
+            <div className="st-li">
+              <span className="st-mk">1</span>
+              <span>
+                <b>Paid in STT by the key</b>
+                <small>Below {formatEther(KEY_GAS_FLOOR)} STT the balance counts as low.</small>
+              </span>
             </div>
-            <p className="copy" style={{ marginTop: "1.6rem" }}>
-              {gas === null ? "Balance unavailable." : low ? (sponsored ? "Low. Hoax's gas wallet tops it up automatically." : "Low. Send some to keep protection running.") : "Ready."}
-            </p>
-            <div className="row" style={{ marginTop: "2rem" }}>
-              <button className={`pill${low && !sponsored ? "" : " ghost"}`} disabled={busy || !hoax.wallet} onClick={fund}>
-                {busy ? "Sending…" : `Send ${AMOUNT} STT from my wallet`}
-              </button>
-              {hash && (
-                <a className="cap accent" href={txUrl(hash, chainId)} target="_blank" rel="noreferrer">
-                  {short(hash)} ↗
-                </a>
-              )}
+            <div className="st-li">
+              <span className="st-mk">2</span>
+              <span>
+                <b>{sponsored ? "Topped up by Hoax's gas wallet" : `Topped up by you`}</b>
+                <small>
+                  {sponsored
+                    ? `This network's engine refills a low key automatically. You can still send some yourself.`
+                    : `Send ${AMOUNT} STT from your wallet to the key in one transfer.`}
+                </small>
+              </span>
             </div>
-            {err && (
-              <p className="note bad" style={{ marginTop: "1.6rem" }}>
-                {err}
+          </div>
+        </div>
+
+        <div className="st-act">
+          {!linked ? (
+            <p className="txt">Link Hoax first.</p>
+          ) : (
+            <div className="st-box st-bal">
+              <div className="st-bal-top">
+                <span className="eyebrow">Key balance / STT</span>
+                {gas !== null && <span className={`tag ${low ? "skipped" : "saved"}`}>{low ? "Low" : "Ready"}</span>}
+              </div>
+              <div className={`num${low ? "" : " accent"}`}>
+                {gas !== null ? Number(formatEther(gas)).toFixed(4) : "–"}
+                <small>STT on {short(key)}</small>
+              </div>
+              <p className="st-bal-line">
+                {gas === null ? "Balance unavailable." : low ? (sponsored ? "Low. Hoax's gas wallet tops it up automatically." : "Low. Send some to keep protection running.") : "Ready."}
               </p>
-            )}
-          </>
-        )}
-        <StepNav back="/start/link" next="/start/policy" nextLabel="Policy" nextDisabled={!linked} />
+              <div className="st-act-row bt" style={{ paddingTop: "2rem", marginTop: "0.4rem" }}>
+                <Btn fill={low && !sponsored} disabled={busy || !hoax.wallet} onClick={fund}>
+                  {busy ? "Sending…" : `Send ${AMOUNT} STT from my wallet`}
+                </Btn>
+                {hash && (
+                  <a className="st-hash" href={txUrl(hash, chainId)} target="_blank" rel="noreferrer">
+                    {short(hash)} ↗
+                  </a>
+                )}
+              </div>
+              {err && <p className="note bad">{err}</p>}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <StepNav back="/start/link" next="/start/policy" nextLabel="Policy" nextDisabled={!linked} />
+    </article>
   );
 }

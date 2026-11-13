@@ -225,7 +225,7 @@ a.st-rail-i:hover { text-decoration: none; border-color: var(--line-2); }
   .st-rail-i::before { left: 1rem; right: 1rem; }
   .st-rail-i .eyebrow { font-size: 1.05rem; letter-spacing: 0; }
   .st-rail-t { font-size: 1.35rem; }
-  .st-rail-s span { display: none; }
+  .st-rail-s span, .st-rail-w { display: none; }
   .st-step.card { padding: 2.4rem 2rem; }
   .st-grid { gap: 3.2rem; }
   .st-ck { grid-template-columns: 2.4rem minmax(0, 1fr); gap: 1.2rem; padding: 1.4rem; }
@@ -243,5 +243,5 @@ a.st-rail-i:hover { text-decoration: none; border-color: var(--line-2); }
   .st-modal .modal-body { padding: 2.2rem; }
   .st-modal .modal-head { padding: 1.6rem 1.6rem 1.6rem 2.2rem; }
   .st-wdrop { position: fixed; left: var(--gut); right: var(--gut); top: calc(var(--header) + 0.8rem); width: auto; }
-  .menu-foot .st-wdrop { position: absolute; left: 0; right: auto; top: auto; bottom: calc(100% + 1rem); width: calc(100vw - 2 * var(--gut)); }
+  .menu-foot .st-wdrop { position: absolute; left: calc(-1.6rem - 1px); right: auto; top: auto; bottom: calc(100% + 1rem); width: calc(100vw - 2 * var(--gut)); }
 }

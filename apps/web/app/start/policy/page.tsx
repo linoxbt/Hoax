@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { StepNav } from "@/components/StepNav";
+import { Btn, Eyebrow } from "@/components/Ui";
 import { DEFAULT_POLICY_JSON } from "@/lib/appContext";
 import { BOUNDS, fromInput, policyProblems, toInput } from "@/lib/policyForm";
 import { api } from "@/lib/session";
@@ -56,52 +57,83 @@ export default function PolicyStep() {
     ["maxClosePct", "Max close per step %", "1"],
     ["maxSlippageBps", "Max slippage bps", "1"],
   ] as const;
+  const show = (n: number, digits = 0) => (Number.isFinite(n) ? n.toFixed(digits) : "–");
 
   return (
-    <div className="grid g-aside" style={{ gap: "4.8rem" }}>
-      <div>
-        <h2>Your policy</h2>
-        <p className="copy soft" style={{ marginTop: "2rem" }}>
-          Act at the trigger, restore to the target. Editable per position.
-        </p>
-      </div>
-      <div>
-        {!linked ? (
-          <p className="copy soft">Link the key first.</p>
-        ) : (
-          <>
-            <div className="cap soft">Markets: {markets.join(", ")}</div>
-            <div className="grid g2" style={{ marginTop: "1.6rem" }}>
-              {fields.map(([k, label, step]) => (
-                <label className="field" key={k}>
-                  <span>{label}</span>
-                  <input
-                    type="number"
-                    step={step}
-                    min={BOUNDS[k]?.min}
-                    max={BOUNDS[k]?.max}
-                    value={toInput(policy[k])}
-                    onChange={(e) => setPolicy({ ...policy, [k]: fromInput(e.target.value) })}
-                  />
-                </label>
-              ))}
-            </div>
-            {problems.length > 0 && (
-              <ul className="note bad" style={{ marginTop: "2rem" }} role="alert">
-                {problems.map((p) => (
-                  <li key={p}>{p}</li>
+    <article className="card st-step">
+      <div className="st-grid">
+        <div className="st-explain">
+          <Eyebrow>Step 04 / Policy</Eyebrow>
+          <h2 className="h2">Your policy</h2>
+          <p className="txt">Act at the trigger, restore to the target. Editable per position.</p>
+          {!linked ? (
+            <p className="txt">Link the key first.</p>
+          ) : (
+            <>
+              <div className="st-markets">
+                <span className="eyebrow soft">Markets:</span>
+                {markets.map((m) => (
+                  <span key={m} className="st-chip">
+                    {m}
+                  </span>
                 ))}
-              </ul>
-            )}
-            <div className="row" style={{ marginTop: "2.8rem" }}>
-              <button className="pill" disabled={busy || problems.length > 0} onClick={turnOn}>
-                {busy ? "Saving…" : saved.length > 0 ? "Turn on the rest" : "Turn on Hoax"}
-              </button>
-            </div>
-          </>
-        )}
-        <StepNav back="/start/gas" />
+              </div>
+              <div className="st-fields">
+                {fields.map(([k, label, step]) => (
+                  <label className="field" key={k}>
+                    <span>{label}</span>
+                    <input
+                      type="number"
+                      step={step}
+                      min={BOUNDS[k]?.min}
+                      max={BOUNDS[k]?.max}
+                      value={toInput(policy[k])}
+                      onChange={(e) => setPolicy({ ...policy, [k]: fromInput(e.target.value) })}
+                    />
+                  </label>
+                ))}
+              </div>
+              {problems.length > 0 && (
+                <ul className="note bad" role="alert">
+                  {problems.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              )}
+              <div>
+                <Btn fill disabled={busy || problems.length > 0} onClick={turnOn}>
+                  {busy ? "Saving…" : saved.length > 0 ? "Turn on the rest" : "Turn on Hoax"}
+                </Btn>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="panel st-set" aria-label="Your protection settings">
+          <Eyebrow>Your protection settings</Eyebrow>
+          <div className="st-set-blk">
+            <span className="h4">Trigger at {show(policy.triggerHealth, 2)}</span>
+            <p>Act at or below this account health.</p>
+          </div>
+          <div className="panel-in">
+            <span className="h4">Restore to {show(policy.targetHealth, 2)}</span>
+            <p>Restore to: the health each protective close aims for.</p>
+          </div>
+          <div className="st-set-blk">
+            <span className="h4">Close up to {show(policy.maxClosePct)}% per step</span>
+            <p>Largest single close.</p>
+          </div>
+          <div className="panel-in">
+            <span className="h4">Slippage cap {show(policy.maxSlippageBps)} bps</span>
+            <p>Worst fill vs. mark.</p>
+          </div>
+          <div className="st-set-foot">
+            <span className="eyebrow">Applies to</span>
+            <span className="mono-s ink">{markets.length > 0 ? markets.join(", ") : "–"}</span>
+          </div>
+        </div>
       </div>
-    </div>
+      <StepNav back="/start/gas" />
+    </article>
   );
 }

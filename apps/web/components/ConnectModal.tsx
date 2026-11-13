@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useConnectors, type Connector } from "wagmi";
 import { short } from "@/lib/format";
 import { useHoax } from "@/lib/wallet";
+import { Arrow, Btn } from "./Ui";
 
 const INSTALL = [
   ["MetaMask", "https://metamask.io/download/"],
@@ -107,90 +108,102 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
     { k: "Verify", done: hoax.signedIn, detail: "Free signature, no transaction" },
   ];
 
+  const now = steps.findIndex((x) => !x.done);
+
   return (
     <div className="modal-back" onClick={onClose} role="presentation">
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Connect a wallet" ref={dialog} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+      <div className="modal st-modal" role="dialog" aria-modal="true" aria-label="Connect a wallet" ref={dialog} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <span>Connect · {hoax.accountChain === 50312 ? "Somnia Shannon" : hoax.accountChain === 50383 ? "Somnia Hideki" : "Somnia"}</span>
-          <button className="x" onClick={onClose} aria-label="Close">
-            ×
+          <span className="eyebrow">
+            Connect / {hoax.accountChain === 50312 ? "Somnia Shannon" : hoax.accountChain === 50383 ? "Somnia Hideki" : "Somnia"}
+          </span>
+          <button className="st-x" onClick={onClose} aria-label="Close">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden>
+              <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+            </svg>
           </button>
         </div>
         <div className="modal-body">
-        <h3 className="h4">Your dreamDEX wallet</h3>
+          <div className="st-m-title">
+            <h3 className="h4">Your dreamDEX wallet</h3>
+          </div>
 
-        <ol className="checks">
-          {steps.map((s, i) => (
-            <li key={s.k} className={s.done ? "done" : i === steps.findIndex((x) => !x.done) ? "now" : ""}>
-              <span className="dot">{s.done ? "✓" : i + 1}</span>
-              <span>
-                <b>{s.k}</b>
-                <small>{s.detail}</small>
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        {!address && hoax.hasReown ? (
-          <button
-            className="pill wide"
-            onClick={() => {
-              onClose();
-              hoax.openConnect();
-            }}
-          >
-            Choose a wallet
-          </button>
-        ) : !address ? (
-          <div className="wallets">
-            {list.map((c) => (
-              <button key={c.uid} className="wallet" onClick={() => pick(c)} disabled={busy !== null}>
-                <WalletIcon c={c} />
-                <span>{c.name === "Injected" ? "Browser wallet" : c.name}</span>
-                <span className="mono-xs soft">{busy === c.uid ? "Opening…" : "Detected →"}</span>
-              </button>
+          <ol className="st-m-checks">
+            {steps.map((s, i) => (
+              <li key={s.k} className={s.done ? "done" : i === now ? "now" : ""}>
+                <span className={`st-mk${s.done ? "" : i === now ? " now" : " num"}`}>{s.done ? "✓" : i + 1}</span>
+                <span>
+                  <b>{s.k}</b>
+                  <small>{s.detail}</small>
+                </span>
+              </li>
             ))}
-            {list.length === 0 && (
-              <div className="nowallet">
-                <p className="copy soft">No wallet found in this browser.</p>
-                <div className="row" style={{ marginTop: "1.2rem" }}>
-                  {INSTALL.map(([name, href]) => (
-                    <a key={name} className="pill ghost" href={href} target="_blank" rel="noreferrer">
-                      {name} ↗
-                    </a>
-                  ))}
+          </ol>
+
+          {!address && hoax.hasReown ? (
+            <Btn
+              fill
+              wide
+              onClick={() => {
+                onClose();
+                hoax.openConnect();
+              }}
+            >
+              Choose a wallet
+            </Btn>
+          ) : !address ? (
+            <div className="st-wallets">
+              {list.map((c) => (
+                <button key={c.uid} className="st-wallet" onClick={() => pick(c)} disabled={busy !== null}>
+                  <WalletIcon c={c} />
+                  <span>{c.name === "Injected" ? "Browser wallet" : c.name}</span>
+                  <span className="st-wallet-go">
+                    {busy === c.uid ? (
+                      "Opening…"
+                    ) : (
+                      <>
+                        Detected <Arrow />
+                      </>
+                    )}
+                  </span>
+                </button>
+              ))}
+              {list.length === 0 && (
+                <div className="st-nowallet">
+                  <p>No wallet found in this browser.</p>
+                  <div className="row">
+                    {INSTALL.map(([name, href]) => (
+                      <Btn key={name} sm href={href} external>
+                        {name}
+                      </Btn>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+          ) : !hoax.onSupported ? (
+            <Btn fill wide onClick={() => run("chain")} disabled={busy !== null}>
+              {busy === "chain" ? "Confirm in wallet…" : "Switch to Somnia Hideki"}
+            </Btn>
+          ) : !hoax.signedIn ? (
+            <Btn fill wide onClick={() => run("sign")} disabled={busy !== null}>
+              {busy === "sign" ? "Sign in your wallet…" : "Verify wallet"}
+            </Btn>
+          ) : (
+            <p className="note">Connected and verified.</p>
+          )}
+
+          {err && <p className="note bad">{err}</p>}
+
+          <div className="st-m-foot">
+            <p>Hoax never asks for a seed phrase or a withdrawal.</p>
+            {!address && process.env.NEXT_PUBLIC_HOAX_DEMO === "1" && (
+              <button className="corner-link" onClick={hoax.useSample}>
+                <span>No wallet? Explore with a sample account</span>
+                <Arrow />
+              </button>
             )}
           </div>
-        ) : !hoax.onSupported ? (
-          <button className="pill wide" onClick={() => run("chain")} disabled={busy !== null}>
-            {busy === "chain" ? "Confirm in wallet…" : "Switch to Somnia Hideki"}
-          </button>
-        ) : !hoax.signedIn ? (
-          <button className="pill wide" onClick={() => run("sign")} disabled={busy !== null}>
-            {busy === "sign" ? "Sign in your wallet…" : "Verify wallet"}
-          </button>
-        ) : (
-          <p className="note">
-            Connected and verified.
-          </p>
-        )}
-
-        {err && (
-          <p className="note bad" style={{ marginTop: "1.6rem" }}>
-            {err}
-          </p>
-        )}
-
-        <p className="mono-xs soft" style={{ marginTop: "2.4rem", textAlign: "center" }}>
-          Hoax never asks for a seed phrase or a withdrawal.
-        </p>
-        {!address && process.env.NEXT_PUBLIC_HOAX_DEMO === "1" && (
-          <button className="linkish" onClick={hoax.useSample}>
-            No wallet? Explore with a sample account →
-          </button>
-        )}
         </div>
       </div>
     </div>

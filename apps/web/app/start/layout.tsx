@@ -5,16 +5,16 @@ import { useEffect } from "react";
 import { EngineBadge } from "@/components/EngineBadge";
 import { KEY_GAS_FLOOR } from "@/lib/format";
 import { LogoLoader } from "@/components/Logo";
-import { Label, Split } from "@/components/Ui";
+import { Eyebrow, Split } from "@/components/Ui";
 import { StartContext } from "@/lib/startContext";
 import { useAccount } from "@/lib/useAccount";
 import { useHoax } from "@/lib/wallet";
 
 const STEPS = [
-  ["/start", "01 Wallet"],
-  ["/start/link", "02 Link"],
-  ["/start/gas", "03 Gas"],
-  ["/start/policy", "04 Policy"],
+  ["/start", "01 / Connect", "Your wallet"],
+  ["/start/link", "02 / Link", "Link Hoax"],
+  ["/start/gas", "03 / Gas", "Fund its gas"],
+  ["/start/policy", "04 / Policy", "Set your policy"],
 ] as const;
 
 export default function StartLayout({ children }: { children: React.ReactNode }) {
@@ -32,9 +32,10 @@ export default function StartLayout({ children }: { children: React.ReactNode })
   // Gas and policy only make sense once the key is linked.
   const reachable = (href: string) => href === "/start" || (href === "/start/link" ? ready : ready && linked);
   // Steps past 01 are about the connected wallet's account: without one, back to step 01.
-  // hoax.session is undefined while the wallet reconnects, so wait for it before deciding.
+  // hoax.session is undefined while the wallet reconnects, and a signed-in wallet's account is
+  // unknown until its first read: wait for both before deciding, so a reload of /start/gas stays there.
   const router = useRouter();
-  const settled = hoax.session !== undefined;
+  const settled = hoax.session !== undefined && (!ready || view !== null || err !== null);
   const allowed = reachable(path);
   useEffect(() => {
     if (settled && !allowed) router.replace("/start");
@@ -42,43 +43,71 @@ export default function StartLayout({ children }: { children: React.ReactNode })
 
   return (
     <StartContext.Provider value={{ session, view, err, setErr, refresh, linked, linkedMarkets }}>
-      <section className="sec first">
-        <div className="between" style={{ padding: "6.4rem var(--pad) 3.2rem", alignItems: "flex-end" }}>
-          <div>
-            <Label dot>Get protected · 2 minutes</Label>
-            <Split as="h1" className="h1">
-              Get protected
-            </Split>
-          </div>
-          <EngineBadge chainId={session?.chainId} />
+      <section className="st-head">
+        <div className="st-head-l">
+          <Eyebrow>Get protected / 2 minutes</Eyebrow>
+          <Split as="h1" className="h1">
+            Get protected
+          </Split>
+          <p className="txt" data-reveal>
+            Connect the wallet you trade with, link a trade-only Hoax key in one transaction, fund its gas and choose when it acts.
+          </p>
         </div>
-        <div>
-          <div className="rail">
-            {STEPS.map(([href, label]) => {
-              const cls = [path === href ? "on" : "", done(href) && path !== href ? "done" : ""].join(" ").trim() || undefined;
-              return reachable(href) ? (
-                <Link key={href} href={href} className={cls}>
-                  {label}
-                </Link>
-              ) : (
-                <span key={href} className={cls}>
-                  {label}
+        <div className="st-head-r">
+          <span className="st-engine">
+            <EngineBadge chainId={session?.chainId} />
+          </span>
+        </div>
+      </section>
+
+      <nav aria-label="Onboarding steps">
+        <ol className="st-rail">
+          {STEPS.map(([href, num, title]) => {
+            const on = path === href;
+            const isDone = done(href) && !on;
+            const open = reachable(href);
+            const cls = `st-rail-i${on ? " on" : isDone ? " done" : !open ? " locked" : ""}`;
+            const status = on ? "Current step" : isDone ? "Done" : open ? "Open" : "Locked";
+            const body = (
+              <>
+                <span className="eyebrow">
+                  {num.slice(0, 2)}
+                  <span className="st-rail-w">{num.slice(2)}</span>
                 </span>
-              );
-            })}
+                <span className="st-rail-t">{title}</span>
+                <span className="st-rail-s">
+                  <i aria-hidden>{isDone ? "✓" : ""}</i>
+                  <span>{status}</span>
+                </span>
+              </>
+            );
+            return (
+              <li key={href} style={{ display: "contents" }}>
+                {open ? (
+                  <Link href={href} className={cls} aria-current={on ? "step" : undefined}>
+                    {body}
+                  </Link>
+                ) : (
+                  <span className={cls} aria-disabled="true">
+                    {body}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+
+      <div className="st-body">
+        {err && <p className="note bad">{err}</p>}
+        {allowed ? (
+          children
+        ) : (
+          <div className="card st-wait">
+            <LogoLoader label={settled ? "Connect your wallet first…" : "Reading your wallet…"} />
           </div>
-        </div>
-      </section>
-      <section className="sec">
-        <div className="pad start-body">
-          {err && (
-            <p className="note bad" style={{ marginBottom: "2.4rem" }}>
-              {err}
-            </p>
-          )}
-          {allowed ? children : <LogoLoader label={settled ? "Connect your wallet first…" : "Reading your wallet…"} />}
-        </div>
-      </section>
+        )}
+      </div>
     </StartContext.Provider>
   );
 }
