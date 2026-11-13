@@ -12,9 +12,8 @@ type Action = { href: string; label: string; ink?: boolean; external?: boolean }
  */
 export function PageHead({ kicker, title, sub, actions = [], children }: { kicker: string; title: string; sub?: React.ReactNode; actions?: Action[]; children?: React.ReactNode }) {
   return (
-    <section className="sec first phead">
+    <section className="phead">
       <div className="phead-title">
-        <span className="plus tl" aria-hidden />
         <Label dot>{kicker}</Label>
         <Split as="h1" className="h1">
           {title}
@@ -22,13 +21,13 @@ export function PageHead({ kicker, title, sub, actions = [], children }: { kicke
       </div>
       <div className="phead-side">
         {sub && (
-          <div className="txt ink" style={{ padding: "var(--pad)" }} data-reveal>
+          <div className="txt" data-reveal>
             {sub}
           </div>
         )}
         {children}
         {actions.length > 0 && (
-          <div className="actions" style={actions.length === 1 ? { gridTemplateColumns: "1fr" } : undefined}>
+          <div className="actions">
             {actions.map((a) => (
               <CornerLink key={a.href} href={a.href} ink={a.ink} external={a.external}>
                 {a.label}

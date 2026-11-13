@@ -158,33 +158,33 @@ export function HeroDrawing({ mark = 2400 }: { mark?: number }) {
       >
         <defs>
           <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="6" stroke="#282828" strokeWidth="1" opacity="0.5" />
+            <line x1="0" y1="0" x2="0" y2="6" stroke="#929699" strokeWidth="1" opacity="0.6" />
           </pattern>
         </defs>
 
         {/* drafting grid */}
         {Array.from({ length: 17 }, (_, i) => (
-          <line key={`v${i}`} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="#b3b3af" strokeWidth="0.6" opacity="0.35" />
+          <line key={`v${i}`} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="#1f2326" strokeWidth="0.8" opacity="1" />
         ))}
         {Array.from({ length: 7 }, (_, i) => (
-          <line key={`h${i}`} x1={0} x2={W} y1={i * 100 + 20} y2={i * 100 + 20} stroke="#b3b3af" strokeWidth="0.6" opacity="0.35" />
+          <line key={`h${i}`} x1={0} x2={W} y1={i * 100 + 20} y2={i * 100 + 20} stroke="#1f2326" strokeWidth="0.8" opacity="1" />
         ))}
 
         {/* levels */}
         <g fontFamily="var(--mono)" fontSize={fs} letterSpacing="0">
-          <line x1="40" x2="1500" y1={y(p0)} y2={y(p0)} stroke="#282828" strokeWidth="0.8" strokeDasharray="2 5" />
-          <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(p0) - (narrow ? 8 : -4)} fill="#626260">ENTRY {fmt(p0)}</text>
-          <line x1="40" x2="1500" y1={y(trig)} y2={y(trig)} stroke="#282828" strokeWidth="1" strokeDasharray="8 5" />
-          <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(trig) - (narrow ? 8 : -4)} fill="#282828">ACT · H 1.25</text>
-          <line x1="40" x2="1500" y1={y(liq0)} y2={y(liq0)} stroke="#9a9a96" strokeWidth="1" strokeDasharray="3 3" />
-          <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(liq0) + (narrow ? 26 : 4)} fill="#9a9a96">
-            LIQ {fmt(liq0)}
+          <line x1="40" x2="1500" y1={y(p0)} y2={y(p0)} stroke="#6b7073" strokeWidth="0.8" strokeDasharray="2 5" />
+          <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(p0) - (narrow ? 8 : -4)} fill="#6b7073">Entry {fmt(p0)}</text>
+          <line x1="40" x2="1500" y1={y(trig)} y2={y(trig)} stroke="#c3c8c9" strokeWidth="1" strokeDasharray="8 5" />
+          <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(trig) - (narrow ? 8 : -4)} fill="#c3c8c9">Act · H 1.25</text>
+          <line x1="40" x2="1500" y1={y(liq0)} y2={y(liq0)} stroke="#6b7073" strokeWidth="1" strokeDasharray="3 3" />
+          <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(liq0) + (narrow ? 26 : 4)} fill="#6b7073">
+            Liq {fmt(liq0)}
           </text>
           {run.trims.length > 0 && run.liq > 0 && (
             <g style={{ transition: "transform 0.6s" }}>
               <line x1="40" x2="1500" y1={y(Math.max(lo + 4, run.liq))} y2={y(Math.max(lo + 4, run.liq))} stroke="#fa3600" strokeWidth="1.4" />
               <text x={narrow ? 1590 : 1508} textAnchor={narrow ? "end" : "start"} y={y(Math.max(lo + 4, run.liq)) + (narrow ? 26 : 4)} fill="#fa3600">
-                LIQ {fmt(run.liq)}
+                Liq {fmt(run.liq)}
               </text>
             </g>
           )}
@@ -196,21 +196,21 @@ export function HeroDrawing({ mark = 2400 }: { mark?: number }) {
           const top = y(Math.max(k.o, k.c));
           const h = Math.max(2, Math.abs(y(k.o) - y(k.c)));
           return (
-            <g key={i} stroke="#282828" strokeWidth="1.2">
+            <g key={i} stroke="#929699" strokeWidth="1.2">
               <line x1={k.x} x2={k.x} y1={y(k.h)} y2={y(k.l)} />
-              <rect x={k.x - 7} y={top} width="14" height={h} fill={up ? "#f5f5ef" : "url(#hatch)"} />
+              <rect x={k.x - 7} y={top} width="14" height={h} fill={up ? "#0f1113" : "url(#hatch)"} />
             </g>
           );
         })}
 
         {/* the live segment the trader drags */}
-        <line x1={x0} y1={y(p0)} x2={xHandle} y2={segY(price)} stroke="#282828" strokeWidth="2" />
+        <line x1={x0} y1={y(p0)} x2={xHandle} y2={segY(price)} stroke="#3e8fb3" strokeWidth="2.2" />
         {/* the unprotected twin's fate */}
         {bareLiquidated && (
           <g>
-            <circle cx={x0 + ((xHandle - x0) * (p0 - liq0)) / (p0 - price)} cy={y(liq0)} r="9" fill="none" stroke="#9a9a96" strokeWidth="1.2" />
-            <text x={x0 + ((xHandle - x0) * (p0 - liq0)) / (p0 - price) - 50} y={y(liq0) + 30} fontFamily="var(--mono)" fontSize={fs} fill="#9a9a96">
-              WITHOUT HOAX: LIQUIDATED
+            <circle cx={x0 + ((xHandle - x0) * (p0 - liq0)) / (p0 - price)} cy={y(liq0)} r="9" fill="none" stroke="#6b7073" strokeWidth="1.2" />
+            <text x={x0 + ((xHandle - x0) * (p0 - liq0)) / (p0 - price) - 50} y={y(liq0) + 30} fontFamily="var(--mono)" fontSize={fs} fill="#6b7073">
+              Without Hoax: liquidated
             </text>
           </g>
         )}
@@ -237,9 +237,9 @@ export function HeroDrawing({ mark = 2400 }: { mark?: number }) {
           }}
         >
           <rect x={xHandle - 22} y={segY(price) - 22} width="44" height="44" fill="transparent" />
-          <rect x={xHandle - 8} y={segY(price) - 8} width="16" height="16" fill="#282828" />
-          <line x1={xHandle} x2={xHandle} y1={segY(price) - 30} y2={segY(price) + 30} stroke="#282828" strokeWidth="1" />
-          <line x1={xHandle - 30} x2={xHandle + 30} y1={segY(price)} y2={segY(price)} stroke="#282828" strokeWidth="1" />
+          <rect x={xHandle - 8} y={segY(price) - 8} width="16" height="16" rx="3" fill="#e1e5e5" />
+          <line x1={xHandle} x2={xHandle} y1={segY(price) - 30} y2={segY(price) + 30} stroke="#e1e5e5" strokeWidth="1" opacity="0.6" />
+          <line x1={xHandle - 30} x2={xHandle + 30} y1={segY(price)} y2={segY(price)} stroke="#e1e5e5" strokeWidth="1" opacity="0.6" />
         </g>
 
         {/* pointer crosshair with coordinates */}
@@ -248,10 +248,10 @@ export function HeroDrawing({ mark = 2400 }: { mark?: number }) {
             <line x1={ptr.x} x2={ptr.x} y1={0} y2={H} stroke="#fa3600" strokeWidth="0.8" strokeDasharray="4 4" />
             <line x1={0} x2={W} y1={ptr.y} y2={ptr.y} stroke="#fa3600" strokeWidth="0.8" strokeDasharray="4 4" />
             <rect x={ptr.x - 5} y={ptr.y - 5} width="10" height="10" fill="#fa3600" />
-            <text x={ptr.x - 12} y={ptr.y - 22} textAnchor="end" fontFamily="var(--mono)" fontSize={fs} fill="#626260">
-              X:{Math.round(ptr.x)}PX
+            <text x={ptr.x - 12} y={ptr.y - 22} textAnchor="end" fontFamily="var(--mono)" fontSize={fs} fill="#6b7073">
+              x {Math.round(ptr.x)}
             </text>
-            <text x={ptr.x - 12} y={ptr.y - 8} textAnchor="end" fontFamily="var(--mono)" fontSize={fs} fill="#626260">
+            <text x={ptr.x - 12} y={ptr.y - 8} textAnchor="end" fontFamily="var(--mono)" fontSize={fs} fill="#6b7073">
               {fmt(toPrice(ptr.y))} USD
             </text>
           </g>

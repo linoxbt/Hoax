@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Hoax cuts a dreamDEX perp position down to safe size before liquidation can take it, and proves every save with an on-chain receipt.",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#f5f5ef" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#0a0b0c" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Fragment+Mono&display=swap" />
         {/* Netlify injects a comment (after a newline) into <head> on the live domain; React finds
             nodes it did not render and fails hydration (error 418). This runs first and drops both. */}
         <script

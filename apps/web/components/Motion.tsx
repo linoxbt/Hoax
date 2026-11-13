@@ -152,7 +152,7 @@ function Loader() {
         <div className="mono-s soft" style={{ textAlign: "right" }}>
           Hoax · Somnia Hideki
           <br />
-          Loading the drawing
+          Opening the desk
         </div>
       </div>
     </div>

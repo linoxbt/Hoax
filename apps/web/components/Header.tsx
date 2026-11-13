@@ -3,15 +3,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
-import { Arrow, Roll } from "./Ui";
 import { useHoax } from "@/lib/wallet";
 import { WalletButton } from "./WalletButton";
 
 const NAV = [
-  ["/how-it-works", "Product"],
+  ["/how-it-works", "How it works"],
   ["/markets", "Markets"],
   ["/security", "Security"],
   ["/stats", "Track record"],
+  ["/replay", "Replay"],
 ] as const;
 
 const MENU = [
@@ -32,8 +32,10 @@ export function Header() {
   const path = usePathname();
   const { wallet } = useHoax();
   const menu = MENU.filter(([href]) => wallet || !WALLET_ONLY.has(href));
+  const nav = wallet ? [...NAV.slice(0, 4), ["/app", "Dashboard"] as const] : NAV;
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const last = useRef(0);
 
   useEffect(() => setOpen(false), [path]);
@@ -44,14 +46,16 @@ export function Header() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // Hide on the way down, return on the way up, like a drawing being scrolled.
+  // Hide on the way down, return on the way up; a hairline appears once the page has moved.
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
+      setScrolled(y > 8);
       if (Math.abs(y - last.current) < 6) return;
-      setHidden(y > last.current && y > 120);
+      setHidden(y > last.current && y > 160);
       last.current = y;
     };
+    onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -60,36 +64,35 @@ export function Header() {
 
   return (
     <>
-      <header className={`header${hidden && !open ? " hide" : ""}${open ? " menu-open" : ""}`}>
+      <header className={`header${hidden && !open ? " hide" : ""}${scrolled || open ? " scrolled" : ""}${open ? " menu-open" : ""}`}>
         <div className="header-in">
           <div className="header-logo">
             <Link href="/" aria-label="Hoax home">
-              <Logo />
+              <Logo size={30} />
             </Link>
           </div>
           <nav className="header-nav" aria-label="Primary">
-            {NAV.map(([href, label]) => (
-              <Link key={href} href={href} className={`hcell${on(href) ? " on" : ""}`}>
-                <Roll>{label}</Roll>
-                <span className="corner" aria-hidden />
+            {nav.map(([href, label]) => (
+              <Link key={href} href={href} className={`hlink${on(href) ? " on" : ""}`}>
+                {label}
               </Link>
             ))}
-            <div className="hcell wide keep wallet-slot">
+          </nav>
+          <div className="header-act">
+            <div className="wallet-slot">
               <WalletButton />
             </div>
-            <Link href="/start" className="hcell cta">
-              <Roll>Get protected</Roll>
-              <Arrow />
+            <Link href="/start" className="pill sm">
+              Get protected
             </Link>
-            <button className="hcell hmenu-btn keep" aria-expanded={open} aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen(!open)}>
-              <Roll>{open ? "Close" : "Menu"}</Roll>
+            <button className="hmenu-btn" aria-expanded={open} aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen(!open)}>
               <span className="burger-lines" aria-hidden>
                 <i />
                 <i />
                 <i />
               </span>
             </button>
-          </nav>
+          </div>
         </div>
       </header>
 
@@ -98,21 +101,21 @@ export function Header() {
           {menu.map(([href, label], i) => (
             <Link key={href} href={href} className={on(href) ? "on" : undefined} style={{ ["--i" as string]: i }} tabIndex={open ? 0 : -1}>
               {label}
-              <span className="mono-s">[{String(i + 1).padStart(2, "0")}]</span>
+              <span className="mono-s">{String(i + 1).padStart(2, "0")}</span>
             </Link>
           ))}
         </nav>
         <div className="menu-foot">
           <div>
             <div className="mono-s soft">Wallet</div>
-            <div style={{ height: "4.8rem", marginTop: "0.8rem", border: "var(--b) solid var(--line)" }}>
+            <div style={{ marginTop: "1rem" }}>
               <WalletButton />
             </div>
           </div>
           <div>
             <div className="mono-s soft">Network</div>
-            <p className="txt ink" style={{ marginTop: "0.8rem" }}>
-              dreamDEX perps · Somnia Hideki
+            <p className="txt ink" style={{ marginTop: "1rem" }}>
+              dreamDEX perps · Somnia Tokyo and Shannon
             </p>
           </div>
         </div>

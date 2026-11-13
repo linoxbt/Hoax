@@ -1,307 +1,423 @@
-import { ArtBlind, ArtBlunt, ArtCases, ArtCostly, ArtForced, ArtTower } from "@/components/home/Art";
-import { BuildUp } from "@/components/home/BuildUp";
+import Link from "next/link";
 import { Accordion } from "@/components/home/Accordion";
 import { HeroLive } from "@/components/home/HeroLive";
-import { MarketStrip } from "@/components/home/MarketStrip";
-import { ScrollText } from "@/components/ScrollText";
+import { MarketTape } from "@/components/LiveMarkets";
 import { LiveSimulator } from "@/components/Simulator";
-import { Btn, CornerLink, Label, Split } from "@/components/Ui";
-import { usd } from "@/lib/format";
+import { Split } from "@/components/Ui";
+import { NETWORK_NAMES, closeCost, usd } from "@/lib/format";
 import { DEMO, getStore } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-const WORK = ["Fewer liquidations", "Smaller exits", "Signed receipts", "No custody", "Every market", "Second by second"];
-
-const PROBLEMS: Array<{ tag: string; title: string; text: string; Art: () => React.JSX.Element }> = [
-  { tag: "Forced", title: "The engine picks your exit", text: "Below maintenance the liquidation engine closes for you, at a spread you never agreed to.", Art: ArtForced },
-  { tag: "Blind", title: "Health moves while you sleep", text: "Mark price and hourly funding move health on a position you are not watching.", Art: ArtBlind },
-  { tag: "Blunt", title: "Stop-losses close everything", text: "A stop exits the whole position at one price, even when a slice would have done.", Art: ArtBlunt },
-  { tag: "Costly", title: "A penalty on the way out", text: "Liquidation takes a 100 bps penalty plus the forced-close spread, out of your equity.", Art: ArtCostly },
+// Liquidations keep no office hours: the sessions a 24/7 market runs through.
+const SESSIONS: Array<[string, string]> = [
+  ["Sydney", "22:00–07:00 UTC"],
+  ["Tokyo", "00:00–09:00 UTC"],
+  ["Hong Kong", "01:30–08:00 UTC"],
+  ["London", "08:00–16:30 UTC"],
+  ["New York", "14:30–21:00 UTC"],
 ];
 
-const PLATFORM: Array<{ n: string; title: string; text: string; href: string; mock: React.ReactNode }> = [
-  {
-    n: "01",
-    title: "Protection engine",
-    text: "A watcher that reads every protected account each second, decides with a cost gate, and closes through your linked key with immediate-or-cancel orders only.",
-    href: "/how-it-works",
-    mock: <EngineMock />,
-  },
-  {
-    n: "02",
-    title: "Signed receipts",
-    text: "Every action writes a receipt anyone can check: health before and after, size, fill, cost, and the liquidation it avoided, signed by the key that acted.",
-    href: "/stats",
-    mock: <ReceiptMock />,
-  },
-  {
-    n: "03",
-    title: "Your dashboard",
-    text: "Connect the wallet you trade with. Hoax finds your dreamDEX account, shows each position against its trigger and target, and links in one transaction.",
-    href: "/start",
-    mock: <DashMock />,
-  },
+// The loop, annotated on a chart. Numbers are from a real close on Shannon (receipt 69bdf902).
+const NOTES: Array<{ k: string; t: string; p: string; x: number; y: number; act?: boolean }> = [
+  { k: "01 Watch", t: "Health read every second", p: "Mark and funding move it while you sleep.", x: 4, y: 8 },
+  { k: "02 Size", t: "Smallest close to target 1.60", p: "Solved from equity, margin and the live book.", x: 30, y: 4 },
+  { k: "03 Gate", t: "0.064 vs 3.69 USDso", p: "The close costs far less than liquidation, so it may go.", x: 26, y: 70, act: true },
+  { k: "04 Close", t: "0.8 of 2.96 SOL, one IOC order", p: "Health 1.18 → 1.60. Liquidation price moves away.", x: 54, y: 66, act: true },
+  { k: "05 Prove", t: "Signed receipt, judged in 24 h", p: "The old liquidation price was reached. Saved.", x: 74, y: 6 },
 ];
 
-const WHY: Array<{ k: string; text: string; side: "l" | "r" }> = [
-  { k: "Watch", text: "Hoax reads health every second, and on every position event", side: "l" },
-  { k: "Decide", text: "It acts only when a close costs less than the liquidation it prevents", side: "r" },
-  { k: "Trim", text: "It closes the smallest slice that restores your target, then reconciles", side: "l" },
+// Not a stop-loss: the same bad night, two tools.
+const STOP: Array<[string, string]> = [
+  ["Triggers on", "a price you picked in advance"],
+  ["Watches", "one market's price"],
+  ["Closes", "the whole position"],
+  ["Afterwards", "you're out of the trade"],
+  ["Record", "a fill in your history"],
+];
+const HOAX: Array<[string, string]> = [
+  ["Triggers on", "your account's health"],
+  ["Watches", "mark, funding and every other position"],
+  ["Closes", "the smallest slice that restores your target"],
+  ["Afterwards", "you keep most of the position"],
+  ["Record", "a signed receipt, judged after 24 hours"],
 ];
 
-const CASES: Array<[string, string]> = [
-  ["Swing traders", "Hold a leveraged view for days without watching the screen overnight."],
-  ["Market makers", "Keep inventory hedges alive through spikes without full stop-outs."],
-  ["Funds and desks", "Per-account policies, signed receipts and a public track record for reporting."],
-  ["Trading bots", "A second line of defence that does not depend on your bot staying up."],
-  ["Part-time traders", "Set a policy once; Hoax trims while you work, sleep or travel."],
-  ["High-leverage traders", "The closer you run to maintenance, the more a timely slice is worth."],
+const FAQ: Array<[string, string]> = [
+  [
+    "What is Hoax?",
+    "A bot you link to your dreamDEX account. It reads the health of every protected perp position each second and, when health slips to your trigger, closes the smallest slice that brings it back to your target. It only sends that order when it costs less than the liquidation it prevents.",
+  ],
+  [
+    "Can Hoax move my funds?",
+    "No. The link grants placeOrderFor and nothing else: no withdrawals, no transfers, and it cannot cancel your own orders. Every fill settles to your account. You can unlink it from Settings, or in dreamDEX, with one transaction.",
+  ],
+  [
+    "How is it different from a stop-loss?",
+    "A stop-loss throws you out of the trade at a price you picked in advance. Hoax watches health, not price, so it also catches funding and losses on your other positions, and it sells only the slice it needs. You keep most of the position.",
+  ],
+  [
+    "Which markets and networks?",
+    "Every dreamDEX perp market on Somnia Tokyo (Hideki) and Somnia Shannon. One engine runs per network, and one link covers every market on it.",
+  ],
+  [
+    "What does it cost?",
+    "No subscription. A close costs what the book charges for it, and a builder fee is added only if you approved one on chain. When a gas wallet is configured, the engine keeps your Hoax key topped up with gas.",
+  ],
+  [
+    "What if Hoax can't act?",
+    "If the mark is stale, the node is unreachable, or there is no liquidity within your max slippage, Hoax sends nothing and tells you why in Alerts. It lowers liquidation risk; it cannot remove it.",
+  ],
 ];
 
 export default async function Landing() {
-  // The track record is one section of the page: without the database the rest still renders.
-  const stats = await getStore()
-    .then((store) => store.stats())
+  // The track record and the featured receipt are one part of the page: without the database the rest still renders.
+  const data = await getStore()
+    .then(async (store) => {
+      const [stats, actions] = await Promise.all([store.stats(), store.listActions({ limit: 200 })]);
+      const saved = actions.find((a) => a.outcome === "saved") ?? null;
+      const cf = saved ? await store.getCounterfactual(saved.id) : null;
+      return { stats, saved, cf };
+    })
     .catch((err) => {
       console.error("track record unavailable:", err instanceof Error ? err.message : String(err));
       return null;
     });
+  const stats = data?.stats ?? null;
+  const saved = data?.saved ?? null;
+  const sample = DEMO ? " · sample" : "";
 
   return (
     <>
-      {/* hero: the drawing, then title, description and the corner link */}
-      <section className="sec first">
+      {/* hero */}
+      <section className="h-hero">
+        <Split as="h1" className="h1">
+          Exit before the liquidation engine does.
+        </Split>
+        <div className="h-hero-side" data-reveal>
+          <p>
+            Hoax watches your leveraged dreamDEX perps every second and trims them back to safe health the moment they slip, <b>only when that is
+            cheaper than liquidation</b>, with a signed receipt for every action.
+          </p>
+          <div className="h-cta">
+            <Link className="pill" href="/start">
+              Get protected
+            </Link>
+            <Link className="pill ghost" href="/how-it-works">
+              How it works
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* the desk: the live drawing in a window */}
+      <section className="console" data-reveal>
+        <div className="console-bar">
+          <div className="console-dots" aria-hidden>
+            <i />
+            <i />
+            <i />
+          </div>
+          <div className="console-tabs" aria-hidden>
+            <span className="on">Position</span>
+            <span>Receipts</span>
+            <span>Policy</span>
+          </div>
+          <div className="console-meta">
+            <span>
+              Trigger <b>1.25</b>
+            </span>
+            <span>
+              Target <b>1.60</b>
+            </span>
+            <span>
+              Cost gate <b>λ 0.5</b>
+            </span>
+          </div>
+        </div>
         <HeroLive />
-        <div className="cells c-hero bt">
-          <div className="hero-title">
-            <Split as="h1" className="h1">
-              Exit before the liquidation engine does
-            </Split>
-          </div>
-          <div className="stack">
-            <p className="txt ink p-s grow" style={{ padding: "1.6rem" }} data-reveal>
-              Hoax watches your leveraged dreamDEX perps and trims them back to safe health the moment they slip, only when that is cheaper than
-              liquidation, with a signed receipt for <b>every action</b>.
-            </p>
-            <div className="bt marquee hero-work" aria-label="What Hoax brings">
-              {[0, 1].map((n) => (
-                <div className="marquee-track" key={n} aria-hidden={n === 1}>
-                  {WORK.map((w) => (
-                    <span key={w} className="mono-s soft work-item">
-                      <i />
-                      {w}
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-          <CornerLink href="/start">Get protected</CornerLink>
+        <div className="console-tape">
+          <MarketTape />
         </div>
       </section>
 
-      {/* intro: the tower drawing beside the statement, and the live markets */}
-      <section className="sec cells c2">
-        <div className="drawing intro-art">
-          <ArtTower />
-        </div>
-        <div className="stack">
-          <div className="intro-copy grow">
-            <ScrollText
-              className="h3"
-              text="Liquidation is the worst exit in perps. Hoax closes a small slice first, so you keep the trade, keep the equity and keep the choice."
-            />
-            <div style={{ marginTop: "3.2rem" }} data-reveal>
-              <Btn href="/how-it-works">Learn more</Btn>
+      {/* liquidations keep no office hours */}
+      <section className="h-sec">
+        <div className="h-night">
+          <div className="h-dots" aria-hidden />
+          <div className="h-label">
+            <i />
+            Always on
+          </div>
+          <Split className="h2">Liquidations keep no office hours.</Split>
+          <p className="txt" data-reveal>
+            Mark price and hourly funding move health on a position you are not watching. The liquidation engine never sleeps, so neither does Hoax: it
+            reads every protected account each second, through every session.
+          </p>
+          <div className="h-sessions" data-reveal>
+            {SESSIONS.map(([city, hours]) => (
+              <div key={city}>
+                <b>{city}</b>
+                <span>{hours}</span>
+              </div>
+            ))}
+            <div className="live">
+              <b>Hoax</b>
+              <span>● Every second</span>
             </div>
           </div>
-          <MarketStrip />
         </div>
       </section>
 
-      {/* problems */}
-      <section className="sec">
-        <div className="between prob-head">
+      {/* priced against the real book */}
+      <section className="h-sec">
+        <div className="h-head">
           <div>
-            <Label>Problems</Label>
-            <Split className="h2" delay={0.05}>
-              Liquidation takes more than it needs
-            </Split>
+            <div className="h-label">
+              <i />
+              Cost gate
+            </div>
+            <Split className="h2">Priced against the real book.</Split>
           </div>
-          <p className="txt prob-sub" data-reveal>
-            Perp venues protect themselves, not you. When an account slips under maintenance, the engine sells into the book on its terms, and the trader
-            pays for it.
+          <p className="txt" data-reveal>
+            Liquidation sells your whole position into the bids and adds a 1% penalty. Hoax reads the same book first, and only trims when its close costs
+            at most half of what liquidation would.
           </p>
         </div>
-        <div className="cells c4 bt">
-          {PROBLEMS.map((p, i) => (
-            <div key={p.tag} className="prob-item">
-              <div className="prob-item-head between">
-                <span className="mono-s ink row" style={{ gap: "0.8rem" }}>
-                  {i === 2 && <span className="dotsq" />}
-                  {p.tag}
-                </span>
-                <span className="mono-s muted">[{String(i + 1).padStart(2, "0")}]</span>
-              </div>
-              <div className="prob-item-img">
-                <p.Art />
-              </div>
-              <div className="prob-item-body">
-                <div className="h5" style={{ maxWidth: "24rem" }}>
-                  {p.title}
-                </div>
-                <p className="txt" style={{ marginTop: "1.6rem" }}>
-                  {p.text}
-                </p>
-              </div>
+        <div className="h-book">
+          <BookCard
+            title="Liquidation"
+            sub="2.96 SOL sold at once, plus a 1% penalty"
+            fill={2.96}
+            total="3.69"
+            note="what the engine would have taken"
+            tone="liq"
+          />
+          <BookCard title="Hoax" sub="0.8 SOL trimmed, inside max slippage" fill={0.8} total="0.064" note="what the close actually cost" tone="hoax" />
+        </div>
+        <p className="mono-s muted" style={{ marginTop: "1.2rem" }}>
+          Book shape is an illustration. Sizes and costs are from a real close on Somnia Shannon, receipt 69bdf902.
+        </p>
+      </section>
+
+      {/* the loop */}
+      <section className="h-sec">
+        <div className="h-head">
+          <div>
+            <div className="h-label act">
+              <i />
+              Five steps, one loop
+            </div>
+            <Split className="h2">Built around how a position gets saved.</Split>
+          </div>
+          <p className="txt" data-reveal>
+            Each step runs where it matters: watching while health is fine, acting in the second it slips, and proving the outcome after the market has
+            moved on.
+          </p>
+        </div>
+        <div className="h-flow" data-reveal>
+          <FlowChart />
+          {NOTES.map((n) => (
+            <div key={n.k} className={`h-note${n.act ? " act" : ""}`} style={{ left: `${n.x}%`, top: `${n.y}%` }}>
+              <span className="k">{n.k}</span>
+              <b>{n.t}</b>
+              <p>{n.p}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <BuildUp />
-
-      {/* platform */}
-      {PLATFORM.map((p) => (
-        <section key={p.n} className="sec cells c-plat plat">
-          <div className="plat-left">
-            <div className="mono-s muted">[{p.n}]</div>
-            <div className="h4" style={{ marginTop: "2.4rem" }}>
-              {p.title}
+      {/* proof */}
+      <section className="h-sec">
+        <div className="h-head">
+          <div>
+            <div className="h-label">
+              <i />
+              Track record
             </div>
+            <Split className="h2">Every action, on the record.</Split>
           </div>
-          <div className="plat-img drawing">
-            <span className="plus tl" aria-hidden />
-            <span className="plus br" aria-hidden />
-            <div data-reveal>{p.mock}</div>
-          </div>
-          <div className="stack">
-            <p className="txt p grow">{p.text}</p>
-            <div className="bt">
-              <CornerLink href={p.href} ink>
-                Learn more
-              </CornerLink>
-            </div>
-          </div>
-        </section>
-      ))}
-
-      {/* why: built to act while you are away */}
-      <section className="sec">
-        <div className="cells c-why">
-          <div className="p" style={{ paddingTop: "6.4rem" }}>
-            <Label>Why Hoax</Label>
-            <Split className="h2" delay={0.05}>
-              Built to act while you are away
-            </Split>
-          </div>
-          <div className="stack" style={{ justifyContent: "flex-end" }}>
-            <div className="p">
-              <p className="txt">
-                Hoax fits around how you trade instead of replacing it. It stays quiet while health is fine, acts only when a close is cheaper than the
-                alternative, and leaves every decision on the record.
-              </p>
-              <div className="mono-xs muted" style={{ marginTop: "1.6rem" }}>
-                [Scroll to continue]
-              </div>
-            </div>
-          </div>
+          <p className="txt" data-reveal>
+            Saved equity is only claimed when the old liquidation price was actually reached. Otherwise the close cost is shown as the price of insurance.
+            Every receipt is public and signed.
+          </p>
         </div>
-        <div className="why-rows bt">
-          {WHY.map((w, i) => (
-            <div key={w.k} className={`why-row ${w.side}`}>
-              <div className="why-bar" data-reveal>
-                <span className="why-k">{w.k}</span>
-                <span className="why-t">{w.text}</span>
-                <i className="why-dot" />
+        <div className="h-proof">
+          <div className="h-stats" aria-label={DEMO ? "Track record, sample data" : "Track record"}>
+            {(
+              [
+                [`Saved equity, up to${sample}`, stats ? usd(stats.savedEquity) : "–", "USDso", true],
+                [`Saves${sample}`, stats ? String(stats.saves) : "–", "", false],
+                [`Closes filled${sample}`, stats ? String(stats.actionsTaken) : "–", "", false],
+                [`Misses${sample}`, stats ? String(stats.misses) : "–", "", false],
+              ] as const
+            ).map(([k, v, u, accent]) => (
+              <div key={k}>
+                <span className="mono-s soft">{k}</span>
+                <span className={`num${accent ? " blue" : ""}`} style={accent ? { color: "var(--blue)" } : undefined}>
+                  {v}
+                  {u && <small>{u}</small>}
+                </span>
               </div>
-              <span className="why-line" data-draw style={{ ["--d" as string]: "0.3s" }} />
-              <span className="why-pt" />
-              <span className="mono-xs muted why-n">[{String(i + 1).padStart(2, "0")}]</span>
+            ))}
+          </div>
+          {saved ? (
+            <Link className="h-receipt" href={`/r/${saved.id}`}>
+              <div className="between">
+                <span className="tag saved">Saved</span>
+                <span className="mono-s muted">
+                  {NETWORK_NAMES[saved.receipt.chainId] ?? "dreamDEX"} · {saved.market}
+                  {sample}
+                </span>
+              </div>
+              <div>
+                <div className="mono-s soft">Equity preserved, up to</div>
+                <div className="big" style={{ marginTop: "1rem" }}>
+                  {data?.cf?.preserved != null ? usd(data.cf.preserved) : "–"}
+                  <small>USDso</small>
+                </div>
+              </div>
+              <div className="rows">
+                <div className="r">
+                  <span>Health</span>
+                  <span>
+                    {saved.healthBefore.toFixed(2)} → {saved.healthAfter != null ? saved.healthAfter.toFixed(2) : "–"}
+                  </span>
+                </div>
+                <div className="r">
+                  <span>Close cost</span>
+                  <span>{closeCost(saved.cost, 3)}</span>
+                </div>
+                <div className="r">
+                  <span>Liquidation would cost</span>
+                  <span>{saved.estLiqCost != null ? `${usd(saved.estLiqCost)} USDso` : "–"}</span>
+                </div>
+              </div>
+              <span className="mono-s blue">Open the receipt ↗</span>
+            </Link>
+          ) : (
+            <div className="h-receipt">
+              <span className="mono-s soft">Receipts</span>
+              <p className="txt">No close has been judged saved yet. Every receipt still appears on the track record the moment it is signed.</p>
+              <Link className="mono-s blue" href="/stats">
+                See the track record ↗
+              </Link>
             </div>
-          ))}
+          )}
+        </div>
+      </section>
+
+      {/* not a stop-loss */}
+      <section className="h-sec">
+        <div className="h-head center">
+          <div className="h-label">
+            <i />
+            How it compares
+          </div>
+          <Split className="h2">Not a stop-loss.</Split>
+          <p className="txt" data-reveal>
+            A stop-loss decides when you leave the trade. Hoax decides how little to sell so the liquidation engine never gets your position.
+          </p>
+        </div>
+        <div className="h-vs">
+          <Plan title="Stop-loss" sub="An exit you set and forget" rows={STOP} />
+          <Plan title="Hoax" sub="Protection that keeps you in the trade" rows={HOAX} hoax />
+        </div>
+      </section>
+
+      {/* trust */}
+      <section className="h-sec">
+        <div className="h-head">
+          <div>
+            <div className="h-label">
+              <i />
+              Security
+            </div>
+            <Split className="h2">Trades. Never withdraws.</Split>
+          </div>
+          <p className="txt" data-reveal>
+            Hoax holds no funds and asks for one permission. The worst a leaked key could do is place orders, and the engine only ever sends small,
+            immediate-or-cancel closes inside your slippage.
+          </p>
+        </div>
+        <div className="h-trust">
+          <div data-reveal>
+            <span className="mono-s soft">01 · One permission</span>
+            <div>
+              <div className="h4">placeOrderFor, and nothing else</div>
+              <p className="txt" style={{ marginTop: "1rem" }}>
+                No withdrawals, no transfers, no cancelling your own orders. <code>cancelOrderFor</code> and <code>reduceOrderFor</code> stay with you.
+              </p>
+            </div>
+          </div>
+          <div data-reveal style={{ ["--d" as string]: "0.06s" }}>
+            <span className="mono-s soft">02 · One key per account</span>
+            <div>
+              <div className="h4">Encrypted at rest</div>
+              <p className="txt" style={{ marginTop: "1rem" }}>
+                Each account gets its own key, AES-256-GCM encrypted in the engine&apos;s keystore. Keys never touch the database or another account.
+              </p>
+            </div>
+          </div>
+          <div data-reveal style={{ ["--d" as string]: "0.12s" }}>
+            <span className="mono-s soft">03 · One transaction out</span>
+            <div>
+              <div className="h4">Revoke any time</div>
+              <p className="txt" style={{ marginTop: "1rem" }}>
+                Unlink from Settings or remove the bot in dreamDEX. One transaction from your wallet ends every permission at once.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* try it */}
-      <section className="sec">
-        <div className="between prob-head">
+      <section className="h-sec">
+        <div className="h-head">
           <div>
-            <Label>Try it</Label>
-            <Split className="h2" delay={0.05}>
-              Run a crash
-            </Split>
+            <div className="h-label act">
+              <i />
+              Try it
+            </div>
+            <Split className="h2">Run a crash.</Split>
           </div>
-          <p className="txt prob-sub" data-reveal>
-            The engine&apos;s own sizing function, in your browser, from ETH&apos;s live mark. Liquidation follows the venue model in the replay.
+          <p className="txt" data-reveal>
+            The engine&apos;s own sizing function, in your browser, started from ETH&apos;s live mark. Liquidation follows the venue model in the replay.
           </p>
         </div>
-        <div className="bt">
+        <div className="sec" style={{ marginTop: 0 }}>
           <LiveSimulator />
         </div>
       </section>
 
-      {/* use cases */}
-      <section className="sec cells c2">
-        <div className="drawing cases-art">
-          <ArtCases />
-        </div>
-        <div className="stack">
-          <div className="cases-head">
-            <Label>Use cases</Label>
-            <Split className="h2" delay={0.05}>
-              Made for every leveraged trader
-            </Split>
-          </div>
-          <Accordion items={CASES} />
-        </div>
-      </section>
-
-      {/* track record */}
-      <section className="sec cells c4 record" aria-label={DEMO ? "Track record, sample data" : "Track record"}>
-        {(
-          [
-            ["Saved equity (up to)", stats ? usd(stats.savedEquity) : "–", "USDso"],
-            ["Insurance cost", stats ? usd(stats.insuranceCost) : "–", "USDso"],
-            ["Actions taken", stats ? String(stats.actionsTaken) : "–", ""],
-            ["Accounts protected", stats ? String(stats.accountsProtected) : "–", ""],
-          ] as const
-        ).map(([k, v, u], i) => (
-          <div key={k} className="p" data-reveal style={{ ["--d" as string]: `${i * 0.06}s` }}>
-            <div className="mono-s soft">
-              {k}
-              {DEMO ? " · sample" : ""}
-              {!stats && i === 0 ? " · unavailable right now" : ""}
-            </div>
-            <div className="num m" style={{ marginTop: "2.4rem" }}>
-              {v}
-              {u && <small>{u}</small>}
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {/* call to action */}
-      <section className="sec cta">
-        <div className="cells c4 cta-coords">
-          {["[0,246]", "[831,0]", "[2303,0]", "[0,544]"].map((c) => (
-            <div key={c} className="mono-xs muted">
-              {c}
-            </div>
-          ))}
-        </div>
-        <div className="cta-main">
-          <Split className="h2" delay={0.05}>
-            See what Hoax does for your positions
-          </Split>
-          <p className="txt" style={{ marginTop: "1.6rem" }} data-reveal>
-            Connect the wallet you trade with. Linking takes one transaction and you can revoke it with another.
+      {/* questions */}
+      <section className="h-sec">
+        <div className="h-head center">
+          <Split className="h2">Questions, answered.</Split>
+          <p className="txt" data-reveal>
+            How Hoax works, what it can and cannot do, and what it costs. Everything else is in the code.
           </p>
-          <div style={{ marginTop: "3.2rem" }} data-reveal>
-            <Btn href="/start" fill>
+        </div>
+        <div className="h-faq">
+          <Accordion items={FAQ} />
+        </div>
+      </section>
+
+      {/* the call */}
+      <section className="h-sec">
+        <div className="h-final">
+          <div className="h-dots alt" aria-hidden />
+          <Split className="h2">Protect your next position.</Split>
+          <p className="txt" data-reveal>
+            Connect the wallet you trade with. Linking takes one transaction, and another one ends it.
+          </p>
+          <div className="h-cta" data-reveal>
+            <Link className="pill" href="/start">
               Get protected
-            </Btn>
+            </Link>
+            <Link className="pill ghost" href="/stats">
+              See the track record
+            </Link>
           </div>
         </div>
       </section>
@@ -309,83 +425,149 @@ export default async function Landing() {
   );
 }
 
-function EngineMock() {
-  const rows = [
-    ["31,168,812", "3.07", "watch"],
-    ["31,168,826", "2.41", "watch"],
-    ["31,168,840", "1.23", "act"],
-    ["31,168,841", "1.60", "receipt"],
+/** One side of the cost gate: the bids a close walks through, and what it cost. */
+function BookCard({ title, sub, fill, total, note, tone }: { title: string; sub: string; fill: number; total: string; note: string; tone: "liq" | "hoax" }) {
+  // An illustrative SOL-PERP bid ladder below a 83.69 mark.
+  const levels: Array<[number, number]> = [
+    [83.66, 0.9],
+    [83.63, 0.6],
+    [83.6, 1.1],
+    [83.55, 0.7],
+    [83.48, 0.5],
+    [83.4, 0.8],
+    [83.29, 0.6],
   ];
+  const max = 1.2;
+  let left = fill;
   return (
-    <div className="mock tagbox" style={{ width: "100%" }}>
-      <div className="tagbox-head between">
-        <span>Engine · BTC-PERP · illustration</span>
-        <span>1 tick / s</span>
+    <div className="h-book-card" data-reveal>
+      <div className="between">
+        <div>
+          <div className="h4">{title}</div>
+          <p className="txt" style={{ marginTop: "0.6rem" }}>
+            {sub}
+          </p>
+        </div>
+        <span className={`tag ${tone === "liq" ? "missed" : "pending"}`}>{tone === "liq" ? "Forced" : "Chosen"}</span>
       </div>
-      <div className="mock-rows">
-        {rows.map(([b, h, s]) => (
-          <div key={b} className={`mock-row${s === "act" ? " act" : ""}`}>
-            <span>#{b}</span>
-            <span>H {h}</span>
-            <span>{s === "act" ? "Trim 0.0537 BTC" : s === "receipt" ? "Signed" : "Watch"}</span>
-          </div>
-        ))}
+      <div className="h-ladder" aria-hidden>
+        {levels.map(([px, size]) => {
+          const take = Math.max(0, Math.min(size, left));
+          left -= take;
+          return (
+            <div key={px} className={`h-lvl${take > 0 && tone === "hoax" ? " hit" : ""}`}>
+              <span>{px.toFixed(2)}</span>
+              <span className="bar">
+                <i style={{ width: `${(size / max) * 100}%` }} />
+                {take > 0 && tone === "liq" && <u style={{ width: `${(take / max) * 100}%` }} />}
+                {take > 0 && tone === "hoax" && <i style={{ width: `${(take / max) * 100}%` }} />}
+              </span>
+              <b>{size.toFixed(1)}</b>
+            </div>
+          );
+        })}
+      </div>
+      <div className="h-book-sum">
+        <span className="mono-s soft">{note}</span>
+        <span className="num" style={tone === "hoax" ? { color: "var(--blue)" } : undefined}>
+          {total}
+          <small>USDso</small>
+        </span>
       </div>
     </div>
   );
 }
 
-function ReceiptMock() {
+function Plan({ title, sub, rows, hoax }: { title: string; sub: string; rows: Array<[string, string]>; hoax?: boolean }) {
   return (
-    <div className="mock tagbox" style={{ width: "100%" }}>
-      <div className="tagbox-head between">
-        <span>Receipt · saved · illustration</span>
-        <span>✓ Signature checks</span>
+    <div className={`h-plan${hoax ? " hoax" : ""}`} data-reveal>
+      <div>
+        <span className="mono-s soft">{hoax ? "Hoax" : "The usual exit"}</span>
+        <div className="h3" style={{ marginTop: "1.2rem" }}>
+          {title}
+        </div>
+        <p className="txt" style={{ marginTop: "0.8rem" }}>
+          {sub}
+        </p>
       </div>
-      <div className="mock-rows">
-        {[
-          ["Health", "1.23 → 1.60"],
-          ["Closed", "0.0537 BTC"],
-          ["Avg fill", "81,679"],
-          ["Liq. cost avoided", "132.37 USDso"],
-          ["Signed by", "0x8ae6…b3eC"],
-        ].map(([k, v]) => (
-          <div key={k} className="mock-row">
-            <span>{k}</span>
-            <span />
-            <span>{v}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DashMock() {
-  const pos = [
-    ["BTC-PERP", 0.36],
-    ["ETH-PERP", 0.62],
-    ["SOL-PERP", 0.18],
-  ] as const;
-  return (
-    <div className="mock tagbox" style={{ width: "100%" }}>
-      <div className="tagbox-head between">
-        <span>Positions · illustration</span>
-        <span>all markets linked</span>
-      </div>
-      <div className="mock-rows">
-        {pos.map(([m, k]) => (
-          <div key={m} className="mock-row bar">
-            <span>{m}</span>
-            <span className="mock-meter">
-              <i style={{ width: `${k * 100}%` }} />
-              <b style={{ left: "30%" }} />
-              <b className="t" style={{ left: "55%" }} />
+      <ul>
+        {rows.map(([k, v]) => (
+          <li key={k}>
+            <i>{hoax ? "✓" : "–"}</i>
+            <span>
+              <span className="mono-s muted" style={{ display: "block", marginBottom: "0.3rem" }}>
+                {k}
+              </span>
+              {v}
             </span>
-            <span>{(1 + k * 3).toFixed(2)}</span>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
+      {hoax && (
+        <Link className="pill" href="/start" style={{ alignSelf: "flex-start" }}>
+          Get protected
+        </Link>
+      )}
     </div>
+  );
+}
+
+/** A position sliding to its trigger, trimmed once, then surviving the drop: candles in the desk's style. */
+function FlowChart() {
+  const W = 1200;
+  const H = 460;
+  const n = 52;
+  const trimAt = 25;
+  // price path: drift, slide to the trigger, a little further, then recover
+  const px = (i: number) => {
+    if (i < 10) return 120 + Math.sin(i * 0.9) * 8 + i * 1.5;
+    if (i <= trimAt) return 135 + ((i - 10) / (trimAt - 10)) ** 1.4 * 165;
+    if (i <= trimAt + 7) return 300 + Math.sin(((i - trimAt) / 7) * Math.PI) * 42;
+    return 300 - (i - trimAt - 7) * 9 + Math.sin(i * 1.3) * 7;
+  };
+  const x = (i: number) => 60 + (i * (W - 160)) / (n - 1);
+  const ACT = 300;
+  const LIQ0 = 368;
+  const LIQ1 = 416;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="A position slides to its trigger, Hoax trims it once, the liquidation price moves away, and the position survives the drop.">
+      {Array.from({ length: 13 }, (_, i) => (
+        <line key={`v${i}`} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="#1a1d20" strokeWidth="1" />
+      ))}
+      {Array.from({ length: 5 }, (_, i) => (
+        <line key={`h${i}`} x1={0} x2={W} y1={i * 100 + 30} y2={i * 100 + 30} stroke="#1a1d20" strokeWidth="1" />
+      ))}
+      <g fontFamily="var(--mono)" fontSize="13">
+        <line x1="40" x2={W - 110} y1={ACT} y2={ACT} stroke="#929699" strokeDasharray="8 6" />
+        <text x={W - 100} y={ACT + 4} fill="#929699">
+          Act · H 1.25
+        </text>
+        <line x1="40" x2={x(trimAt)} y1={LIQ0} y2={LIQ0} stroke="#6b7073" strokeDasharray="3 4" />
+        <text x={x(trimAt) - 120} y={LIQ0 - 10} fill="#6b7073">
+          Liq 83.29
+        </text>
+        <line x1={x(trimAt)} x2={W - 110} y1={LIQ1} y2={LIQ1} stroke="#fa3600" strokeWidth="1.4" />
+        <text x={W - 100} y={LIQ1 + 4} fill="#fa3600">
+          Liq 82.38
+        </text>
+        <path d={`M${x(trimAt)} ${LIQ0} V${LIQ1}`} stroke="#fa3600" strokeDasharray="2 3" />
+      </g>
+      {Array.from({ length: n }, (_, i) => {
+        const a = px(i);
+        const b = px(i + 1);
+        const top = Math.min(a, b);
+        const h = Math.max(3, Math.abs(a - b));
+        const up = b < a;
+        return (
+          <g key={i} stroke={i < trimAt ? "#929699" : "#3e8fb3"} strokeWidth="1.3">
+            <line x1={x(i)} x2={x(i)} y1={top - 6} y2={top + h + 6} />
+            <rect x={x(i) - 4} y={top} width="8" height={h} rx="1" fill={up ? (i < trimAt ? "#929699" : "#3e8fb3") : "#0f1113"} />
+          </g>
+        );
+      })}
+      <rect x={x(trimAt) - 9} y={px(trimAt) - 9} width="18" height="18" rx="3" fill="#fa3600" />
+      <circle cx={x(trimAt)} cy={px(trimAt)} r="20" fill="none" stroke="#fa3600" strokeOpacity="0.4" />
+      <rect x={x(n - 3) - 7} y={px(n - 3) - 7} width="14" height="14" rx="3" fill="#e1e5e5" />
+    </svg>
   );
 }

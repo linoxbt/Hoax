@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { NETWORK_NAMES, addressUrl, short } from "@/lib/format";
 import { useHoax } from "@/lib/wallet";
-import { Arrow, Roll } from "./Ui";
 
 /** A deterministic square identicon: a 3x3 field of the address's bits in ink and orange. */
 export function Avatar({ address, size = 20 }: { address: string; size?: number }) {
@@ -14,11 +13,11 @@ export function Avatar({ address, size = 20 }: { address: string; size?: number 
   const cells = Array.from({ length: 9 }, (_, i) => Number((n >> BigInt(i * 3)) & 7n));
   return (
     <svg className="avatar" width={size} height={size} viewBox="0 0 3 3" aria-hidden shapeRendering="crispEdges">
-      <rect width="3" height="3" fill="#f5f5ef" />
+      <rect width="3" height="3" fill="#1b1f22" />
       {cells.map((v, i) =>
-        v > 3 ? <rect key={i} x={i % 3} y={Math.floor(i / 3)} width="1" height="1" fill={v === 7 ? "#fa3600" : "#282828"} /> : null,
+        v > 3 ? <rect key={i} x={i % 3} y={Math.floor(i / 3)} width="1" height="1" fill={v === 7 ? "#fa3600" : "#c3c8c9"} /> : null,
       )}
-      <rect width="3" height="3" fill="none" stroke="#282828" strokeWidth="0.12" />
+
     </svg>
   );
 }
@@ -48,10 +47,8 @@ export function WalletButton() {
   if (hoax.sample && !hoax.wallet) {
     return (
       <button className="wbtn" onClick={hoax.disconnect} title="Leave the sample account">
-        <Roll>Sample account</Roll>
-        <span className="mono-xs soft" style={{ position: "absolute", left: "1.2rem", bottom: "1rem" }}>
-          × Leave
-        </span>
+        <span style={{ paddingLeft: "1rem" }}>Sample account</span>
+        <span className="mono-xs soft">× Leave</span>
       </button>
     );
   }
@@ -59,8 +56,7 @@ export function WalletButton() {
   if (!hoax.wallet) {
     return (
       <button className="wbtn connect" onClick={hoax.openConnect} disabled={hoax.connecting}>
-        <Roll>{hoax.connecting ? "Connecting" : "Connect wallet"}</Roll>
-        <Arrow />
+        {hoax.connecting ? "Connecting" : "Connect wallet"}
       </button>
     );
   }
@@ -76,10 +72,9 @@ export function WalletButton() {
         aria-expanded={open}
         aria-haspopup={needs ? "dialog" : "menu"}
       >
-        <Avatar address={hoax.wallet} />
+        <Avatar address={hoax.wallet} size={28} />
         <span style={{ textTransform: "none" }}>{short(hoax.wallet)}</span>
         {needs && <span className="badge">● {needs}</span>}
-        {!needs && <span className="corner" style={{ position: "absolute", right: "0.6rem", bottom: "0.6rem", width: "0.6rem", height: "0.6rem", borderRight: "var(--b) solid var(--ink-4)", borderBottom: "var(--b) solid var(--ink-4)" }} aria-hidden />}
       </button>
       {open && (
         <div className="wdrop" role="menu" aria-label="Wallet">
