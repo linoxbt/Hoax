@@ -1,8 +1,9 @@
 "use client";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHead } from "@/components/AppHead";
+import { HealthField } from "@/components/HealthField";
+import { Btn, Eyebrow } from "@/components/Ui";
 import { useApp, DEFAULT_POLICY_JSON } from "@/lib/appContext";
 import { BOUNDS, fromInput, policyProblems, toInput } from "@/lib/policyForm";
 import { api } from "@/lib/session";
@@ -22,6 +23,7 @@ export default function PolicyEditor() {
   const router = useRouter();
   const { session, view, refresh, setErr } = useApp();
   const current = view?.policies.find((x) => x.market === symbol);
+  const position = view?.positions.find((x) => x.market === symbol);
   const [form, setForm] = useState({ ...DEFAULT_POLICY_JSON, enabled: true });
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,13 +36,18 @@ export default function PolicyEditor() {
   }, [view, current, loaded]);
 
   const problems = policyProblems(form);
+  const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
   async function save() {
     if (problems.length > 0) return;
     setBusy(true);
     setErr(null);
     try {
-      await api(`/api/policies/${session.owner}/${symbol}?chain=${session.chainId}`, { method: "PUT", token: session.token, body: JSON.stringify(form) });
+      await api(`/api/policies/${session.owner}/${symbol}?chain=${session.chainId}`, {
+        method: "PUT",
+        token: session.token,
+        body: JSON.stringify(form),
+      });
       await refresh();
       router.push(`/app/positions/${symbol}`);
     } catch (e) {
@@ -53,61 +60,80 @@ export default function PolicyEditor() {
   return (
     <>
       <AppHead kicker={`Policy · ${symbol}`} title="Policy">
-        <Link href={`/app/positions/${symbol}`} className="pill ghost">
-          ← Position
-        </Link>
+        <Btn href={`/app/positions/${symbol}`} arrow="w">
+          Position
+        </Btn>
       </AppHead>
-      <div className="wrap pad-s">
-        <div className="grid g3" style={{ rowGap: 32 }}>
-          {FIELDS.map(([k, label, step, help]) => (
-            <label className="field" key={k}>
-              <span>{label}</span>
-              <input
-                type="number"
-                step={step}
-                min={BOUNDS[k]?.min}
-                max={BOUNDS[k]?.max}
-                value={toInput(form[k])}
-                onChange={(e) => setForm({ ...form, [k]: fromInput(e.target.value) })}
-              />
-              <span className="cap soft" style={{ marginTop: "0.6rem", textTransform: "none", letterSpacing: "0.04em" }}>
-                {help}
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="rows" style={{ marginTop: "3.6rem" }}>
-          <label className="r text" style={{ cursor: "pointer" }}>
-            <span>Full close</span>
-            <span className="row">
-              <input type="checkbox" checked={form.allowFullClose} onChange={(e) => setForm({ ...form, allowFullClose: e.target.checked })} />
-              Allow full close below market minimum
-            </span>
-          </label>
-          <label className="r text" style={{ cursor: "pointer" }}>
-            <span>Protection</span>
-            <span className="row">
-              <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-              Protection on
-            </span>
-          </label>
-        </div>
-        {problems.length > 0 && (
-          <ul className="note bad" style={{ marginTop: "2.4rem" }} role="alert">
-            {problems.map((p) => (
-              <li key={p}>{p}</li>
+      <section className="card db-editor">
+        <div className="db-editor-l">
+          <div className="db-card-h">
+            <h2 className="h5">Policy editor</h2>
+            <span className="db-label">{symbol}</span>
+          </div>
+          <div className="db-fields">
+            {FIELDS.map(([k, label, step, help]) => (
+              <label className="field db-field" key={k}>
+                <span>{label}</span>
+                <input
+                  type="number"
+                  step={step}
+                  min={BOUNDS[k]?.min}
+                  max={BOUNDS[k]?.max}
+                  value={toInput(form[k])}
+                  onChange={(e) => setForm({ ...form, [k]: fromInput(e.target.value) })}
+                />
+                <small>{help}</small>
+              </label>
             ))}
-          </ul>
-        )}
-        <div className="row" style={{ marginTop: "3.2rem" }}>
-          <button className="pill" disabled={busy || problems.length > 0} onClick={save}>
-            Save policy
-          </button>
-          <button className="pill ghost" onClick={() => setForm({ ...DEFAULT_POLICY_JSON, enabled: true })}>
-            Reset to defaults
-          </button>
+          </div>
+          <div className="db-toggles">
+            <label className="db-toggle">
+              <span>
+                <b>Full close</b>
+                <small>Allow full close below market minimum</small>
+              </span>
+              <input type="checkbox" checked={form.allowFullClose} onChange={(e) => setForm({ ...form, allowFullClose: e.target.checked })} />
+            </label>
+            <label className="db-toggle">
+              <span>
+                <b>Protection</b>
+                <small>Protection on</small>
+              </span>
+              <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+            </label>
+          </div>
+          {problems.length > 0 && (
+            <ul className="note bad db-problems" role="alert">
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+          <div className="db-actions">
+            <button className="btn" disabled={busy || problems.length > 0} onClick={save}>
+              <span>Save policy</span>
+            </button>
+            <button className="btn ghost" onClick={() => setForm({ ...DEFAULT_POLICY_JSON, enabled: true })}>
+              <span>Reset to defaults</span>
+            </button>
+          </div>
         </div>
-      </div>
+        <aside className="panel db-editor-r">
+          <Eyebrow>The context / preview</Eyebrow>
+          <h3 className="h5 ink">Where this policy sits on {symbol}.</h3>
+          <p className="mono-s soft">
+            Hoax acts when health falls to the trigger, and closes in steps until it reaches the target.
+            {position ? " The fill is this position's health now." : ""}
+          </p>
+          <div className="panel-in">
+            <HealthField
+              health={position?.health ?? null}
+              trigger={num(form.triggerHealth, DEFAULT_POLICY_JSON.triggerHealth)}
+              target={num(form.targetHealth, DEFAULT_POLICY_JSON.targetHealth)}
+            />
+          </div>
+        </aside>
+      </section>
     </>
   );
 }

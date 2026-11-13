@@ -1,16 +1,25 @@
-import { Label } from "./Ui";
+import { Eyebrow } from "./Ui";
 
-/** The title band at the top of each app page. */
-export function AppHead({ kicker, title, children }: { kicker: string; title: React.ReactNode; children?: React.ReactNode }) {
+/** The head of each dashboard page: eyebrow, heading, an optional line of copy, and actions on the right. */
+export function AppHead({
+  kicker,
+  title,
+  sub,
+  children,
+}: {
+  kicker: string;
+  title: React.ReactNode;
+  sub?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="apphead">
-      <div>
-        <Label dot>{kicker}</Label>
-        <h1 className="h2" style={{ marginTop: "1.6rem" }}>
-          {title}
-        </h1>
+    <div className="apphead db-head">
+      <div className="db-head-t">
+        <Eyebrow>{kicker}</Eyebrow>
+        <h1 className="h2">{title}</h1>
+        {sub && <p className="txt">{sub}</p>}
       </div>
-      {children}
+      {children && <div className="db-head-act">{children}</div>}
     </div>
   );
 }

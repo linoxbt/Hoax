@@ -4,6 +4,7 @@ import { formatEther } from "viem";
 import { AppHead } from "@/components/AppHead";
 import { CopyButton } from "@/components/CopyButton";
 import { LinkGrid } from "@/components/LinkGrid";
+import { Eyebrow } from "@/components/Ui";
 import { useApp } from "@/lib/appContext";
 import { addressUrl, txUrl } from "@/lib/format";
 import { PROTECTION_TITLE, protectionState } from "@/lib/protection";
@@ -26,7 +27,11 @@ export default function Settings() {
     if (pausing) return;
     setPausing(true);
     try {
-      await api(`/api/accounts/${session.owner}/pause`, { method: "POST", token: session.token, body: JSON.stringify({ paused, chain: session.chainId }) });
+      await api(`/api/accounts/${session.owner}/pause`, {
+        method: "POST",
+        token: session.token,
+        body: JSON.stringify({ paused, chain: session.chainId }),
+      });
       await refresh();
     } catch (e) {
       setErr((e as Error).message);
@@ -48,64 +53,64 @@ export default function Settings() {
   return (
     <>
       <AppHead kicker="Account" title="Settings" />
-      <div className="wrap pad-s">
-        <div className="grid g2" style={{ gap: "2.4rem" }}>
-          <div className="card">
-            <div className="cap soft">Protection</div>
-            <h3 style={{ margin: "10px 0" }}>{!account ? "Not set up" : PROTECTION_TITLE[protectionState(view, hoax.engine)]}</h3>
-            <p className="copy soft">Pausing stops every close at once. The key stays linked.</p>
-            {account && (
-              <button
-                className={`pill${account.paused ? "" : " ghost"}`}
-                style={{ marginTop: "1.6rem" }}
-                disabled={!canManage || pausing}
-                aria-busy={pausing}
-                onClick={() => setPaused(!account.paused)}
-              >
-                {pausing ? "Saving…" : account.paused ? "Resume Hoax" : "Pause Hoax"}
-              </button>
-            )}
-          </div>
-          <div className="card">
-            <div className="cap soft">Revoke completely</div>
-            <h3 style={{ margin: "10px 0" }}>Unlink the Hoax key</h3>
-            <p className="copy soft">One transaction from your wallet removes trade access on every market.</p>
-            {revoke.phase === "done" ? (
-              <p className="note" style={{ marginTop: "1.6rem" }}>
-                {/* Said only once the chain shows every market unlinked, not when the transaction succeeds. */}
-                {anyLinked ? "Revoke sent. Waiting for every market to show the key unlinked…" : "Revoked on every market."}{" "}
-                {revoke.hash && (
-                  <a className="accent" href={txUrl(revoke.hash, session.chainId)} target="_blank" rel="noreferrer">
-                    View tx ↗
-                  </a>
-                )}
-              </p>
-            ) : (
-              <button
-                className="pill ghost"
-                style={{ marginTop: "1.6rem" }}
-                disabled={hoax.sample || !account?.hoaxKey || !anyLinked || ["building", "confirm", "mining"].includes(revoke.phase)}
-                onClick={async () => {
-                  if (await revoke.send({ approved: false, builderFee: true })) await refresh();
-                }}
-              >
-                {revoke.phase === "confirm" ? "Confirm in wallet…" : revoke.phase === "mining" ? "Revoking…" : "Revoke access"}
-              </button>
-            )}
-            {revoke.err && (
-              <p className="note bad" style={{ marginTop: "1.2rem" }}>
-                {revoke.err}
-              </p>
-            )}
-          </div>
-        </div>
+      <div className="db-two">
+        <section className="dark db-set">
+          <Eyebrow>Protection</Eyebrow>
+          <h2 className="h3">{!account ? "Not set up" : PROTECTION_TITLE[protectionState(view, hoax.engine)]}</h2>
+          <p className="txt">Pausing stops every close at once. The key stays linked.</p>
+          {account && (
+            <button
+              className={`btn${account.paused ? "" : " white"}`}
+              disabled={!canManage || pausing}
+              aria-busy={pausing}
+              onClick={() => setPaused(!account.paused)}
+            >
+              <span>{pausing ? "Saving…" : account.paused ? "Resume Hoax" : "Pause Hoax"}</span>
+            </button>
+          )}
+        </section>
+        <section className="card db-set">
+          <Eyebrow>Revoke completely</Eyebrow>
+          <h2 className="h3">Unlink the Hoax key</h2>
+          <p className="txt">One transaction from your wallet removes trade access on every market.</p>
+          {revoke.phase === "done" ? (
+            <p className="note">
+              {/* Said only once the chain shows every market unlinked, not when the transaction succeeds. */}
+              {anyLinked ? "Revoke sent. Waiting for every market to show the key unlinked…" : "Revoked on every market."}{" "}
+              {revoke.hash && (
+                <a className="accent" href={txUrl(revoke.hash, session.chainId)} target="_blank" rel="noreferrer">
+                  View tx ↗
+                </a>
+              )}
+            </p>
+          ) : (
+            <button
+              className="btn ghost"
+              disabled={hoax.sample || !account?.hoaxKey || !anyLinked || ["building", "confirm", "mining"].includes(revoke.phase)}
+              onClick={async () => {
+                if (await revoke.send({ approved: false, builderFee: true })) await refresh();
+              }}
+            >
+              <span>{revoke.phase === "confirm" ? "Confirm in wallet…" : revoke.phase === "mining" ? "Revoking…" : "Revoke access"}</span>
+            </button>
+          )}
+          {revoke.err && <p className="note bad">{revoke.err}</p>}
+        </section>
+      </div>
 
-        <div className="card" style={{ marginTop: "2.4rem" }}>
+      <section className="panel db-access">
+        <Eyebrow>Your access / by market</Eyebrow>
+        <div className="panel-in">
           <LinkGrid view={view} />
         </div>
+      </section>
 
-        <h3 style={{ margin: "48px 0 14px" }}>Addresses</h3>
-        <div className="rows">
+      <section className="card db-addr">
+        <div className="db-card-h">
+          <h2 className="h5">Addresses</h2>
+          <span className="db-label">{account?.status.replace("_", " ") ?? "not registered"}</span>
+        </div>
+        <div className="rows db-rows">
           <div className="r">
             <span>Wallet</span>
             <span className="mono">{hoax.wallet ?? (hoax.sample ? "sample" : "–")}</span>
@@ -118,13 +123,13 @@ export default function Settings() {
           </div>
           <div className="r">
             <span>Hoax key</span>
-            <span className="row" style={{ gap: "1rem" }}>
+            <span className="db-keyval">
               {account?.hoaxKey ? (
                 <>
                   <a className="mono" href={addressUrl(account.hoaxKey, session.chainId)} target="_blank" rel="noreferrer">
                     {account.hoaxKey}
                   </a>
-                  <CopyButton text={account.hoaxKey} ghost />
+                  <CopyButton text={account.hoaxKey} ghost sm />
                 </>
               ) : (
                 "–"
@@ -144,17 +149,17 @@ export default function Settings() {
             <span>{account ? `${Number(account.builderApproval1k) / 1000} bps` : "–"}</span>
           </div>
         </div>
+      </section>
 
-        <div className="row" style={{ marginTop: "4rem" }}>
-          <button className="pill ghost" onClick={hoax.disconnect}>
-            {hoax.sample ? "Leave the sample account" : "Disconnect wallet"}
+      <div className="db-actions db-leave">
+        <button className="btn ghost" onClick={hoax.disconnect}>
+          <span>{hoax.sample ? "Leave the sample account" : "Disconnect wallet"}</span>
+        </button>
+        {!hoax.sample && hoax.signedIn && (
+          <button className="btn ghost" onClick={signOutEverywhere} disabled={signedOut}>
+            <span>Sign out everywhere</span>
           </button>
-          {!hoax.sample && hoax.signedIn && (
-            <button className="pill ghost" onClick={signOutEverywhere} disabled={signedOut}>
-              Sign out everywhere
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </>
   );

@@ -15,15 +15,24 @@ export default function MyReceipts() {
   }, [session.owner, session.chainId, setErr]);
   return (
     <>
-      <AppHead kicker="Receipts" title="Receipts" />
-      <div className="wrap pad-s">
-        {!actions && <p className="copy soft"><span className="spin" aria-hidden /> Loading receipts…</p>}
-        {actions && actions.length === 0 && <p className="copy soft">No receipts yet. Hoax writes one every time it acts or decides not to.</p>}
+      <AppHead
+        kicker={`Receipts / ${!actions ? "–" : actions.length >= 200 ? "latest 200" : `${actions.length} on record`}`}
+        title="Receipts"
+        sub="Every close Hoax sent on this account, and every time it decided not to. Open one to see its signature."
+      />
+      <section className="card db-table-card">
+        <div className="db-card-h db-in">
+          <h2 className="h5">Every receipt</h2>
+          <span className="db-label">Public · signed by this wallet&apos;s Hoax key</span>
+        </div>
+        {!actions && (
+          <p className="mono-s soft db-in">
+            <span className="spin" aria-hidden /> Loading receipts…
+          </p>
+        )}
+        {actions && actions.length === 0 && <p className="txt db-in">No receipts yet. Hoax writes one every time it acts or decides not to.</p>}
         {actions && actions.length > 0 && <ReceiptTable actions={actions} />}
-        <p className="cap soft" style={{ marginTop: "2.4rem" }}>
-          Public · signed by this wallet&apos;s Hoax key
-        </p>
-      </div>
+      </section>
     </>
   );
 }

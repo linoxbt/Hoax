@@ -1,6 +1,6 @@
 import type { Outcome } from "@/lib/types";
 
-const LABEL: Record<Outcome, string> = {
+export const OUTCOME_LABEL: Record<Outcome, string> = {
   saved: "saved",
   "not-needed": "not needed",
   skipped: "skipped",
@@ -11,5 +11,5 @@ const LABEL: Record<Outcome, string> = {
 };
 
 export function OutcomeBadge({ outcome }: { outcome: Outcome }) {
-  return <span className={`tag ${outcome}`}>{LABEL[outcome]}</span>;
+  return <span className={`tag ${outcome}`}>{OUTCOME_LABEL[outcome]}</span>;
 }

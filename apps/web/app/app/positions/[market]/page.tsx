@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AppHead } from "@/components/AppHead";
 import { HealthField } from "@/components/HealthField";
+import { Btn, CornerLink, Eyebrow } from "@/components/Ui";
 import { useApp, DEFAULT_POLICY_JSON } from "@/lib/appContext";
 import { units, usd } from "@/lib/format";
 import { positionTag } from "@/lib/protection";
@@ -21,92 +22,109 @@ export default function PositionDetail() {
     return (
       <>
         <AppHead kicker="Position" title={symbol} />
-        <div className="wrap pad-s">
-          <p className="copy soft">No open {symbol} position on this wallet. <Link href="/app/positions" className="accent">All positions →</Link></p>
+        <div className="card db-empty">
+          <p className="txt">No open {symbol} position on this wallet.</p>
+          <CornerLink href="/app/positions">All positions</CornerLink>
         </div>
       </>
     );
 
+  const tag = view ? positionTag(view, engine, saved) : null;
+
   return (
     <>
       <AppHead kicker={p ? `${p.side} · ${units(p.size.replace("-", ""), p.baseDecimals)} ${p.baseSymbol}` : "Position"} title={symbol}>
-        <div className="row">
-          {(() => {
-            const tag = view ? positionTag(view, engine, saved) : null;
-            return tag && <span className={`tag ${tag.cls}`}>{tag.text}</span>;
-          })()}
-          <Link href={`/app/positions/${symbol}/policy`} className="pill">
-            Edit policy
-          </Link>
-        </div>
+        {tag && <span className={`tag ${tag.cls}`}>{tag.text}</span>}
+        <Btn href={`/app/positions/${symbol}/policy`} fill>
+          Edit policy
+        </Btn>
       </AppHead>
       {p && (
-        <div className="wrap pad-s">
-          <div className="spread">
-            <div>
-              <div className="cap soft">Health</div>
-              <div className="num accent">{p.health === null ? "–" : p.health.toFixed(3)}</div>
+        <>
+          <section className="card db-explorer">
+            <div className="db-card-h">
+              <h2 className="h5">Health</h2>
+              <span className="db-label">{p.source === "chain" ? "live" : "last reading"}</span>
             </div>
-            <div className="cap soft" style={{ textAlign: "right" }}>
-              {p.source === "chain" ? "live" : "last reading"}
-            </div>
-          </div>
-          <HealthField health={p.health} trigger={policy.triggerHealth} target={policy.targetHealth} />
-          <div className="grid g2" style={{ marginTop: "3.2rem", gap: "3.2rem" }}>
-            <div>
-              <h3 style={{ marginBottom: "1.4rem" }}>Market</h3>
-              <div className="rows">
-                <div className="r">
-                  <span>Mark</span>
-                  <span>
-                    {usd(p.mark)} {p.markOk ? "" : "· stale, Hoax will not act"}
-                  </span>
+            <div className="db-explorer-in">
+              <div className="db-explorer-l">
+                <div className="db-big">
+                  <b className="num accent">{p.health === null ? "–" : p.health.toFixed(3)}</b>
+                  <span className="mono-s soft">equity ÷ maintenance requirement</span>
                 </div>
-                <div className="r">
-                  <span>Liquidation price</span>
-                  <span>{usd(p.liqPrice)}</span>
-                </div>
-                <div className="r">
-                  <span>Equity</span>
-                  <span>{usd(p.equity)} USDso</span>
-                </div>
-                <div className="r">
-                  <span>Maintenance requirement</span>
-                  <span>{usd(p.mmReq)} USDso</span>
+                <HealthField health={p.health} trigger={policy.triggerHealth} target={policy.targetHealth} />
+              </div>
+              <div className="panel db-explorer-r">
+                <Eyebrow>The market / {symbol}</Eyebrow>
+                <div className="rows db-rows">
+                  <div className="r">
+                    <span>Mark</span>
+                    <span>
+                      {usd(p.mark)} {p.markOk ? "" : "· stale, Hoax will not act"}
+                    </span>
+                  </div>
+                  <div className="r">
+                    <span>Liquidation price</span>
+                    <span>{usd(p.liqPrice)}</span>
+                  </div>
+                  <div className="r">
+                    <span>Equity</span>
+                    <span>{usd(p.equity)} USDso</span>
+                  </div>
+                  <div className="r">
+                    <span>Maintenance requirement</span>
+                    <span>{usd(p.mmReq)} USDso</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div>
-              <h3 style={{ marginBottom: "1.4rem" }}>Policy</h3>
-              <div className="rows">
-                <div className="r">
-                  <span>Acts at</span>
-                  <span>{policy.triggerHealth}</span>
-                </div>
-                <div className="r">
-                  <span>Restores</span>
-                  <span>{policy.targetHealth}</span>
-                </div>
-                <div className="r">
-                  <span>Max close per step</span>
-                  <span>{policy.maxClosePct}%</span>
-                </div>
-                <div className="r">
-                  <span>Max slippage</span>
-                  <span>{policy.maxSlippageBps} bps</span>
-                </div>
-                <div className="r">
-                  <span>Cooldown</span>
-                  <span>{policy.cooldownSec} s</span>
-                </div>
-                <div className="r">
-                  <span>Cost gate λ</span>
-                  <span>{policy.lambda}</span>
-                </div>
+          </section>
+
+          <section className="dark db-policy">
+            <div className="db-policy-l">
+              <Eyebrow>The policy / {saved ? "saved" : "defaults"}</Eyebrow>
+              <h2 className="h3">
+                Acts at {policy.triggerHealth}.
+                <br />
+                Restores {policy.targetHealth}.
+              </h2>
+              <Btn href={`/app/positions/${symbol}/policy`} white>
+                Edit policy
+              </Btn>
+            </div>
+            <div className="db-policy-r">
+              <div className="r">
+                <span>Acts at</span>
+                <span>{policy.triggerHealth}</span>
+              </div>
+              <div className="r">
+                <span>Restores</span>
+                <span>{policy.targetHealth}</span>
+              </div>
+              <div className="r">
+                <span>Max close per step</span>
+                <span>{policy.maxClosePct}%</span>
+              </div>
+              <div className="r">
+                <span>Max slippage</span>
+                <span>{policy.maxSlippageBps} bps</span>
+              </div>
+              <div className="r">
+                <span>Cooldown</span>
+                <span>{policy.cooldownSec} s</span>
+              </div>
+              <div className="r">
+                <span>Cost gate λ</span>
+                <span>{policy.lambda}</span>
               </div>
             </div>
+          </section>
+          <div className="db-back">
+            <Link href="/app/positions" className="corner-link ink">
+              <span>← All positions</span>
+            </Link>
           </div>
-        </div>
+        </>
       )}
     </>
   );

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { CopyButton } from "@/components/CopyButton";
-import { Label } from "@/components/Ui";
-import { OutcomeBadge } from "@/components/Outcome";
+import { Eyebrow } from "@/components/Ui";
+import { OUTCOME_LABEL, OutcomeBadge } from "@/components/Outcome";
 import { DEMO, getStore, isUuid } from "@/lib/server";
 import { receiptView } from "@/lib/views";
 import { addressUrl, closeCost, health, txUrl, units, usd } from "@/lib/format";
@@ -19,39 +19,47 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   const cf = r.counterfactual;
   // The demo's sample receipts carry made-up hashes: no explorer link for those.
   const link = !DEMO;
+  const bad = r.outcome === "missed" || r.outcome === "conflict";
 
   return (
-    <>
-      <section className="sec first phead">
-        <div className="phead-title">
-          <span className="plus tl" aria-hidden />
-          <Label dot>Receipt · {r.id.slice(0, 8)}</Label>
+    <article className="db-r">
+      <header className="db-r-head">
+        <div className="db-r-title">
+          <Eyebrow>Protection receipt / {r.id.slice(0, 8)}</Eyebrow>
           <h1 className="h1">
             {r.market} {r.side}
           </h1>
-        </div>
-        <div className="phead-side">
-          <div className="p">
+          <div className="db-r-meta">
             <OutcomeBadge outcome={r.outcome} />
-            <div className="num m" style={{ marginTop: "2.4rem" }}>
-              {health(r.healthBefore)} <small>→</small> {health(r.healthAfter)}
-            </div>
-            <div className="mono-s soft" style={{ marginTop: "1.2rem" }}>
-              Health before and after
-            </div>
-            {r.reason && (
-              <p className={`note ${r.outcome === "missed" || r.outcome === "conflict" ? "bad" : ""}`} style={{ marginTop: "2.4rem" }}>
-                {r.reason}
-              </p>
-            )}
+            <span className="mono-s soft">{r.networkName}</span>
+            {r.block !== null && r.block !== undefined && <span className="mono-s soft">Block {r.block.toString()}</span>}
           </div>
         </div>
-      </section>
+        <div className="card db-r-out">
+          <div className="db-card-h">
+            <Eyebrow>The outcome</Eyebrow>
+            <span className="db-label">Health before and after</span>
+          </div>
+          <div className={`h3 db-r-word ${r.outcome}`}>{OUTCOME_LABEL[r.outcome].replace(/^./, (c) => c.toUpperCase())}.</div>
+          <div className="db-r-hh">
+            <div>
+              <span>Before</span>
+              <b className={`num ${bad ? "bad" : ""}`}>{health(r.healthBefore)}</b>
+            </div>
+            <i aria-hidden>→</i>
+            <div>
+              <span>After</span>
+              <b className="num accent">{health(r.healthAfter)}</b>
+            </div>
+          </div>
+          {r.reason && <p className={`note ${bad ? "bad" : ""}`}>{r.reason}</p>}
+        </div>
+      </header>
 
-      <section className="sec cells c2">
-        <div className="p">
-          <div className="mono-s ink">What Hoax did</div>
-          <div className="rows" style={{ marginTop: "2.4rem" }}>
+      <div className="db-two">
+        <section className="card db-r-card">
+          <Eyebrow>01 / What Hoax did</Eyebrow>
+          <div className="rows db-rows">
             <div className="r">
               <span>Account</span>
               {link ? <a href={addressUrl(r.owner, r.chainId)}>{r.owner}</a> : <span>{r.owner}</span>}
@@ -81,7 +89,15 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
             <div className="r">
               <span>Transaction</span>
               <span>
-                {r.txHash ? link ? <a href={txUrl(r.txHash, r.chainId)}>{r.txHash.slice(0, 18)}… ↗</a> : `${r.txHash.slice(0, 18)}… (sample)` : "none sent"}
+                {r.txHash ? (
+                  link ? (
+                    <a href={txUrl(r.txHash, r.chainId)}>{r.txHash.slice(0, 18)}… ↗</a>
+                  ) : (
+                    `${r.txHash.slice(0, 18)}… (sample)`
+                  )
+                ) : (
+                  "none sent"
+                )}
               </span>
             </div>
             <div className="r">
@@ -93,10 +109,10 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
               <span>{r.block?.toString() ?? "–"}</span>
             </div>
           </div>
-        </div>
-        <div className="p">
-          <div className="mono-s ink">Health and cost</div>
-          <div className="rows" style={{ marginTop: "2.4rem" }}>
+        </section>
+        <section className="card db-r-card">
+          <Eyebrow>02 / Health and cost</Eyebrow>
+          <div className="rows db-rows">
             <div className="r">
               <span>Liquidation price</span>
               <span>
@@ -120,25 +136,32 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
               <span>{Number(r.builderFee1k) / 1000} bps</span>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <section className="sec cells c-why">
-        <div className="p">
-          <div className="mono-s ink">Counterfactual</div>
-          <h2 className="h2" style={{ marginTop: "1.6rem" }}>
-            Was it needed?
-          </h2>
-          <div style={{ marginTop: "3.2rem" }}>
-            {r.outcome === "pending" && <p className="txt ink">Watching for 24 h. A save if the mark reaches {usd(r.liqPriceBefore)} and the position survives.</p>}
-            {r.outcome === "unconfirmed" && <p className="txt ink">The close was sent and its result is being confirmed on chain.</p>}
-            {r.outcome === "saved" && cf && (
-              <>
-                <div className="num accent">
-                  <small>up to</small> {usd(cf.preserved)}
-                  <small>USDso preserved</small>
-                </div>
-                <div className="rows" style={{ marginTop: "3.2rem" }}>
+      <section className="card db-r-cf">
+        <div className="db-r-cf-l">
+          <Eyebrow>03 / Counterfactual</Eyebrow>
+          <h2 className="h2">Was it needed?</h2>
+          <p className="mono-xs soft">
+            Preserved = equity at the old liquidation price − equity after liquidating the whole position there. dreamDEX liquidates in steps and can
+            stop early, so this is an upper bound: what the close saved if the move had gone on to liquidate it all.
+          </p>
+        </div>
+        <div className="panel db-r-cf-r">
+          {r.outcome === "pending" && (
+            <p className="txt ink">Watching for 24 h. A save if the mark reaches {usd(r.liqPriceBefore)} and the position survives.</p>
+          )}
+          {r.outcome === "unconfirmed" && <p className="txt ink">The close was sent and its result is being confirmed on chain.</p>}
+          {r.outcome === "saved" && cf && (
+            <>
+              <Eyebrow>Equity preserved</Eyebrow>
+              <div className="num accent db-r-saved">
+                <small>up to</small> {usd(cf.preserved)}
+                <small>USDso preserved</small>
+              </div>
+              <div className="panel-in">
+                <div className="rows db-rows">
                   <div className="r">
                     <span>Old liquidation price reached at block</span>
                     <span>{cf.reachedAtBlock?.toString()}</span>
@@ -152,31 +175,46 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
                     <span>{usd(cf.equityIfLiquidated)} USDso</span>
                   </div>
                 </div>
-              </>
-            )}
-            {r.outcome === "not-needed" && (
-              <p className="txt ink">
-                Liquidation price not reached in 24 h.{" "}
-                {r.cost !== null && BigInt(r.cost) < 0n ? "The close filled better than the mark, so the insurance cost nothing." : "The close cost was insurance."}
-              </p>
-            )}
-            {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && <p className="txt ink">{r.reason ?? r.outcome}</p>}
-            <p className="mono-xs soft" style={{ marginTop: "2.4rem" }}>
-              Preserved = equity at the old liquidation price − equity after liquidating the whole position there. dreamDEX liquidates in
-              steps and can stop early, so this is an upper bound: what the close saved if the move had gone on to liquidate it all.
+              </div>
+            </>
+          )}
+          {r.outcome === "not-needed" && (
+            <p className="txt ink">
+              Liquidation price not reached in 24 h.{" "}
+              {r.cost !== null && BigInt(r.cost) < 0n
+                ? "The close filled better than the mark, so the insurance cost nothing."
+                : "The close cost was insurance."}
             </p>
-          </div>
+          )}
+          {(r.outcome === "skipped" || r.outcome === "missed" || r.outcome === "conflict") && <p className="txt ink">{r.reason ?? r.outcome}</p>}
         </div>
-        <div className="p">
-          <div className="mono-s ink">Verification</div>
-          <div className="rows" style={{ marginTop: "2.4rem" }}>
+      </section>
+
+      <section className="dark db-r-ver">
+        <div className="db-r-ver-l">
+          <Eyebrow>04 / Verification</Eyebrow>
+          <h2 className="h3">
+            {r.signatureValid === true ? "Signature valid." : r.signatureValid === false ? "Signature does not match." : "Unsigned."}
+          </h2>
+          <p className="mono-xs">
+            keccak256 of sorted-key JSON · EIP-191 signature. The receipt is signed when Hoax closes and never changed; the final outcome is a second
+            record, signed by the same key, that names this receipt by its hash.
+          </p>
+          <CopyButton text={`/r/${r.id}`} label="Copy link to share" />
+        </div>
+        <div className="db-r-ver-r">
+          <div className="db-navrows">
             <div className="r">
               <span>Receipt hash</span>
               <span>{r.receiptHash || "–"}</span>
             </div>
             <div className="r">
               <span>Signed by</span>
-              {link ? <a href={addressUrl(String(r.receipt.hoaxKey), r.chainId)}>{String(r.receipt.hoaxKey)}</a> : <span>{String(r.receipt.hoaxKey)}</span>}
+              {link ? (
+                <a href={addressUrl(String(r.receipt.hoaxKey), r.chainId)}>{String(r.receipt.hoaxKey)}</a>
+              ) : (
+                <span>{String(r.receipt.hoaxKey)}</span>
+              )}
             </div>
             <div className="r">
               <span>Signature</span>
@@ -197,25 +235,18 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
               </div>
             )}
           </div>
-          <p className="mono-xs soft" style={{ marginTop: "1.6rem" }}>
-            keccak256 of sorted-key JSON · EIP-191 signature. The receipt is signed when Hoax closes and never changed; the final outcome is a
-            second record, signed by the same key, that names this receipt by its hash.
-          </p>
-          <div style={{ marginTop: "2.4rem" }}>
-            <CopyButton text={`/r/${r.id}`} label="Copy link to share" />
-          </div>
-          <details style={{ marginTop: "2.4rem" }}>
+          <details className="db-json">
             <summary>Receipt JSON</summary>
             <pre>{JSON.stringify(r.receipt, null, 2)}</pre>
           </details>
           {cf?.resolution && (
-            <details style={{ marginTop: "1.2rem" }}>
+            <details className="db-json">
               <summary>Outcome record JSON</summary>
               <pre>{JSON.stringify({ ...cf.resolution, signature: cf.resolutionSignature }, null, 2)}</pre>
             </details>
           )}
         </div>
       </section>
-    </>
+    </article>
   );
 }

@@ -1,50 +1,43 @@
-// The product: health from liquidation (1.0, left) to safe (right) as a field
-// of bars. Bars up to the live health are solid; the trigger and the target
-// stand taller, with their labels.
+// The product: account health on a light gauge, from liquidation (1.0, left)
+// to safe (right). Red up to the trigger, amber up to the target, blue above.
+// The fill runs to the live health, with its reading pinned above it; the
+// trigger and the target are marked with their labels.
 
 export function HealthField({ health, trigger, target }: { health: number | null; trigger: number; target: number }) {
   const max = Math.max(3, target + 1);
-  const n = 90;
-  const at = (h: number) => Math.round(((Math.min(max, Math.max(1, h)) - 1) / (max - 1)) * (n - 1));
-  const iTrig = at(trigger);
-  const iTarg = at(target);
-  const iLive = health === null ? -1 : at(Number.isFinite(health) ? health : max);
-  const pct = (i: number) => `${(i / (n - 1)) * 100}%`;
+  const pos = (h: number) => ((Math.min(max, Math.max(1, h)) - 1) / (max - 1)) * 100;
+  const pTrig = pos(trigger);
+  const pTarg = pos(target);
+  const live = health === null ? null : pos(Number.isFinite(health) ? health : max);
   const label = health === null ? "flat" : Number.isFinite(health) ? health.toFixed(2) : "∞";
-  const step = 3;
+  const zone = health === null ? "flat" : health <= trigger ? "bad" : health < target ? "warn" : "ok";
+  const align = live === null ? "start" : live < 12 ? "start" : live > 88 ? "end" : "mid";
   return (
-    <div className="hfield" role="img" aria-label={`Health ${label}; Hoax acts at ${trigger} and restores ${target}`}>
-      <span className="lbl left" style={{ left: pct(iTrig) }}>
-        act {trigger}
-      </span>
-      <span className="lbl rightside" style={{ left: pct(iTarg) }}>
-        restore {target}
-      </span>
-      <svg viewBox={`0 0 ${n * step} 100`} preserveAspectRatio="none">
-        {Array.from({ length: n }, (_, i) => {
-          const marker = i === iTrig || i === iTarg;
-          const live = i === iLive;
-          const filled = i <= iLive;
-          const h = live ? 100 : marker ? 92 : 30 + ((i * 53) % 23);
-          return (
-            <rect
-              key={i}
-              x={i * step}
-              y={100 - h}
-              width={live ? 2.6 : 1.6}
-              height={h}
-              fill="currentColor"
-              className={live ? "live" : undefined}
-              opacity={live ? 1 : marker ? 0.9 : filled ? 0.85 : 0.22}
-            />
-          );
-        })}
-      </svg>
-      <div className="ends">
-        <span>1.0 liquidation</span>
-        <span>
-          health <b className="mono" style={{ fontSize: "1.2rem" }}>{label}</b>
+    <div className={`db-gauge z-${zone}`} role="img" aria-label={`Health ${label}; Hoax acts at ${trigger} and restores ${target}`}>
+      <div className="db-gauge-pinrow">
+        <span className={`db-gauge-pin ${align}`} style={{ left: `${live ?? 0}%` }}>
+          health <b>{label}</b>
         </span>
+      </div>
+      <div className="db-gauge-track">
+        <i className="zb" style={{ left: 0, width: `${pTrig}%` }} />
+        <i className="zw" style={{ left: `${pTrig}%`, width: `${Math.max(0, pTarg - pTrig)}%` }} />
+        <i className="zo" style={{ left: `${pTarg}%`, right: 0 }} />
+        {live !== null && <i className="fill" style={{ width: `${live}%` }} />}
+        <i className="tick" style={{ left: `${pTrig}%` }} />
+        <i className="tick" style={{ left: `${pTarg}%` }} />
+        {live !== null && <i className="knob" style={{ left: `${live}%` }} />}
+      </div>
+      <div className="db-gauge-marks">
+        <span className={`act${pTrig < 14 ? " near" : ""}`} style={{ left: pTrig < 14 ? 0 : `${pTrig}%` }}>
+          act {trigger}
+        </span>
+        <span className="restore" style={{ left: `${pTarg}%` }}>
+          restore {target}
+        </span>
+      </div>
+      <div className="db-gauge-ends">
+        <span>1.0 liquidation</span>
         <span>{max.toFixed(1)}+ safe</span>
       </div>
     </div>

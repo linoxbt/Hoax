@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OutcomeBadge } from "./Outcome";
+import { Arrow } from "./Ui";
 import { ago, closeCost, health, units } from "@/lib/format";
 import type { ActionJson } from "@/lib/types";
 
@@ -7,18 +8,25 @@ import type { ActionJson } from "@/lib/types";
 export function ReceiptRow({ a, decimals = 18 }: { a: ActionJson; decimals?: number }) {
   return (
     <tr>
-      <td>
-        <Link href={`/r/${a.id}`}>{ago(a.createdAt)} ↗</Link>
+      <td data-label="When">
+        <Link href={`/r/${a.id}`} className="db-rlink">
+          <span>{ago(a.createdAt)}</span>
+          <Arrow dir="ne" />
+        </Link>
       </td>
-      <td>{a.market}</td>
-      <td>
+      <td data-label="Market" className="db-rmkt">
+        {a.market}
+      </td>
+      <td data-label="Outcome">
         <OutcomeBadge outcome={a.outcome} />
       </td>
-      <td>{a.sizeFilled !== "0" ? `${units(a.sizeFilled, decimals)} / ${units(a.sizeBefore, decimals)}` : a.reason ?? "–"}</td>
-      <td>
-        {health(a.healthBefore)} → {health(a.healthAfter)}
+      <td data-label="Closed" className="db-rclosed">
+        {a.sizeFilled !== "0" ? `${units(a.sizeFilled, decimals)} / ${units(a.sizeBefore, decimals)}` : (a.reason ?? "–")}
       </td>
-      <td>{closeCost(a.cost)}</td>
+      <td data-label="Health">
+        {health(a.healthBefore)} <span className="db-rarr">→</span> {health(a.healthAfter)}
+      </td>
+      <td data-label="Cost">{closeCost(a.cost)}</td>
     </tr>
   );
 }
@@ -26,7 +34,7 @@ export function ReceiptRow({ a, decimals = 18 }: { a: ActionJson; decimals?: num
 export function ReceiptTable({ actions }: { actions: ActionJson[] }) {
   if (actions.length === 0) return <p className="cap soft">No receipts yet.</p>;
   return (
-    <div className="scroll-x">
+    <div className="scroll-x db-rtable">
       <table className="list">
         <thead>
           <tr>
