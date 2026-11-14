@@ -288,26 +288,20 @@ function contract(name: string, make: () => Promise<Store>) {
       const soon = new Date(Date.now() + 60_000);
       await store.startNotifyTarget({ owner, kind: "telegram", target: null, codeHash: "tg-code", expiresAt: soon });
       expect(await store.listNotifyTargets(owner)).toMatchObject([{ kind: "telegram", target: null, verified: false }]);
-      // Another kind's code, an unknown code, and an expired one do nothing.
-      expect(await store.verifyNotifyTarget("email", "tg-code", new Date())).toBeNull();
+      // An unknown code and an expired one do nothing.
       expect(await store.verifyNotifyTarget("telegram", "other", new Date())).toBeNull();
       expect(await store.verifyNotifyTarget("telegram", "tg-code", new Date(Date.now() + 120_000))).toBeNull();
       const row = await store.verifyNotifyTarget("telegram", "tg-code", new Date(), "4242");
       expect(row).toMatchObject({ owner: owner.toLowerCase(), kind: "telegram", target: "4242", verified: true });
       expect(await store.verifyNotifyTarget("telegram", "tg-code", new Date(), "999")).toBeNull();
 
-      await store.startNotifyTarget({ owner, kind: "email", target: "a@b.co", codeHash: "em-code", expiresAt: soon });
-      expect((await store.verifyNotifyTarget("email", "em-code", new Date()))?.target).toBe("a@b.co");
-      expect((await store.listNotifyTargets(owner)).map((r) => [r.kind, r.verified])).toEqual([
-        ["email", true],
-        ["telegram", true],
-      ]);
       // Re-linking starts over unverified; /stop removes a chat wherever it is used.
-      await store.startNotifyTarget({ owner, kind: "email", target: "c@d.co", codeHash: "em-2", expiresAt: soon });
-      expect((await store.listNotifyTargets(owner)).find((r) => r.kind === "email")).toMatchObject({ target: "c@d.co", verified: false });
+      await store.startNotifyTarget({ owner, kind: "telegram", target: null, codeHash: "tg-2", expiresAt: soon });
+      expect(await store.listNotifyTargets(owner)).toMatchObject([{ kind: "telegram", target: null, verified: false }]);
+      expect((await store.verifyNotifyTarget("telegram", "tg-2", new Date(), "4242"))?.target).toBe("4242");
       expect(await store.deleteNotifyTargetByValue("telegram", "4242")).toBe(1);
-      await store.deleteNotifyTarget(owner, "email");
       expect(await store.listNotifyTargets(owner)).toEqual([]);
+      await store.deleteNotifyTarget(owner, "telegram");
     });
 
     it("keeps the newest heartbeat per service", async () => {

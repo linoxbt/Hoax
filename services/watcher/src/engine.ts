@@ -105,7 +105,7 @@ export interface EngineDeps {
   log: Logger;
   config: EngineConfig;
   now?: () => number;
-  /** Telegram and email copies of alerts and closes; none when not configured. */
+  /** Telegram copies of alerts and closes; none when not configured. */
   notify?: Notifier | null;
 }
 

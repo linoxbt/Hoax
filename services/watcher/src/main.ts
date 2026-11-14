@@ -6,7 +6,6 @@
 // second one (an overlapping redeploy, a NETWORK left unset) exits.
 
 import { createServer } from "node:http";
-import { emailConfigFromEnv } from "@hoax/core";
 import { DreamDexVenue, NETWORKS } from "@hoax/chain";
 import { MemoryStore, PgStore, migrate, type Store } from "@hoax/db";
 import { formatEther, getAddress, parseEther, type Hex } from "viem";
@@ -68,18 +67,17 @@ async function main() {
     : null;
   if (!gas) log.warn("GAS_WALLET_PRIVATE_KEY is not set: traders fund their Hoax key themselves (Send it for gas when linking)");
 
-  // Telegram and email copies of alerts: TELEGRAM_BOT_TOKEN, and RESEND_API_KEY or BREVO_API_KEY with HOAX_EMAIL_FROM.
+  // Telegram copies of alerts: TELEGRAM_BOT_TOKEN.
   const notify = new Notifier(
     store,
     {
       telegramToken: env("TELEGRAM_BOT_TOKEN") ?? null,
-      email: emailConfigFromEnv(process.env),
       siteUrl: (env("HOAX_SITE_URL", "https://usehoax.netlify.app") as string).replace(/\/+$/, ""),
       networkName: network.name,
     },
     log,
   );
-  log.info("alert channels", { telegram: Boolean(notify.cfg.telegramToken), email: notify.cfg.email?.provider ?? null });
+  log.info("alert channels", { telegram: Boolean(notify.cfg.telegramToken) });
 
   const builder = env("HOAX_BUILDER_ADDRESS");
   const watcher = new Watcher({

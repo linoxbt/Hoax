@@ -107,13 +107,13 @@ export interface AlertRow {
   seen: boolean;
 }
 
-export type NotifyKind = "telegram" | "email";
+export type NotifyKind = "telegram";
 
 /** Where an owner's alerts are delivered besides the dashboard. */
 export interface NotifyTargetRow {
   owner: string;
   kind: NotifyKind;
-  /** The Telegram chat id or the email address; null until a Telegram chat claims the code. */
+  /** The Telegram chat id; null until a chat claims the code. */
   target: string | null;
   verified: boolean;
   updatedAt: Date;
@@ -213,8 +213,8 @@ export interface Store {
 
   /**
    * Start linking a channel: replaces the owner's target of this kind with an
-   * unverified one carrying a hashed code that expires (an email address, or no
-   * target yet for Telegram, whose chat arrives with the code).
+   * unverified one carrying a hashed code that expires (no target yet for
+   * Telegram: the chat arrives with the code).
    */
   startNotifyTarget(t: { owner: string; kind: NotifyKind; target: string | null; codeHash: string; expiresAt: Date }): Promise<void>;
   /**

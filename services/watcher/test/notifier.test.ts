@@ -1,4 +1,4 @@
-import { emailContent, telegramText } from "@hoax/core";
+import { telegramText } from "@hoax/core";
 import { MemoryStore } from "@hoax/db";
 import { describe, expect, it } from "vitest";
 import { Notifier, alertNotice, closeNotice, outcomeNotice } from "../src/notifier.ts";
@@ -6,7 +6,7 @@ import { Notifier, alertNotice, closeNotice, outcomeNotice } from "../src/notifi
 const quiet = { info() {}, warn() {}, error() {}, debug() {} } as never;
 const OWNER = "0x00000000000000000000000000000000000000Cd";
 
-function setup(opts: { telegram?: boolean; email?: boolean; fail?: (url: string) => Response | null } = {}) {
+function setup(opts: { telegram?: boolean; fail?: (url: string) => Response | null } = {}) {
   const store = new MemoryStore();
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const f = (async (url: string, init: RequestInit) => {
@@ -18,7 +18,6 @@ function setup(opts: { telegram?: boolean; email?: boolean; fail?: (url: string)
     store,
     {
       telegramToken: opts.telegram === false ? null : "TOKEN",
-      email: opts.email === false ? null : { provider: "resend", apiKey: "KEY", from: "Hoax <alerts@hoax.test>" },
       siteUrl: "https://hoax.test",
       networkName: "Somnia Hideki",
     },
@@ -29,31 +28,28 @@ function setup(opts: { telegram?: boolean; email?: boolean; fail?: (url: string)
   return { store, n, calls, tick: (ms: number) => (now += ms) };
 }
 
-async function link(store: MemoryStore, kind: "telegram" | "email", target: string) {
-  await store.startNotifyTarget({ owner: OWNER, kind, target: kind === "email" ? target : null, codeHash: `${kind}-c`, expiresAt: new Date(Date.now() + 60_000) });
-  await store.verifyNotifyTarget(kind, `${kind}-c`, new Date(), kind === "telegram" ? target : undefined);
+async function link(store: MemoryStore, chatId: string, owner = OWNER) {
+  await store.startNotifyTarget({ owner, kind: "telegram", target: null, codeHash: `c-${owner}`, expiresAt: new Date(Date.now() + 60_000) });
+  await store.verifyNotifyTarget("telegram", `c-${owner}`, new Date(), chatId);
 }
 
 describe("Notifier", () => {
-  it("sends only to confirmed channels, through Telegram and the email provider", async () => {
+  it("sends only to a confirmed chat, through the Bot API", async () => {
     const { store, n, calls } = setup();
     const other = "0x00000000000000000000000000000000000000Ee";
-    await store.startNotifyTarget({ owner: other, kind: "email", target: "pending@x.co", codeHash: "x", expiresAt: new Date(Date.now() + 60_000) });
+    await store.startNotifyTarget({ owner: other, kind: "telegram", target: null, codeHash: "x", expiresAt: new Date(Date.now() + 60_000) });
     expect(await n.deliver(other, alertNotice(n, "paused", "Paused."))).toBe(0);
-    await link(store, "telegram", "777");
-    await link(store, "email", "me@x.co");
-    expect(await n.deliver(OWNER, alertNotice(n, "paused", "Paused."))).toBe(2);
-    const tg = calls.find((c) => c.url.includes("api.telegram.org/botTOKEN/sendMessage"));
-    expect(tg?.body).toMatchObject({ chat_id: "777", parse_mode: "HTML" });
-    expect(String(tg?.body.text)).toContain("Hoax paused your account");
-    const mail = calls.find((c) => c.url === "https://api.resend.com/emails");
-    expect(mail?.body).toMatchObject({ to: ["me@x.co"], subject: "Hoax · Hoax paused your account" });
-    expect(calls).toHaveLength(2);
+    await link(store, "777");
+    expect(await n.deliver(OWNER, alertNotice(n, "paused", "Paused."))).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://api.telegram.org/botTOKEN/sendMessage");
+    expect(calls[0].body).toMatchObject({ chat_id: "777", parse_mode: "HTML" });
+    expect(String(calls[0].body.text)).toContain("Hoax paused your account");
   });
 
   it("sends the same notice once per 15 minutes", async () => {
-    const { store, n, calls, tick } = setup({ email: false });
-    await link(store, "telegram", "777");
+    const { store, n, calls, tick } = setup();
+    await link(store, "777");
     const notice = alertNotice(n, "skipped", "Hoax did not close on ETH-PERP: no liquidity within max slippage.");
     expect(await n.deliver(OWNER, notice)).toBe(1);
     expect(await n.deliver(OWNER, notice)).toBe(0);
@@ -64,17 +60,16 @@ describe("Notifier", () => {
 
   it("unlinks a Telegram chat that blocked the bot", async () => {
     const { store, n } = setup({
-      email: false,
       fail: () => new Response(JSON.stringify({ ok: false, description: "Forbidden: bot was blocked by the user" }), { status: 403 }),
     });
-    await link(store, "telegram", "777");
+    await link(store, "777");
     expect(await n.deliver(OWNER, alertNotice(n, "paused", "Paused."))).toBe(0);
     expect(await store.listNotifyTargets(OWNER)).toEqual([]);
   });
 
   it("does nothing when no channel is configured", async () => {
-    const { store, n, calls } = setup({ telegram: false, email: false });
-    await link(store, "telegram", "777");
+    const { store, n, calls } = setup({ telegram: false });
+    await link(store, "777");
     expect(n.enabled).toBe(false);
     expect(await n.deliver(OWNER, alertNotice(n, "paused", "Paused."))).toBe(0);
     expect(calls).toHaveLength(0);
@@ -103,6 +98,6 @@ describe("Notifier", () => {
     // Rendered safely for both channels.
     const t = telegramText({ ...close, title: "<b>x</b> & y" });
     expect(t).toContain("&lt;b&gt;x&lt;/b&gt; &amp; y");
-    expect(emailContent(close).text).toContain("Open the signed receipt: https://hoax.test/r/abc");
+    expect(telegramText(close)).toContain('<a href="https://hoax.test/r/abc">Open the signed receipt</a>');
   });
 });

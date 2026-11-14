@@ -174,21 +174,13 @@ The numbers move with the book and mark read at the time; these are from a run o
 
 Every liquidation has a share card at `/radar/<chain>/<tx>`, with its own Open Graph image: what the engine took, the legs it closed, the keeper reward and any bad debt from the event, and what a Hoax trim would have cost at most. A trim is only sent when it costs at most half of that.
 
-## Alerts on Telegram and email
+## Alerts on Telegram
 
-Every alert in the dashboard (a pause, a skipped close, a stale mark, a liquidation Hoax could not prevent) also goes to Telegram and email, along with every close Hoax sends and every saved or missed verdict, each linking to its signed receipt. A trader turns channels on in **Settings → Your alert channels**:
+Every alert in the dashboard (a pause, a skipped close, a stale mark, a liquidation Hoax could not prevent) also goes to Telegram, along with every close Hoax sends and every saved or missed verdict, each linking to its signed receipt. A trader turns it on in **Settings → Your alerts**: *Connect Telegram* opens [@usehoaxbot](https://t.me/usehoaxbot) with a one-time code, and pressing Start links that chat. `/stop` in the chat unlinks it. No phone number is shared with Hoax, and *Send a test alert* checks it end to end.
 
-- **Telegram:** *Connect Telegram* opens Hoax's bot with a one-time code; pressing Start links that chat. `/stop` in the chat unlinks it. No phone number is shared with Hoax.
-- **Email:** Hoax sends one confirmation link (valid 30 minutes) and nothing else until it is opened.
+The chat belongs to the dreamDEX account and covers both networks. Link codes are stored hashed and expire after 30 minutes, the same notice is sent at most once per 15 minutes, a chat that blocks the bot is unlinked, and a failed send never delays the engine.
 
-Channels belong to the dreamDEX account and cover both networks. Codes are stored hashed, the same notice is sent at most once per 15 minutes, a chat that blocks the bot is unlinked, and a failed send never delays the engine. *Send a test alert* checks the setup end to end.
-
-**Setup.** Create a bot with [@BotFather](https://t.me/BotFather), then set:
-
-- web (Netlify): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` (any long random string), and for email `RESEND_API_KEY` or `BREVO_API_KEY` with `HOAX_EMAIL_FROM`;
-- engine (the `.env` that `deploy/vps-setup.sh` keeps in `/opt/hoax` on the server): `TELEGRAM_BOT_TOKEN`, the same email variables, and `HOAX_SITE_URL`; then run the setup script again so the engines restart with them.
-
-Register the webhook once:
+**Setup.** Create a bot with [@BotFather](https://t.me/BotFather), then set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` and `TELEGRAM_WEBHOOK_SECRET` (any long random string) on the web app, and `TELEGRAM_BOT_TOKEN` and `HOAX_SITE_URL` in the engine's `.env` (`/opt/hoax/.env` on the server, then run the setup script again). Register the webhook once:
 
 ```sh
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \

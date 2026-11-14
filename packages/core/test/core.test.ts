@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emailConfigFromEnv, isEmail, parseFrom, sendEmail, sendTelegram } from "../src/notify.ts";
+import { sendTelegram, telegramText } from "../src/notify.ts";
 import {
   DEFAULT_POLICY,
   canonicalReceipt,
@@ -426,37 +426,18 @@ describe("notify", () => {
     const f = (async (url: string, init: RequestInit) => (calls.push({ url, init }), new Response(body, { status }))) as unknown as typeof fetch;
     return { calls, f };
   };
-  const content = { subject: "s", text: "t", html: "<p>h</p>" };
 
-  it("picks the email provider from the environment", () => {
-    expect(emailConfigFromEnv({})).toBeNull();
-    expect(emailConfigFromEnv({ RESEND_API_KEY: "r" })).toBeNull();
-    expect(emailConfigFromEnv({ RESEND_API_KEY: "r", BREVO_API_KEY: "b", HOAX_EMAIL_FROM: "a@b.co" })?.provider).toBe("resend");
-    expect(emailConfigFromEnv({ BREVO_API_KEY: "b", HOAX_EMAIL_FROM: "a@b.co" })?.provider).toBe("brevo");
+  it("sends a Telegram message in HTML mode, escaped", async () => {
+    const c = capture();
+    await sendTelegram("T", "42", telegramText({ title: "<x> & y", lines: ["a"], link: { label: "Open", url: "https://h.test/r/1" }, tone: "good" }), c.f);
+    expect(c.calls[0].url).toBe("https://api.telegram.org/botT/sendMessage");
+    const body = JSON.parse(String(c.calls[0].init.body));
+    expect(body).toMatchObject({ chat_id: "42", parse_mode: "HTML" });
+    expect(body.text).toContain("&lt;x&gt; &amp; y");
+    expect(body.text).toContain('<a href="https://h.test/r/1">Open</a>');
   });
 
-  it("sends through Resend and Brevo in each one's shape", async () => {
-    const r = capture();
-    await sendEmail({ provider: "resend", apiKey: "rk", from: "Hoax <a@b.co>" }, "to@x.co", content, r.f);
-    expect(r.calls[0].url).toBe("https://api.resend.com/emails");
-    expect((r.calls[0].init.headers as Record<string, string>).authorization).toBe("Bearer rk");
-    expect(JSON.parse(String(r.calls[0].init.body))).toMatchObject({ from: "Hoax <a@b.co>", to: ["to@x.co"] });
-    const b = capture();
-    await sendEmail({ provider: "brevo", apiKey: "bk", from: "Hoax <a@b.co>" }, "to@x.co", content, b.f);
-    expect((b.calls[0].init.headers as Record<string, string>)["api-key"]).toBe("bk");
-    expect(JSON.parse(String(b.calls[0].init.body))).toMatchObject({ sender: { name: "Hoax", email: "a@b.co" }, to: [{ email: "to@x.co" }], htmlContent: "<p>h</p>" });
-  });
-
-  it("throws when a provider or Telegram refuses", async () => {
-    await expect(sendEmail({ provider: "resend", apiKey: "k", from: "a@b.co" }, "to@x.co", content, capture(422, "bad").f)).rejects.toThrow("resend 422");
+  it("throws with Telegram's reason when it refuses", async () => {
     await expect(sendTelegram("T", "1", "hi", capture(400, JSON.stringify({ description: "Bad Request: chat not found" })).f)).rejects.toThrow("chat not found");
-  });
-
-  it("parses senders and checks addresses", () => {
-    expect(parseFrom("alerts@x.co")).toEqual({ name: "Hoax", email: "alerts@x.co" });
-    expect(parseFrom("Hoax Alerts <alerts@x.co>")).toEqual({ name: "Hoax Alerts", email: "alerts@x.co" });
-    expect(isEmail("a@b.co")).toBe(true);
-    expect(isEmail("a@b")).toBe(false);
-    expect(isEmail("a b@c.co")).toBe(false);
   });
 });

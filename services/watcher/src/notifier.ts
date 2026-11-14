@@ -1,15 +1,14 @@
-// Telegram and email delivery for an owner's alerts, closes and outcomes. The
+// Telegram delivery for an owner's alerts, closes and outcomes. The
 // dashboard's alert list stays the record; this is a copy sent where the trader
 // will see it. Fire and forget: a failed send is logged and never slows or stops
 // trading. The same notice is sent once per 15 minutes at most, and a Telegram
 // chat that blocked the bot is unlinked.
-import { type EmailConfig, type Notice, emailContent, sendEmail, sendTelegram, telegramText, toFloat } from "@hoax/core";
+import { type Notice, sendTelegram, telegramText, toFloat } from "@hoax/core";
 import type { NotifyTargetRow, Store } from "@hoax/db";
 import type { Logger } from "./log.ts";
 
 export interface NotifierConfig {
   telegramToken: string | null;
-  email: EmailConfig | null;
   /** Where receipts and the dashboard live, without a trailing slash. */
   siteUrl: string;
   /** The network this engine serves, named in each notice. */
@@ -32,7 +31,7 @@ export class Notifier {
   ) {}
 
   get enabled(): boolean {
-    return Boolean(this.cfg.telegramToken || this.cfg.email);
+    return Boolean(this.cfg.telegramToken);
   }
 
   receiptUrl(actionId: string): string {
@@ -61,9 +60,6 @@ export class Notifier {
       try {
         if (t.kind === "telegram" && this.cfg.telegramToken) {
           await sendTelegram(this.cfg.telegramToken, t.target, telegramText(n), this.f);
-          sent++;
-        } else if (t.kind === "email" && this.cfg.email) {
-          await sendEmail(this.cfg.email, t.target, emailContent(n), this.f);
           sent++;
         }
       } catch (err) {

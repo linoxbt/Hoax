@@ -27,7 +27,7 @@ export interface WatcherOptions {
   tickMs: number;
   /** The heartbeat's name: one per engine process, e.g. watcher-hideki. */
   service?: string;
-  /** Telegram and email copies of alerts, closes and outcomes. */
+  /** Telegram copies of alerts, closes and outcomes. */
   notify?: Notifier | null;
 }
 

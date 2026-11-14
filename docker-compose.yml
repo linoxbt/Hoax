@@ -85,11 +85,8 @@ services:
       GAS_WALLET_LOW: ${GAS_WALLET_LOW:-0.5}
       HOAX_BUILDER_ADDRESS: ${HOAX_BUILDER_ADDRESS:-}
       HOAX_BUILDER_FEE_BPS_1K: ${HOAX_BUILDER_FEE_BPS_1K:-0}
-      # Telegram and email alerts (see .env.example): empty = dashboard only.
+      # Telegram alerts (see .env.example): empty = dashboard only.
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      BREVO_API_KEY: ${BREVO_API_KEY:-}
-      HOAX_EMAIL_FROM: ${HOAX_EMAIL_FROM:-}
       HOAX_SITE_URL: ${HOAX_SITE_URL:-https://usehoax.netlify.app}
       DRY_RUN: ${DRY_RUN:-false}
       TICK_MS: ${TICK_MS:-1000}

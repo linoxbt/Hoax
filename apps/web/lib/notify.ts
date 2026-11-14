@@ -1,11 +1,10 @@
-// Alert channels on the web side: linking Telegram and email, confirming them,
-// and sending the confirmation and test messages. The engine sends the alerts
-// themselves (services/watcher/src/notifier.ts).
+// Telegram alerts on the web side: linking a chat, answering the bot, and the test
+// message. The engine sends the alerts themselves (services/watcher/src/notifier.ts).
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { type Notice, emailConfigFromEnv, emailContent, sendEmail, sendTelegram, telegramText } from "@hoax/core";
+import { type Notice, sendTelegram, telegramText } from "@hoax/core";
 
-/** How long a link code or confirmation link works. */
+/** How long a link code works. */
 export const CODE_TTL_MS = 30 * 60_000;
 
 export function notifyConfig() {
@@ -14,7 +13,6 @@ export function notifyConfig() {
     /** The bot's username without the @, for the t.me link. */
     telegramBot: (process.env.TELEGRAM_BOT_USERNAME || "").replace(/^@/, "") || null,
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET || null,
-    email: emailConfigFromEnv(process.env),
   };
 }
 
@@ -41,16 +39,4 @@ export function webhookAuthorized(req: Request): boolean {
 export async function replyTelegram(chatId: string, n: Notice): Promise<void> {
   const token = notifyConfig().telegramToken;
   if (token) await sendTelegram(token, chatId, telegramText(n));
-}
-
-export async function mailTo(to: string, n: Notice): Promise<void> {
-  const cfg = notifyConfig().email;
-  if (!cfg) throw new Error("email is not configured");
-  await sendEmail(cfg, to, emailContent(n));
-}
-
-/** "ab***@gmail.com": enough to recognise, not enough to harvest. */
-export function maskEmail(e: string): string {
-  const [user, domain] = e.split("@");
-  return `${user.slice(0, 2)}${"*".repeat(Math.max(1, Math.min(6, user.length - 2)))}@${domain}`;
 }
