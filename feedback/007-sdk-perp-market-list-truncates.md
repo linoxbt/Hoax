@@ -31,6 +31,32 @@ The 50 is stated only in the type's JSDoc (`limit` (max rows, default 50)). `doc
 
 Hoax hit this in production. Its Tokyo engine listed markets with `listPerpMarkets()`, so it never watched BTC, ETH or SOL positions, and its link transaction never granted the bot key on those three pools. The fix on our side is one argument (`{ limit: 500 }`), plus a warning when the page comes back full.
 
+## Evidence
+
+Run on 2026-11-14 06:08 UTC through the SDK client (`new SomniaMarkets({ chain: hidekiTestnet, indexerUrl: "https://hideki-dev.smk.somnia.host/v1/graphql", ... }).client`):
+
+```
+listPerpMarkets()               → 50 markets
+listPerpMarkets({ limit: 500 }) → 60 markets
+missing from the default list (base symbol, pool):
+  LINK  0xf71b619450bafe953f47b9b556416a3a67b443b5
+  SUI   0x1be21287cfb865a7c462ff3c4f275e70bcccefe4
+  ADA   0x34fa62909f77699a7a6278d992f72ff31c7a619d
+  BNB   0x3d2a99fe1e2bdeaa25024515a2d2202daf9531ad
+  DOGE  0xc410012e39765cd5f772e84bacb19554aec040df
+  XRP   0x7058579f3248559963f79adb937c6de9f953e060
+  HYPE  0x63b47ed4a7de0fde659b0d82441dd74828b7297a
+  SOL   0xb483ec1fb34996638677c20ab087b16f1896fa53
+  ETH   0xd6cb1dd58580b84d76068ac21594219ce03aeddf
+  BTC   0x4181dd08e73bbcdd1ba3e615a18f6abd941b94c0
+```
+
+Hoax's fix and its warning when the page comes back full: `packages/chain/src/dreamdex.ts`, `listMarkets()`.
+
+## Environment
+
+`@somnia-chain/markets-sdk@0.32.1`, viem 2.x, Node 22. Somnia Tokyo testnet (Hideki 2, chain 50383), markets indexer `https://hideki-dev.smk.somnia.host/v1/graphql`. Read-only calls: no wallet involved.
+
 ## Suggested fix
 
 - Return every market when no `limit` is given (the full list is 60 rows), or page internally until the indexer runs out.
