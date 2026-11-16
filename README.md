@@ -211,7 +211,7 @@ Seven verified items are in [feedback/](feedback/):
 
 ## X posts
 
-- _to add: 2–3 posts tagging @DreamDEXSomnia_
+- [Introducing Hoax: liquidation protection and market intelligence for @DreamDEXSomnia perps](https://x.com/linoxbt/status/2121616654509494593)
 
 ## License
 
