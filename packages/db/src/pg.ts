@@ -142,7 +142,8 @@ export class PgStore implements Store {
 
   constructor(connectionString: string) {
     // keepAlive: a connection that silently dies (a NAT dropping it) is noticed, the lease's included.
-    this.pool = new pg.Pool({ ...pgConfig(connectionString), max: 10, keepAlive: true });
+    // connectionTimeoutMillis: an unreachable server fails in seconds instead of hanging every request.
+    this.pool = new pg.Pool({ ...pgConfig(connectionString), max: 10, keepAlive: true, connectionTimeoutMillis: 8_000 });
   }
 
   private async q(sql: string, params: unknown[] = []): Promise<Row[]> {

@@ -15,8 +15,19 @@ export interface Session {
 export async function api<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (init.token) headers.authorization = `Bearer ${init.token}`;
-  const res = await fetch(path, { ...init, headers: { ...headers, ...(init.headers as Record<string, string>) } });
+  let res: Response;
+  try {
+    // A request that never answers would leave its button spinning forever.
+    res = await fetch(path, { signal: AbortSignal.timeout(45_000), ...init, headers: { ...headers, ...(init.headers as Record<string, string>) } });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") throw new Error("Hoax did not answer in time; try again in a moment");
+    throw err;
+  }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((body as { error?: string }).error ?? `request failed (${res.status})`);
+  if (!res.ok) {
+    const msg = (body as { error?: string }).error;
+    if (msg) throw new Error(msg);
+    throw new Error(res.status >= 500 ? `Hoax's server is not answering right now (${res.status}); try again in a moment` : `request failed (${res.status})`);
+  }
   return body as T;
 }
